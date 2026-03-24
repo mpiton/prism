@@ -182,6 +182,52 @@ pub struct WorkspaceNote {
     pub created_at: String,
 }
 
+// ── Composite structs (T-010) ─────────────────────────────────────
+
+/// Projection of [`Workspace`] for embedding in dashboard views.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSummary {
+    pub id: String,
+    pub state: WorkspaceState,
+    /// Content of the most recent [`WorkspaceNote`], if any.
+    pub last_note_content: Option<String>,
+}
+
+/// Pull request enriched with review summary and optional workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestWithReview {
+    pub pull_request: PullRequest,
+    pub review_summary: ReviewSummary,
+    pub workspace: Option<WorkspaceSummary>,
+}
+
+/// Full dashboard aggregate returned by a single IPC call.
+// Hash cannot be derived: Vec<T> does not implement Hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardData {
+    pub review_requests: Vec<PullRequestWithReview>,
+    pub my_pull_requests: Vec<PullRequestWithReview>,
+    pub assigned_issues: Vec<Issue>,
+    pub recent_activity: Vec<Activity>,
+    pub workspaces: Vec<Workspace>,
+    /// `None` before the first GitHub sync completes.
+    pub synced_at: Option<String>,
+}
+
+/// Dashboard counter stats for the header/sidebar.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardStats {
+    pub pending_reviews: u32,
+    pub open_prs: u32,
+    pub open_issues: u32,
+    pub active_workspaces: u32,
+    pub unread_activity: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -511,6 +557,124 @@ mod tests {
         assert!(json.contains("\"sessionId\""));
         let deserialized: Workspace = serde_json::from_str(&json).unwrap();
         assert_eq!(ws, deserialized);
+    }
+
+    // ── T-010: Composite struct roundtrip tests ─────────────────────
+
+    #[test]
+    fn test_workspace_summary_json_roundtrip() {
+        let ws = WorkspaceSummary {
+            id: "ws-1".to_string(),
+            state: WorkspaceState::Active,
+            last_note_content: Some("LGTM, ready to merge".to_string()),
+        };
+        let json = serde_json::to_string(&ws).unwrap();
+        assert!(json.contains("\"lastNoteContent\""));
+        let deserialized: WorkspaceSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(ws, deserialized);
+    }
+
+    #[test]
+    fn test_pr_with_review_json_roundtrip() {
+        let pr_with_review = PullRequestWithReview {
+            pull_request: PullRequest {
+                id: "pr-1".to_string(),
+                number: 42,
+                title: "Add feature".to_string(),
+                author: "mpiton".to_string(),
+                state: PrState::Open,
+                ci_status: CiStatus::Success,
+                priority: Priority::High,
+                repo_id: "r-1".to_string(),
+                url: "https://github.com/mpiton/prism/pull/42".to_string(),
+                labels: vec!["enhancement".to_string()],
+                created_at: "2026-03-24T10:00:00Z".to_string(),
+                updated_at: "2026-03-24T12:00:00Z".to_string(),
+            },
+            review_summary: ReviewSummary {
+                total_reviews: 2,
+                approved: 1,
+                changes_requested: 0,
+                pending: 1,
+                reviewers: vec!["alice".to_string(), "bob".to_string()],
+            },
+            workspace: Some(WorkspaceSummary {
+                id: "ws-1".to_string(),
+                state: WorkspaceState::Active,
+                last_note_content: None,
+            }),
+        };
+        let json = serde_json::to_string(&pr_with_review).unwrap();
+        assert!(json.contains("\"pullRequest\""));
+        assert!(json.contains("\"reviewSummary\""));
+        assert!(json.contains("\"workspace\""));
+        let deserialized: PullRequestWithReview = serde_json::from_str(&json).unwrap();
+        assert_eq!(pr_with_review, deserialized);
+    }
+
+    #[test]
+    fn test_dashboard_data_json_roundtrip() {
+        let pr_with_review = PullRequestWithReview {
+            pull_request: PullRequest {
+                id: "pr-99".to_string(),
+                number: 99,
+                title: "Dashboard endpoint".to_string(),
+                author: "alice".to_string(),
+                state: PrState::Open,
+                ci_status: CiStatus::Success,
+                priority: Priority::High,
+                repo_id: "r-1".to_string(),
+                url: "https://github.com/mpiton/prism/pull/99".to_string(),
+                labels: vec![],
+                created_at: "2026-03-24T10:00:00Z".to_string(),
+                updated_at: "2026-03-24T12:00:00Z".to_string(),
+            },
+            review_summary: ReviewSummary {
+                total_reviews: 1,
+                approved: 1,
+                changes_requested: 0,
+                pending: 0,
+                reviewers: vec!["bob".to_string()],
+            },
+            workspace: None,
+        };
+        let dashboard = DashboardData {
+            review_requests: vec![pr_with_review],
+            my_pull_requests: vec![],
+            assigned_issues: vec![],
+            recent_activity: vec![],
+            workspaces: vec![],
+            synced_at: Some("2026-03-24T14:00:00Z".to_string()),
+        };
+        let json = serde_json::to_string(&dashboard).unwrap();
+        assert!(json.contains("\"reviewRequests\""));
+        assert!(json.contains("\"myPullRequests\""));
+        assert!(json.contains("\"assignedIssues\""));
+        assert!(json.contains("\"recentActivity\""));
+        assert!(json.contains("\"syncedAt\""));
+        assert!(json.contains("\"pullRequest\""));
+        assert!(json.contains("\"reviewSummary\""));
+        let deserialized: DashboardData = serde_json::from_str(&json).unwrap();
+        assert_eq!(dashboard, deserialized);
+    }
+
+    #[test]
+    fn test_dashboard_stats_json_roundtrip() {
+        let stats = DashboardStats {
+            pending_reviews: 5,
+            open_prs: 12,
+            open_issues: 3,
+            active_workspaces: 2,
+            unread_activity: 8,
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains("\"pendingReviews\""));
+        assert!(json.contains("\"openPrs\""));
+        assert!(json.contains("\"openIssues\""));
+        assert!(json.contains("\"activeWorkspaces\""));
+        assert!(json.contains("\"unreadActivity\""));
+        let deserialized: DashboardStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(stats, deserialized);
     }
 
     #[test]
