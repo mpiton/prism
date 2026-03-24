@@ -8,8 +8,6 @@ repository = "https://github.com/mpiton/prism"
 edition = "2024"
 rust-version = "1.94"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 name = "prism_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -23,3 +21,29 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.10.3" }
 tauri-plugin-log = "2"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+# Tauri commands often have many params; complex types are common in event-driven apps
+too_many_arguments = "allow"
+type_complexity = "allow"
+# Tauri generates code that triggers these
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+# Entry point run() uses .expect() intentionally — fatal if Tauri fails to start
+missing_panics_doc = "allow"
+
+[profile.dev]
+incremental = true
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
