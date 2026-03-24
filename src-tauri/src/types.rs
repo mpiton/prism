@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 /// Pull request state.
@@ -226,6 +228,98 @@ pub struct DashboardStats {
     pub open_issues: u32,
     pub active_workspaces: u32,
     pub unread_activity: u32,
+}
+
+// ── IPC payloads (T-011) ──────────────────────────────────────
+
+/// Request payload for the `workspace_open` IPC command.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenWorkspaceRequest {
+    pub repo_id: String,
+    pub pull_request_number: u32,
+}
+
+/// Response payload from the `workspace_open` IPC command.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenWorkspaceResponse {
+    pub workspace_id: String,
+    /// Absolute path to the git worktree directory.
+    pub worktree_path: String,
+    /// `None` until a Claude Code session is started.
+    pub session_id: Option<String>,
+}
+
+/// Terminal stdin data sent to a workspace PTY via `workspace:stdin` event.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyInput {
+    pub workspace_id: String,
+    /// UTF-8 text from xterm.js (escape sequences encoded inline).
+    pub data: String,
+}
+
+/// Terminal stdout data received from a workspace PTY via `workspace:stdout` event.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyOutput {
+    pub workspace_id: String,
+    /// UTF-8 text for xterm.js (escape sequences encoded inline).
+    pub data: String,
+}
+
+/// Terminal resize event for a workspace PTY.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyResize {
+    pub workspace_id: String,
+    pub cols: u16,
+    pub rows: u16,
+}
+
+/// Application-level configuration persisted in the `config` table.
+// Hash omitted: config structs are likely to gain Vec fields (e.g. watched_repos).
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppConfig {
+    /// GitHub sync polling interval in seconds (minimum 30, default 300).
+    pub poll_interval_secs: u64,
+    /// Maximum number of simultaneously active workspaces (LRU eviction).
+    pub max_active_workspaces: u32,
+    /// GitHub personal access token or OAuth token. `None` means not yet configured.
+    pub github_token: Option<String>,
+    /// Override for the `SQLite` data directory (`~/.local/share/prism/` by default).
+    pub data_dir: Option<String>,
+    /// Override for the workspaces root directory (`~/.prism/workspaces/` by default).
+    pub workspaces_dir: Option<String>,
+}
+
+impl fmt::Debug for AppConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AppConfig")
+            .field("poll_interval_secs", &self.poll_interval_secs)
+            .field("max_active_workspaces", &self.max_active_workspaces)
+            .field(
+                "github_token",
+                &self.github_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("data_dir", &self.data_dir)
+            .field("workspaces_dir", &self.workspaces_dir)
+            .finish()
+    }
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval_secs: 300,
+            max_active_workspaces: 3,
+            github_token: None,
+            data_dir: None,
+            workspaces_dir: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -675,6 +769,122 @@ mod tests {
         assert!(json.contains("\"unreadActivity\""));
         let deserialized: DashboardStats = serde_json::from_str(&json).unwrap();
         assert_eq!(stats, deserialized);
+    }
+
+    // ── T-011: IPC payload roundtrip tests ─────────────────────────
+
+    #[test]
+    fn test_open_workspace_request_json() {
+        let req = OpenWorkspaceRequest {
+            repo_id: "r-1".to_string(),
+            pull_request_number: 42,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"repoId\""));
+        assert!(json.contains("\"pullRequestNumber\""));
+        let deserialized: OpenWorkspaceRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req, deserialized);
+    }
+
+    #[test]
+    fn test_open_workspace_response_json() {
+        let resp = OpenWorkspaceResponse {
+            workspace_id: "ws-1".to_string(),
+            worktree_path: "/home/user/.prism/workspaces/prism/worktrees/pr-42".to_string(),
+            session_id: Some("session-abc".to_string()),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"workspaceId\""));
+        assert!(json.contains("\"worktreePath\""));
+        assert!(json.contains("\"sessionId\""));
+        let deserialized: OpenWorkspaceResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(resp, deserialized);
+
+        // Verify null sessionId roundtrips correctly
+        let resp_no_session = OpenWorkspaceResponse {
+            workspace_id: "ws-2".to_string(),
+            worktree_path: "/tmp/worktree".to_string(),
+            session_id: None,
+        };
+        let json2 = serde_json::to_string(&resp_no_session).unwrap();
+        assert!(json2.contains("\"sessionId\":null"));
+        let deserialized2: OpenWorkspaceResponse = serde_json::from_str(&json2).unwrap();
+        assert_eq!(resp_no_session, deserialized2);
+    }
+
+    #[test]
+    fn test_pty_input_json() {
+        let input = PtyInput {
+            workspace_id: "ws-1".to_string(),
+            data: "ls -la\n".to_string(),
+        };
+        let json = serde_json::to_string(&input).unwrap();
+        assert!(json.contains("\"workspaceId\""));
+        assert!(json.contains("\"data\""));
+        let deserialized: PtyInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(input, deserialized);
+    }
+
+    #[test]
+    fn test_pty_output_json() {
+        let output = PtyOutput {
+            workspace_id: "ws-1".to_string(),
+            data: "total 42\ndrwxr-xr-x 2 user user 4096 Mar 24 10:00 src\n".to_string(),
+        };
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("\"workspaceId\""));
+        assert!(json.contains("\"data\""));
+        let deserialized: PtyOutput = serde_json::from_str(&json).unwrap();
+        assert_eq!(output, deserialized);
+    }
+
+    #[test]
+    fn test_pty_resize_json() {
+        let resize = PtyResize {
+            workspace_id: "ws-1".to_string(),
+            cols: 120,
+            rows: 40,
+        };
+        let json = serde_json::to_string(&resize).unwrap();
+        assert!(json.contains("\"workspaceId\""));
+        assert!(json.contains("\"cols\""));
+        assert!(json.contains("\"rows\""));
+        let deserialized: PtyResize = serde_json::from_str(&json).unwrap();
+        assert_eq!(resize, deserialized);
+    }
+
+    #[test]
+    fn test_app_config_json_roundtrip() {
+        let config = AppConfig {
+            poll_interval_secs: 120,
+            max_active_workspaces: 5,
+            github_token: Some("test-token".to_string()),
+            data_dir: Some("/custom/data".to_string()),
+            workspaces_dir: None,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"pollIntervalSecs\""));
+        assert!(json.contains("\"maxActiveWorkspaces\""));
+        assert!(json.contains("\"githubToken\""));
+        assert!(json.contains("\"dataDir\""));
+        assert!(json.contains("\"workspacesDir\":null"));
+        let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn test_app_config_defaults() {
+        let config = AppConfig::default();
+        assert_eq!(config.poll_interval_secs, 300);
+        assert_eq!(config.max_active_workspaces, 3);
+        assert!(config.github_token.is_none());
+        assert!(config.data_dir.is_none());
+        assert!(config.workspaces_dir.is_none());
+
+        // Default config should roundtrip through JSON
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, deserialized);
     }
 
     #[test]
