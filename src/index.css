@@ -1,0 +1,44 @@
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "tailwindcss";
+
+@theme {
+  /* ── Couleurs PRism ─────────────────────────── */
+  --color-bg: #111110;
+  --color-surface: #1a1a18;
+  --color-surface-hover: #1e1e1b;
+  --color-surface-alt: #151513;
+  --color-border: #2a2a27;
+  --color-text: #d4d0c8;
+  --color-dim: #6b6860;
+  --color-muted: #4a473f;
+  --color-white: #eeece6;
+  --color-accent: #c8ff00;
+
+  /* ── Couleurs sémantiques ───────────────────── */
+  --color-red: #ff4d4d;
+  --color-orange: #ff9f1c;
+  --color-green: #00d26a;
+  --color-blue: #5eaaff;
+  --color-purple: #c084fc;
+  --color-cyan: #22d3ee;
+
+  /* ── Typographie ────────────────────────────── */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
