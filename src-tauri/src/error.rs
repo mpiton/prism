@@ -29,6 +29,9 @@ pub enum AppError {
     #[error("git error: {0}")]
     Git(String),
 
+    #[error("migration error: {0}")]
+    Migrate(#[from] sqlx::migrate::MigrateError),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -132,5 +135,15 @@ mod tests {
         for (err, expected) in cases {
             assert_eq!(err.to_string(), expected);
         }
+    }
+
+    #[test]
+    fn test_app_error_display_migrate() {
+        let err = AppError::Migrate(sqlx::migrate::MigrateError::VersionMissing(1));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("migration error"),
+            "expected 'migration error' in '{msg}'"
+        );
     }
 }
