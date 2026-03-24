@@ -30,11 +30,8 @@ import type {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-/**
- * Type-level assertion: if the assignment compiles, the shape matches.
- * At runtime, validates JSON fixtures parse into the expected TS shape.
- */
-function assertShape<T>(json: unknown): T {
+/** Coerce a JSON fixture to type T. Compile-time check only — no runtime validation. */
+function coerceFixture<T>(json: unknown): T {
   return json as T;
 }
 
@@ -104,7 +101,7 @@ describe("Core struct shapes", () => {
       defaultBranch: "main",
       isArchived: false,
     };
-    const repo = assertShape<Repo>(json);
+    const repo = coerceFixture<Repo>(json);
     expect(repo.id).toBe("r-1");
     expect(repo.fullName).toBe("mpiton/prism");
     expect(repo.defaultBranch).toBe("main");
@@ -126,7 +123,7 @@ describe("Core struct shapes", () => {
       createdAt: "2026-03-24T10:00:00Z",
       updatedAt: "2026-03-24T12:00:00Z",
     };
-    const pr = assertShape<PullRequest>(json);
+    const pr = coerceFixture<PullRequest>(json);
     expect(pr.number).toBe(42);
     expect(pr.ciStatus).toBe("success");
     expect(pr.labels).toEqual(["enhancement", "frontend"]);
@@ -140,7 +137,7 @@ describe("Core struct shapes", () => {
       status: "pending" as ReviewStatus,
       requestedAt: "2026-03-24T10:00:00Z",
     };
-    const rr = assertShape<ReviewRequest>(json);
+    const rr = coerceFixture<ReviewRequest>(json);
     expect(rr.pullRequestId).toBe("pr-1");
     expect(rr.status).toBe("pending");
   });
@@ -153,7 +150,7 @@ describe("Core struct shapes", () => {
       pending: 1,
       reviewers: ["alice", "bob"],
     };
-    const rs = assertShape<ReviewSummary>(json);
+    const rs = coerceFixture<ReviewSummary>(json);
     expect(rs.totalReviews).toBe(3);
     expect(rs.changesRequested).toBe(1);
   });
@@ -172,7 +169,7 @@ describe("Core struct shapes", () => {
       createdAt: "2026-03-24T10:00:00Z",
       updatedAt: "2026-03-24T12:00:00Z",
     };
-    const issue = assertShape<Issue>(json);
+    const issue = coerceFixture<Issue>(json);
     expect(issue.priority).toBe("critical");
   });
 
@@ -187,7 +184,7 @@ describe("Core struct shapes", () => {
       message: "Opened PR #42",
       createdAt: "2026-03-24T10:00:00Z",
     };
-    const activity = assertShape<Activity>(json);
+    const activity = coerceFixture<Activity>(json);
     expect(activity.pullRequestId).toBe("pr-1");
     expect(activity.issueId).toBeNull();
   });
@@ -203,7 +200,7 @@ describe("Core struct shapes", () => {
       createdAt: "2026-03-24T10:00:00Z",
       updatedAt: "2026-03-24T12:00:00Z",
     };
-    const ws = assertShape<Workspace>(json);
+    const ws = coerceFixture<Workspace>(json);
     expect(ws.pullRequestNumber).toBe(42);
     expect(ws.worktreePath).toBe("/home/user/.prism/workspaces/prism/worktrees/pr-42");
   });
@@ -215,7 +212,7 @@ describe("Core struct shapes", () => {
       content: "Review feedback applied",
       createdAt: "2026-03-24T10:00:00Z",
     };
-    const note = assertShape<WorkspaceNote>(json);
+    const note = coerceFixture<WorkspaceNote>(json);
     expect(note.workspaceId).toBe("ws-1");
   });
 });
@@ -229,7 +226,7 @@ describe("Composite struct shapes", () => {
       state: "active" as WorkspaceState,
       lastNoteContent: "LGTM, ready to merge",
     };
-    const ws = assertShape<WorkspaceSummary>(json);
+    const ws = coerceFixture<WorkspaceSummary>(json);
     expect(ws.lastNoteContent).toBe("LGTM, ready to merge");
   });
 
@@ -239,7 +236,7 @@ describe("Composite struct shapes", () => {
       state: "suspended" as WorkspaceState,
       lastNoteContent: null,
     };
-    const ws = assertShape<WorkspaceSummary>(json);
+    const ws = coerceFixture<WorkspaceSummary>(json);
     expect(ws.lastNoteContent).toBeNull();
   });
 
@@ -272,7 +269,7 @@ describe("Composite struct shapes", () => {
         lastNoteContent: null,
       },
     };
-    const prwr = assertShape<PullRequestWithReview>(json);
+    const prwr = coerceFixture<PullRequestWithReview>(json);
     expect(prwr.pullRequest.number).toBe(42);
     expect(prwr.reviewSummary.totalReviews).toBe(2);
     expect(prwr.workspace).not.toBeNull();
@@ -287,7 +284,7 @@ describe("Composite struct shapes", () => {
       workspaces: [],
       syncedAt: "2026-03-24T14:00:00Z",
     };
-    const dashboard = assertShape<DashboardData>(json);
+    const dashboard = coerceFixture<DashboardData>(json);
     expect(dashboard.reviewRequests).toEqual([]);
     expect(dashboard.syncedAt).toBe("2026-03-24T14:00:00Z");
   });
@@ -301,7 +298,7 @@ describe("Composite struct shapes", () => {
       workspaces: [],
       syncedAt: null,
     };
-    const dashboard = assertShape<DashboardData>(json);
+    const dashboard = coerceFixture<DashboardData>(json);
     expect(dashboard.syncedAt).toBeNull();
   });
 
@@ -313,7 +310,7 @@ describe("Composite struct shapes", () => {
       activeWorkspaces: 2,
       unreadActivity: 8,
     };
-    const stats = assertShape<DashboardStats>(json);
+    const stats = coerceFixture<DashboardStats>(json);
     expect(stats.pendingReviews).toBe(5);
     expect(stats.openPrs).toBe(12);
   });
@@ -327,7 +324,7 @@ describe("IPC payload shapes", () => {
       repoId: "r-1",
       pullRequestNumber: 42,
     };
-    const req = assertShape<OpenWorkspaceRequest>(json);
+    const req = coerceFixture<OpenWorkspaceRequest>(json);
     expect(req.repoId).toBe("r-1");
     expect(req.pullRequestNumber).toBe(42);
   });
@@ -338,7 +335,7 @@ describe("IPC payload shapes", () => {
       worktreePath: "/home/user/.prism/workspaces/prism/worktrees/pr-42",
       sessionId: "session-abc",
     };
-    const resp = assertShape<OpenWorkspaceResponse>(json);
+    const resp = coerceFixture<OpenWorkspaceResponse>(json);
     expect(resp.workspaceId).toBe("ws-1");
     expect(resp.sessionId).toBe("session-abc");
   });
@@ -349,7 +346,7 @@ describe("IPC payload shapes", () => {
       worktreePath: "/tmp/worktree",
       sessionId: null,
     };
-    const resp = assertShape<OpenWorkspaceResponse>(json);
+    const resp = coerceFixture<OpenWorkspaceResponse>(json);
     expect(resp.sessionId).toBeNull();
   });
 
@@ -358,7 +355,7 @@ describe("IPC payload shapes", () => {
       workspaceId: "ws-1",
       data: "ls -la\n",
     };
-    const input = assertShape<PtyInput>(json);
+    const input = coerceFixture<PtyInput>(json);
     expect(input.data).toBe("ls -la\n");
   });
 
@@ -367,7 +364,7 @@ describe("IPC payload shapes", () => {
       workspaceId: "ws-1",
       data: "total 42\n",
     };
-    const output = assertShape<PtyOutput>(json);
+    const output = coerceFixture<PtyOutput>(json);
     expect(output.data).toBe("total 42\n");
   });
 
@@ -377,7 +374,7 @@ describe("IPC payload shapes", () => {
       cols: 120,
       rows: 40,
     };
-    const resize = assertShape<PtyResize>(json);
+    const resize = coerceFixture<PtyResize>(json);
     expect(resize.cols).toBe(120);
     expect(resize.rows).toBe(40);
   });
@@ -390,7 +387,7 @@ describe("IPC payload shapes", () => {
       dataDir: null,
       workspacesDir: null,
     };
-    const config = assertShape<AppConfig>(json);
+    const config = coerceFixture<AppConfig>(json);
     expect(config.pollIntervalSecs).toBe(300);
     expect(config.maxActiveWorkspaces).toBe(3);
     expect(config.githubToken).toBeNull();
@@ -404,7 +401,7 @@ describe("IPC payload shapes", () => {
       dataDir: "/custom/data",
       workspacesDir: "/custom/workspaces",
     };
-    const config = assertShape<AppConfig>(json);
+    const config = coerceFixture<AppConfig>(json);
     expect(config.githubToken).toBe("ghp_xxx");
     expect(config.dataDir).toBe("/custom/data");
   });

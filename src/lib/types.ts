@@ -168,6 +168,7 @@ export interface PtyResize {
 }
 
 export interface AppConfig {
+  /** Rust type is u64 — safe as `number` since practical values never exceed 2^53. */
   readonly pollIntervalSecs: number;
   readonly maxActiveWorkspaces: number;
   readonly githubToken: string | null;
@@ -176,10 +177,6 @@ export interface AppConfig {
 }
 
 // ── Tauri IPC command & event registries ─────────────────────────
-
-export type TauriCommands = {
-  readonly [K in TauriCommandName]: K;
-};
 
 export type TauriCommandName =
   | "github_get_dashboard"
@@ -206,7 +203,7 @@ export type TauriCommandName =
   | "auth_get_status"
   | "auth_logout";
 
-export const TAURI_COMMANDS: TauriCommands = {
+export const TAURI_COMMANDS = {
   github_get_dashboard: "github_get_dashboard",
   github_get_stats: "github_get_stats",
   github_force_sync: "github_force_sync",
@@ -230,11 +227,7 @@ export const TAURI_COMMANDS: TauriCommands = {
   auth_set_token: "auth_set_token",
   auth_get_status: "auth_get_status",
   auth_logout: "auth_logout",
-} as const;
-
-export type TauriEvents = {
-  readonly [K in TauriEventName]: K;
-};
+} as const satisfies Record<TauriCommandName, TauriCommandName>;
 
 export type TauriEventName =
   | "github:updated"
@@ -246,7 +239,7 @@ export type TauriEventName =
   | "notification:ci_failure"
   | "notification:pr_approved";
 
-export const TAURI_EVENTS: TauriEvents = {
+export const TAURI_EVENTS = {
   "github:updated": "github:updated",
   "github:sync_error": "github:sync_error",
   "workspace:stdout": "workspace:stdout",
@@ -255,4 +248,4 @@ export const TAURI_EVENTS: TauriEvents = {
   "notification:review_request": "notification:review_request",
   "notification:ci_failure": "notification:ci_failure",
   "notification:pr_approved": "notification:pr_approved",
-} as const;
+} as const satisfies Record<TauriEventName, TauriEventName>;
