@@ -1,18 +1,22 @@
 {
   "name": "prism",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mpiton/prism.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/mpiton/prism.git"
+    "tauri": "tauri",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check ."
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
@@ -27,6 +31,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "vite": "^8.0.2"

@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "jsx-a11y", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off"
+  },
+  "settings": {
+    "jsx-a11y": {
+      "components": {},
+      "attributes": {}
+    },
+    "react": {
+      "formComponents": [],
+      "linkComponents": [],
+      "version": "19.0",
+      "componentWrapperFunctions": []
+    }
+  },
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "globals": {},
+  "ignorePatterns": ["dist/", "src-tauri/target/", "node_modules/"]
+}

@@ -50,6 +50,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 **Scopes**: `acl`, `github`, `cache`, `workspace`, `ui`, `settings`, `notifications`
 
 Examples:
+
 - `feat(workspace): add PTY resize support`
 - `fix(github): handle rate limit 403 responses`
 - `test(cache): add CRUD tests for repos table`
