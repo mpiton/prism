@@ -73,6 +73,115 @@ pub enum WorkspaceState {
     Archived,
 }
 
+// ── Core structs (T-009) ────────────────────────────────────────
+
+/// GitHub repository.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Repo {
+    pub id: String,
+    pub name: String,
+    pub full_name: String,
+    pub url: String,
+    pub default_branch: String,
+    pub is_archived: bool,
+}
+
+/// Pull request.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequest {
+    pub id: String,
+    pub number: u32,
+    pub title: String,
+    pub author: String,
+    pub state: PrState,
+    pub ci_status: CiStatus,
+    pub priority: Priority,
+    pub repo_id: String,
+    pub url: String,
+    pub labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Review request assigned to a reviewer.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRequest {
+    pub id: String,
+    pub pull_request_id: String,
+    pub reviewer: String,
+    pub status: ReviewStatus,
+    pub requested_at: String,
+}
+
+/// Aggregated review summary for a pull request.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewSummary {
+    pub total_reviews: u32,
+    pub approved: u32,
+    pub changes_requested: u32,
+    pub pending: u32,
+    pub reviewers: Vec<String>,
+}
+
+/// GitHub issue.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Issue {
+    pub id: String,
+    pub number: u32,
+    pub title: String,
+    pub author: String,
+    pub state: IssueState,
+    pub priority: Priority,
+    pub repo_id: String,
+    pub url: String,
+    pub labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Activity feed event.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Activity {
+    pub id: String,
+    pub activity_type: ActivityType,
+    pub actor: String,
+    pub repo_id: String,
+    pub pull_request_id: Option<String>,
+    pub issue_id: Option<String>,
+    pub message: String,
+    pub created_at: String,
+}
+
+/// PR workspace with git worktree and Claude Code session.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Workspace {
+    pub id: String,
+    pub repo_id: String,
+    pub pull_request_number: u32,
+    pub state: WorkspaceState,
+    pub worktree_path: Option<String>,
+    pub session_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Note attached to a workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceNote {
+    pub id: String,
+    pub workspace_id: String,
+    pub content: String,
+    pub created_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +369,162 @@ mod tests {
 
         let deserialized: WorkspaceState = serde_json::from_str("\"suspended\"").unwrap();
         assert_eq!(deserialized, WorkspaceState::Suspended);
+    }
+
+    // ── T-009: Core struct roundtrip tests ──────────────────────────
+
+    #[test]
+    fn test_repo_json_roundtrip() {
+        let repo = Repo {
+            id: "r-1".to_string(),
+            name: "prism".to_string(),
+            full_name: "mpiton/prism".to_string(),
+            url: "https://github.com/mpiton/prism".to_string(),
+            default_branch: "main".to_string(),
+            is_archived: false,
+        };
+        let json = serde_json::to_string(&repo).unwrap();
+        assert!(json.contains("\"fullName\""));
+        assert!(json.contains("\"defaultBranch\""));
+        assert!(json.contains("\"isArchived\""));
+        let deserialized: Repo = serde_json::from_str(&json).unwrap();
+        assert_eq!(repo, deserialized);
+    }
+
+    #[test]
+    fn test_pull_request_json_roundtrip() {
+        let pr = PullRequest {
+            id: "pr-1".to_string(),
+            number: 42,
+            title: "Add feature".to_string(),
+            author: "mpiton".to_string(),
+            state: PrState::Open,
+            ci_status: CiStatus::Success,
+            priority: Priority::High,
+            repo_id: "r-1".to_string(),
+            url: "https://github.com/mpiton/prism/pull/42".to_string(),
+            labels: vec!["enhancement".to_string(), "frontend".to_string()],
+            created_at: "2026-03-24T10:00:00Z".to_string(),
+            updated_at: "2026-03-24T12:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&pr).unwrap();
+        assert!(json.contains("\"ciStatus\""));
+        assert!(json.contains("\"repoId\""));
+        assert!(json.contains("\"createdAt\""));
+        assert!(json.contains("\"updatedAt\""));
+        let deserialized: PullRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(pr, deserialized);
+    }
+
+    #[test]
+    fn test_review_request_json_roundtrip() {
+        let rr = ReviewRequest {
+            id: "rr-1".to_string(),
+            pull_request_id: "pr-1".to_string(),
+            reviewer: "alice".to_string(),
+            status: ReviewStatus::Pending,
+            requested_at: "2026-03-24T10:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&rr).unwrap();
+        assert!(json.contains("\"pullRequestId\""));
+        assert!(json.contains("\"requestedAt\""));
+        let deserialized: ReviewRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(rr, deserialized);
+    }
+
+    #[test]
+    fn test_review_summary_json_roundtrip() {
+        let rs = ReviewSummary {
+            total_reviews: 3,
+            approved: 1,
+            changes_requested: 1,
+            pending: 1,
+            reviewers: vec!["alice".to_string(), "bob".to_string()],
+        };
+        let json = serde_json::to_string(&rs).unwrap();
+        assert!(json.contains("\"totalReviews\""));
+        assert!(json.contains("\"changesRequested\""));
+        let deserialized: ReviewSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(rs, deserialized);
+    }
+
+    #[test]
+    fn test_issue_json_roundtrip() {
+        let issue = Issue {
+            id: "i-1".to_string(),
+            number: 10,
+            title: "Bug report".to_string(),
+            author: "bob".to_string(),
+            state: IssueState::Open,
+            priority: Priority::Critical,
+            repo_id: "r-1".to_string(),
+            url: "https://github.com/mpiton/prism/issues/10".to_string(),
+            labels: vec!["bug".to_string()],
+            created_at: "2026-03-24T10:00:00Z".to_string(),
+            updated_at: "2026-03-24T12:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&issue).unwrap();
+        assert!(json.contains("\"repoId\""));
+        assert!(json.contains("\"createdAt\""));
+        let deserialized: Issue = serde_json::from_str(&json).unwrap();
+        assert_eq!(issue, deserialized);
+    }
+
+    #[test]
+    fn test_activity_json_roundtrip() {
+        let activity = Activity {
+            id: "a-1".to_string(),
+            activity_type: ActivityType::PrOpened,
+            actor: "mpiton".to_string(),
+            repo_id: "r-1".to_string(),
+            pull_request_id: Some("pr-1".to_string()),
+            issue_id: None,
+            message: "Opened PR #42".to_string(),
+            created_at: "2026-03-24T10:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&activity).unwrap();
+        assert!(json.contains("\"activityType\""));
+        assert!(json.contains("\"repoId\""));
+        assert!(json.contains("\"pullRequestId\""));
+        assert!(json.contains("\"issueId\""));
+        assert!(json.contains("\"createdAt\""));
+        let deserialized: Activity = serde_json::from_str(&json).unwrap();
+        assert_eq!(activity, deserialized);
+    }
+
+    #[test]
+    fn test_workspace_json_roundtrip() {
+        let ws = Workspace {
+            id: "ws-1".to_string(),
+            repo_id: "r-1".to_string(),
+            pull_request_number: 42,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/home/user/.prism/workspaces/prism/worktrees/pr-42".to_string()),
+            session_id: Some("session-abc".to_string()),
+            created_at: "2026-03-24T10:00:00Z".to_string(),
+            updated_at: "2026-03-24T12:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&ws).unwrap();
+        assert!(json.contains("\"repoId\""));
+        assert!(json.contains("\"pullRequestNumber\""));
+        assert!(json.contains("\"worktreePath\""));
+        assert!(json.contains("\"sessionId\""));
+        let deserialized: Workspace = serde_json::from_str(&json).unwrap();
+        assert_eq!(ws, deserialized);
+    }
+
+    #[test]
+    fn test_workspace_note_json_roundtrip() {
+        let note = WorkspaceNote {
+            id: "wn-1".to_string(),
+            workspace_id: "ws-1".to_string(),
+            content: "Review feedback applied".to_string(),
+            created_at: "2026-03-24T10:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&note).unwrap();
+        assert!(json.contains("\"workspaceId\""));
+        assert!(json.contains("\"createdAt\""));
+        let deserialized: WorkspaceNote = serde_json::from_str(&json).unwrap();
+        assert_eq!(note, deserialized);
     }
 }
