@@ -4,7 +4,7 @@ mod config;
 mod error;
 mod github;
 mod notifications;
-mod types;
+pub mod types;
 mod workspace;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
