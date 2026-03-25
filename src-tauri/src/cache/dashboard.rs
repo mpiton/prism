@@ -4,8 +4,8 @@ use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::types::{
-    DashboardData, PullRequest, PullRequestWithReview, ReviewStatus, Workspace, WorkspaceState,
-    WorkspaceSummary,
+    DashboardData, DashboardStats, PullRequest, PullRequestWithReview, ReviewStatus, Workspace,
+    WorkspaceState, WorkspaceSummary,
 };
 
 use super::activity::get_recent_activity;
@@ -212,6 +212,48 @@ async fn build_workspace_summary(
     })
 }
 
+/// Saturating conversion from SQL `COUNT(*)` (i64) to u32.
+fn count_to_u32(count: i64) -> u32 {
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
+/// Compute dashboard counter stats via a single SQL query with sub-selects.
+///
+/// Returns a [`DashboardStats`] with counts of:
+/// - `pending_reviews`: review requests for the user with status `pending` (open/draft PRs only)
+/// - `open_prs`: pull requests authored by the user in `open` or `draft` state
+/// - `open_issues`: issues authored by the user in `open` state
+/// - `active_workspaces`: all workspaces in `active` state (global, not user-scoped)
+/// - `unread_activity`: all activity events with `is_read = 0` (global, not user-scoped)
+#[allow(dead_code)]
+pub async fn compute_dashboard_stats(
+    pool: &SqlitePool,
+    username: &str,
+) -> Result<DashboardStats, AppError> {
+    let row: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+         (SELECT COUNT(*) FROM review_requests rr \
+          JOIN pull_requests pr ON pr.id = rr.pull_request_id \
+          WHERE rr.reviewer = $1 AND rr.status = 'pending' \
+          AND pr.state IN ('open', 'draft')), \
+         (SELECT COUNT(*) FROM pull_requests WHERE author = $1 AND state IN ('open', 'draft')), \
+         (SELECT COUNT(*) FROM issues WHERE author = $1 AND state = 'open'), \
+         (SELECT COUNT(*) FROM workspaces WHERE state = 'active'), \
+         (SELECT COUNT(*) FROM activity WHERE is_read = 0)",
+    )
+    .bind(username)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(DashboardStats {
+        pending_reviews: count_to_u32(row.0),
+        open_prs: count_to_u32(row.1),
+        open_issues: count_to_u32(row.2),
+        active_workspaces: count_to_u32(row.3),
+        unread_activity: count_to_u32(row.4),
+    })
+}
+
 /// Get the most recent `last_sync_at` across all repos.
 async fn get_latest_sync_at(pool: &SqlitePool) -> Result<Option<String>, AppError> {
     let row: Option<(Option<String>,)> =
@@ -225,12 +267,16 @@ async fn get_latest_sync_at(pool: &SqlitePool) -> Result<Option<String>, AppErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::activity::insert_activity;
     use crate::cache::db::init_db;
+    use crate::cache::issues::upsert_issue;
     use crate::cache::pull_requests::upsert_pull_request;
     use crate::cache::repos::upsert_repo;
     use crate::cache::reviews::upsert_review_request;
     use crate::cache::workspaces::{add_note, create_workspace};
-    use crate::types::{CiStatus, PrState, Priority, Repo, WorkspaceNote};
+    use crate::types::{
+        Activity, ActivityType, CiStatus, Issue, IssueState, PrState, Priority, Repo, WorkspaceNote,
+    };
 
     async fn test_pool() -> (SqlitePool, tempfile::TempDir) {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -488,6 +534,132 @@ mod tests {
             data.review_requests.is_empty(),
             "approved review request should be excluded from dashboard"
         );
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_compute_stats_empty() {
+        let (pool, _tmp) = test_pool().await;
+
+        let stats = compute_dashboard_stats(&pool, "alice").await.unwrap();
+
+        assert_eq!(stats.pending_reviews, 0);
+        assert_eq!(stats.open_prs, 0);
+        assert_eq!(stats.open_issues, 0);
+        assert_eq!(stats.active_workspaces, 0);
+        assert_eq!(stats.unread_activity, 0);
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_compute_stats_with_data() {
+        let (pool, _tmp) = test_pool().await;
+        let repo = sample_repo();
+        upsert_repo(&pool, &repo).await.unwrap();
+
+        // 2 open PRs by alice, 1 merged (should not count)
+        let pr1 = sample_pr("pr-1", 1, "alice");
+        upsert_pull_request(&pool, &pr1).await.unwrap();
+        let pr2 = sample_pr("pr-2", 2, "alice");
+        upsert_pull_request(&pool, &pr2).await.unwrap();
+        let mut pr_merged = sample_pr("pr-3", 3, "alice");
+        pr_merged.state = PrState::Merged;
+        upsert_pull_request(&pool, &pr_merged).await.unwrap();
+
+        // 1 pending review for alice, 1 approved (should not count)
+        let pr_bob = sample_pr("pr-4", 4, "bob");
+        upsert_pull_request(&pool, &pr_bob).await.unwrap();
+        let rr_pending = sample_review_request("rr-1", "pr-4", "alice");
+        upsert_review_request(&pool, &rr_pending).await.unwrap();
+        let rr_approved = crate::types::ReviewRequest {
+            id: "rr-2".to_string(),
+            pull_request_id: "pr-4".to_string(),
+            reviewer: "alice".to_string(),
+            status: ReviewStatus::Approved,
+            requested_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        upsert_review_request(&pool, &rr_approved).await.unwrap();
+
+        // 1 open issue by alice, 1 closed (should not count)
+        let issue_open = Issue {
+            id: "issue-1".to_string(),
+            number: 1,
+            title: "Bug".to_string(),
+            author: "alice".to_string(),
+            state: IssueState::Open,
+            priority: Priority::Medium,
+            repo_id: "repo-1".to_string(),
+            url: "https://github.com/mpiton/prism/issues/1".to_string(),
+            labels: vec![],
+            created_at: "2026-03-01T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T15:00:00Z".to_string(),
+        };
+        upsert_issue(&pool, &issue_open).await.unwrap();
+        let issue_closed = Issue {
+            id: "issue-2".to_string(),
+            number: 2,
+            title: "Fixed".to_string(),
+            author: "alice".to_string(),
+            state: IssueState::Closed,
+            priority: Priority::Low,
+            repo_id: "repo-1".to_string(),
+            url: "https://github.com/mpiton/prism/issues/2".to_string(),
+            labels: vec![],
+            created_at: "2026-03-01T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T15:00:00Z".to_string(),
+        };
+        upsert_issue(&pool, &issue_closed).await.unwrap();
+
+        // 1 active workspace
+        let ws = Workspace {
+            id: "ws-1".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 1,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/tmp/ws".to_string()),
+            session_id: None,
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        create_workspace(&pool, &ws).await.unwrap();
+
+        // 2 unread activities, 1 read (should not count)
+        let act1 = Activity {
+            id: "act-1".to_string(),
+            activity_type: ActivityType::PrOpened,
+            actor: "bob".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_id: Some("pr-4".to_string()),
+            issue_id: None,
+            message: "Bob opened PR".to_string(),
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        insert_activity(&pool, &act1).await.unwrap();
+        let act2 = Activity {
+            id: "act-2".to_string(),
+            activity_type: ActivityType::CommentAdded,
+            actor: "charlie".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_id: None,
+            issue_id: Some("issue-1".to_string()),
+            message: "Charlie commented".to_string(),
+            created_at: "2026-03-20T11:00:00Z".to_string(),
+        };
+        insert_activity(&pool, &act2).await.unwrap();
+        // Mark act-1 as read
+        sqlx::query("UPDATE activity SET is_read = 1 WHERE id = $1")
+            .bind("act-1")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let stats = compute_dashboard_stats(&pool, "alice").await.unwrap();
+
+        assert_eq!(stats.pending_reviews, 1, "only pending review requests");
+        assert_eq!(stats.open_prs, 2, "only open/draft PRs by alice");
+        assert_eq!(stats.open_issues, 1, "only open issues by alice");
+        assert_eq!(stats.active_workspaces, 1, "only active workspaces");
+        assert_eq!(stats.unread_activity, 1, "only unread activity");
         pool.close().await;
     }
 }
