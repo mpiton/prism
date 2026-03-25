@@ -13,13 +13,37 @@ pub struct AuthStatus {
     pub error: Option<String>,
 }
 
+/// Maps a token validation result to an [`AuthStatus`].
+///
+/// - `Ok(username)` → connected with username
+/// - `Err(AppError::Auth(_))` → disconnected (invalid/expired token)
+/// - `Err(other)` → disconnected with error detail (transient failure)
+fn status_from_validation(result: Result<String, AppError>) -> AuthStatus {
+    match result {
+        Ok(username) => AuthStatus {
+            connected: true,
+            username: Some(username),
+            error: None,
+        },
+        Err(AppError::Auth(_)) => AuthStatus {
+            connected: false,
+            username: None,
+            error: None,
+        },
+        Err(e) => AuthStatus {
+            connected: false,
+            username: None,
+            error: Some(e.to_string()),
+        },
+    }
+}
+
 /// Validates and stores a GitHub token. Returns the authenticated username.
 #[tauri::command]
 pub async fn auth_set_token(token: String) -> Result<String, String> {
     let token = token.trim().to_string();
     let username = auth::validate_token(&token).await.map_err(String::from)?;
-    let token_clone = token.clone();
-    tokio::task::spawn_blocking(move || auth::store_token(&token_clone))
+    tokio::task::spawn_blocking(move || auth::store_token(&token))
         .await
         .map_err(|e| format!("task join error: {e}"))?
         .map_err(String::from)?;
@@ -40,23 +64,7 @@ pub async fn auth_get_status() -> Result<AuthStatus, String> {
         .map_err(|e| format!("task join error: {e}"))?
         .map_err(String::from)?;
     match token {
-        Some(ref t) => match auth::validate_token(t).await {
-            Ok(username) => Ok(AuthStatus {
-                connected: true,
-                username: Some(username),
-                error: None,
-            }),
-            Err(AppError::Auth(_)) => Ok(AuthStatus {
-                connected: false,
-                username: None,
-                error: None,
-            }),
-            Err(e) => Ok(AuthStatus {
-                connected: false,
-                username: None,
-                error: Some(e.to_string()),
-            }),
-        },
+        Some(ref t) => Ok(status_from_validation(auth::validate_token(t).await)),
         None => Ok(AuthStatus {
             connected: false,
             username: None,
@@ -129,16 +137,49 @@ mod tests {
         assert!(result.unwrap_err().contains("empty"));
     }
 
+    // -- status_from_validation tests cover auth_get_status branching logic --
+
     #[test]
-    fn test_auth_status_debug_impl() {
-        let status = AuthStatus {
-            connected: true,
-            username: Some("user".into()),
-            error: None,
-        };
-        let debug = format!("{status:?}");
-        assert!(debug.contains("AuthStatus"));
-        assert!(debug.contains("true"));
-        assert!(debug.contains("user"));
+    fn test_status_from_validation_success() {
+        let status = status_from_validation(Ok("octocat".into()));
+        assert!(status.connected);
+        assert_eq!(status.username.as_deref(), Some("octocat"));
+        assert!(status.error.is_none());
+    }
+
+    #[test]
+    fn test_status_from_validation_auth_error() {
+        let status =
+            status_from_validation(Err(AppError::Auth("invalid or expired token".into())));
+        assert!(!status.connected);
+        assert!(status.username.is_none());
+        assert!(status.error.is_none());
+    }
+
+    #[test]
+    fn test_status_from_validation_transient_error() {
+        let status =
+            status_from_validation(Err(AppError::GitHub("request failed: timeout".into())));
+        assert!(!status.connected);
+        assert!(status.username.is_none());
+        let err = status.error.unwrap();
+        assert!(
+            err.contains("timeout"),
+            "expected 'timeout' in '{err}'"
+        );
+    }
+
+    #[test]
+    fn test_status_from_validation_rate_limit() {
+        let status = status_from_validation(Err(AppError::RateLimit {
+            reset_at: "2026-03-25T19:00:00Z".into(),
+        }));
+        assert!(!status.connected);
+        assert!(status.username.is_none());
+        let err = status.error.unwrap();
+        assert!(
+            err.contains("rate limited"),
+            "expected 'rate limited' in '{err}'"
+        );
     }
 }
