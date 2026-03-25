@@ -130,7 +130,6 @@ pub async fn upsert_pull_request(
              priority = excluded.priority,
              url = excluded.url,
              labels = excluded.labels,
-             created_at = excluded.created_at,
              updated_at = excluded.updated_at
          RETURNING {PR_COLS}"
     );
@@ -181,39 +180,49 @@ pub async fn get_pull_request(pool: &SqlitePool, id: &str) -> Result<PullRequest
 /// Delete pull requests for a repo whose IDs are not in `current_ids`.
 /// Returns the number of deleted rows.
 ///
-/// **Warning:** passing an empty `current_ids` slice will delete **all** PRs
-/// for the given repo. Callers must guard against empty slices caused by
-/// failed API responses.
+/// When `current_ids` is empty, returns `Ok(0)` unless `allow_full_delete`
+/// is `true`, in which case all PRs for the repo are deleted.
+/// Large `current_ids` lists are chunked to stay within `SQLite`'s parameter
+/// limit (999).
 #[allow(dead_code)]
 pub async fn delete_stale_prs(
     pool: &SqlitePool,
     repo_id: &str,
     current_ids: &[String],
+    allow_full_delete: bool,
 ) -> Result<u64, AppError> {
+    // SQLite SQLITE_MAX_VARIABLE_NUMBER=999 minus $1 for repo_id
+    const CHUNK_SIZE: usize = 998;
+
     if current_ids.is_empty() {
+        if !allow_full_delete {
+            return Ok(0);
+        }
         let result = sqlx::query("DELETE FROM pull_requests WHERE repo_id = $1")
             .bind(repo_id)
             .execute(pool)
             .await?;
         return Ok(result.rows_affected());
     }
+    let mut total_deleted: u64 = 0;
 
-    // Build dynamic placeholders: $2, $3, ...
-    let placeholders: Vec<String> = (2..=current_ids.len() + 1)
-        .map(|i| format!("${i}"))
-        .collect();
-    let sql = format!(
-        "DELETE FROM pull_requests WHERE repo_id = $1 AND id NOT IN ({})",
-        placeholders.join(", ")
-    );
+    for chunk in current_ids.chunks(CHUNK_SIZE) {
+        let placeholders: Vec<String> = (2..=chunk.len() + 1).map(|i| format!("${i}")).collect();
+        let sql = format!(
+            "DELETE FROM pull_requests WHERE repo_id = $1 AND id NOT IN ({})",
+            placeholders.join(", ")
+        );
 
-    let mut query = sqlx::query(&sql).bind(repo_id);
-    for id in current_ids {
-        query = query.bind(id);
+        let mut query = sqlx::query(&sql).bind(repo_id);
+        for id in chunk {
+            query = query.bind(id);
+        }
+
+        let result = query.execute(pool).await?;
+        total_deleted += result.rows_affected();
     }
 
-    let result = query.execute(pool).await?;
-    Ok(result.rows_affected())
+    Ok(total_deleted)
 }
 
 /// Compute a priority score for sorting pull requests.
@@ -322,12 +331,17 @@ mod tests {
         updated.state = PrState::Merged;
         updated.ci_status = CiStatus::Success;
         updated.labels = vec!["bug".to_string()];
+        updated.created_at = "2099-01-01T00:00:00Z".to_string(); // should be ignored on update
 
         let result = upsert_pull_request(&pool, &updated).await.unwrap();
 
         assert_eq!(result.title, "Fix login bug (v2)");
         assert_eq!(result.state, PrState::Merged);
         assert_eq!(result.labels, vec!["bug"]);
+        assert_eq!(
+            result.created_at, "2026-03-01T10:00:00Z",
+            "created_at should be preserved from original insert"
+        );
 
         pool.close().await;
     }
@@ -444,7 +458,7 @@ mod tests {
         upsert_pull_request(&pool, &pr3).await.unwrap();
 
         let current_ids = vec!["pr-1".to_string(), "pr-3".to_string()];
-        let deleted = delete_stale_prs(&pool, "repo-1", &current_ids)
+        let deleted = delete_stale_prs(&pool, "repo-1", &current_ids, false)
             .await
             .unwrap();
 
@@ -457,6 +471,31 @@ mod tests {
         assert!(ids.contains(&"pr-1"));
         assert!(ids.contains(&"pr-3"));
         assert!(!ids.contains(&"pr-2"));
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_stale_prs_empty_ids_without_flag() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+        upsert_pull_request(&pool, &sample_pr("pr-1", 1, "PR"))
+            .await
+            .unwrap();
+
+        // Empty current_ids without allow_full_delete → no-op
+        let deleted = delete_stale_prs(&pool, "repo-1", &[], false).await.unwrap();
+        assert_eq!(deleted, 0);
+
+        let remaining = get_pull_requests_by_repo(&pool, "repo-1").await.unwrap();
+        assert_eq!(remaining.len(), 1, "PR should still exist");
+
+        // Empty current_ids with allow_full_delete → wipes all
+        let deleted = delete_stale_prs(&pool, "repo-1", &[], true).await.unwrap();
+        assert_eq!(deleted, 1);
+
+        let remaining = get_pull_requests_by_repo(&pool, "repo-1").await.unwrap();
+        assert!(remaining.is_empty(), "all PRs should be deleted");
 
         pool.close().await;
     }
