@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
 use crate::error::AppError;
 
@@ -25,7 +25,8 @@ pub async fn init_db(db_path: &Path) -> Result<SqlitePool, AppError> {
 
     let options = SqliteConnectOptions::new()
         .filename(db_path)
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal);
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
