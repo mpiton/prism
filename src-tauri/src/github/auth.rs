@@ -58,8 +58,12 @@ impl TokenStore for KeyringTokenStore {
 }
 
 /// Stores a GitHub token in the system keychain.
+/// Rejects empty or whitespace-only tokens.
 #[allow(dead_code)] // Called from T-026 Tauri commands
 pub fn store_token(token: &str) -> Result<(), AppError> {
+    if token.trim().is_empty() {
+        return Err(AppError::Auth("token must not be empty".into()));
+    }
     KeyringTokenStore.store_token(token)
 }
 
@@ -84,10 +88,7 @@ pub async fn validate_token(token: &str) -> Result<String, AppError> {
 }
 
 /// Internal: validates against a configurable base URL (for testing).
-pub(crate) async fn validate_token_with_url(
-    base_url: &str,
-    token: &str,
-) -> Result<String, AppError> {
+async fn validate_token_with_url(base_url: &str, token: &str) -> Result<String, AppError> {
     let resp = HTTP_CLIENT
         .get(format!("{base_url}/user"))
         .header("Authorization", format!("Bearer {token}"))
@@ -210,6 +211,46 @@ mod tests {
         assert!(
             err.contains("invalid or expired token"),
             "expected 'invalid or expired token' in '{err}'"
+        );
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn test_store_empty_token_rejected() {
+        let err = store_token("").unwrap_err().to_string();
+        assert!(
+            err.contains("token must not be empty"),
+            "expected 'token must not be empty' in '{err}'"
+        );
+    }
+
+    #[test]
+    fn test_store_whitespace_token_rejected() {
+        let err = store_token("   ").unwrap_err().to_string();
+        assert!(
+            err.contains("token must not be empty"),
+            "expected 'token must not be empty' in '{err}'"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_missing_login() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/user")
+            .match_header("Authorization", "Bearer ghp_no_login")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"id": 12345, "name": "Test User"}"#)
+            .create_async()
+            .await;
+
+        let result = validate_token_with_url(&server.url(), "ghp_no_login").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("missing login in response"),
+            "expected 'missing login in response' in '{err}'"
         );
         mock.assert_async().await;
     }
