@@ -11,9 +11,20 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Shared HTTP client with connection pooling and timeout.
 static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    use reqwest::header::{HeaderMap, HeaderValue};
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "Accept",
+        HeaderValue::from_static("application/vnd.github+json"),
+    );
+    headers.insert(
+        "X-GitHub-Api-Version",
+        HeaderValue::from_static("2022-11-28"),
+    );
     reqwest::Client::builder()
         .timeout(REQUEST_TIMEOUT)
         .user_agent("prism")
+        .default_headers(headers)
         .build()
         .expect("failed to build HTTP client")
 });
