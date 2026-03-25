@@ -1,5 +1,6 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
+use uuid::Uuid;
 
 use crate::error::AppError;
 
@@ -31,8 +32,7 @@ pub async fn mark_notified(
     event_id: &str,
 ) -> Result<(), AppError> {
     let now = Utc::now().to_rfc3339();
-    // Opaque surrogate PK — dedup is enforced by UNIQUE(event_type, event_id).
-    let id = format!("{event_type}\x1F{event_id}");
+    let id = Uuid::new_v4().to_string();
 
     sqlx::query(
         "INSERT OR IGNORE INTO notification_log (id, event_type, event_id, notified_at) \

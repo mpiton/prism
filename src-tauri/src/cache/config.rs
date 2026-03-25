@@ -11,6 +11,9 @@ const KEY_GITHUB_TOKEN: &str = "github_token";
 const KEY_DATA_DIR: &str = "data_dir";
 const KEY_WORKSPACES_DIR: &str = "workspaces_dir";
 
+/// Minimum allowed value for `poll_interval_secs`.
+const MIN_POLL_INTERVAL_SECS: u64 = 30;
+
 /// Row from the `config` key-value table.
 #[derive(sqlx::FromRow)]
 struct ConfigRow {
@@ -63,62 +66,84 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
 
 /// Persist the given configuration to the `config` table.
 ///
-/// Every field is upserted. `Option::None` fields are deleted so that
-/// future reads fall back to [`AppConfig::default()`].
-/// Returns the configuration as re-read from DB.
+/// All writes are wrapped in a transaction for atomicity.
+/// `Option::None` fields are deleted so that future reads fall back
+/// to [`AppConfig::default()`]. Values below documented minimums are
+/// clamped with a warning. Returns the configuration as re-read from DB.
 #[allow(dead_code)]
 pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConfig, AppError> {
+    let poll_interval = if config.poll_interval_secs < MIN_POLL_INTERVAL_SECS {
+        warn!(
+            "poll_interval_secs {} is below the minimum of {}; clamping",
+            config.poll_interval_secs, MIN_POLL_INTERVAL_SECS
+        );
+        MIN_POLL_INTERVAL_SECS
+    } else {
+        config.poll_interval_secs
+    };
+
+    let mut tx = pool.begin().await?;
+
+    upsert_key(&mut *tx, KEY_POLL_INTERVAL, &poll_interval.to_string()).await?;
     upsert_key(
-        pool,
-        KEY_POLL_INTERVAL,
-        &config.poll_interval_secs.to_string(),
-    )
-    .await?;
-    upsert_key(
-        pool,
+        &mut *tx,
         KEY_MAX_WORKSPACES,
         &config.max_active_workspaces.to_string(),
     )
     .await?;
 
-    set_optional_key(pool, KEY_GITHUB_TOKEN, config.github_token.as_deref()).await?;
-    set_optional_key(pool, KEY_DATA_DIR, config.data_dir.as_deref()).await?;
-    set_optional_key(pool, KEY_WORKSPACES_DIR, config.workspaces_dir.as_deref()).await?;
+    set_optional_key(&mut *tx, KEY_GITHUB_TOKEN, config.github_token.as_deref()).await?;
+    set_optional_key(&mut *tx, KEY_DATA_DIR, config.data_dir.as_deref()).await?;
+    set_optional_key(
+        &mut *tx,
+        KEY_WORKSPACES_DIR,
+        config.workspaces_dir.as_deref(),
+    )
+    .await?;
+
+    tx.commit().await?;
 
     get_config(pool).await
 }
 
 /// Upsert a single key-value pair.
-async fn upsert_key(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppError> {
+async fn upsert_key(
+    conn: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
+    key: &str,
+    value: &str,
+) -> Result<(), AppError> {
     sqlx::query(
         "INSERT INTO config (key, value) VALUES ($1, $2) \
          ON CONFLICT(key) DO UPDATE SET value = $2",
     )
     .bind(key)
     .bind(value)
-    .execute(pool)
+    .execute(conn)
     .await?;
     Ok(())
 }
 
 /// Delete a key from the config table.
-async fn delete_key(pool: &SqlitePool, key: &str) -> Result<(), AppError> {
+async fn delete_key(
+    conn: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
+    key: &str,
+) -> Result<(), AppError> {
     sqlx::query("DELETE FROM config WHERE key = $1")
         .bind(key)
-        .execute(pool)
+        .execute(conn)
         .await?;
     Ok(())
 }
 
 /// Upsert if `Some`, delete if `None`.
 async fn set_optional_key(
-    pool: &SqlitePool,
+    conn: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
     key: &str,
     value: Option<&str>,
 ) -> Result<(), AppError> {
     match value {
-        Some(v) => upsert_key(pool, key, v).await,
-        None => delete_key(pool, key).await,
+        Some(v) => upsert_key(conn, key, v).await,
+        None => delete_key(conn, key).await,
     }
 }
 
@@ -195,6 +220,22 @@ mod tests {
         assert!(after.data_dir.is_none());
         // workspaces_dir should remain
         assert_eq!(after.workspaces_dir.as_deref(), Some("/custom/ws"));
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_set_config_clamps_poll_interval() {
+        let (pool, _tmp) = test_pool().await;
+
+        let mut config = get_config(&pool).await.unwrap();
+        config.poll_interval_secs = 5; // below minimum of 30
+
+        let result = set_config(&pool, &config).await.unwrap();
+        assert_eq!(
+            result.poll_interval_secs, MIN_POLL_INTERVAL_SECS,
+            "should clamp to minimum"
+        );
 
         pool.close().await;
     }
