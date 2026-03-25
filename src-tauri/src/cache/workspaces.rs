@@ -1,8 +1,14 @@
-use chrono::Utc;
+use chrono::{SecondsFormat, Utc};
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::types::{Workspace, WorkspaceNote, WorkspaceState};
+
+/// RFC 3339 timestamp with millisecond precision for stable lexicographic ordering.
+#[allow(dead_code)]
+fn now_utc_millis() -> String {
+    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
 
 /// Row representation matching the `workspaces` table columns.
 /// `last_active_at` is a DB-internal timestamp not exposed on the domain struct.
@@ -128,14 +134,15 @@ pub async fn list_workspaces(
     state: Option<&WorkspaceState>,
 ) -> Result<Vec<Workspace>, AppError> {
     let rows: Vec<WorkspaceRow> = if let Some(st) = state {
-        let sql =
-            format!("SELECT {WS_COLS} FROM workspaces WHERE state = $1 ORDER BY updated_at DESC");
+        let sql = format!(
+            "SELECT {WS_COLS} FROM workspaces WHERE state = $1 ORDER BY updated_at DESC, id ASC"
+        );
         sqlx::query_as(&sql)
             .bind(workspace_state_to_str(st))
             .fetch_all(pool)
             .await?
     } else {
-        let sql = format!("SELECT {WS_COLS} FROM workspaces ORDER BY updated_at DESC");
+        let sql = format!("SELECT {WS_COLS} FROM workspaces ORDER BY updated_at DESC, id ASC");
         sqlx::query_as(&sql).fetch_all(pool).await?
     };
 
@@ -150,7 +157,7 @@ pub async fn update_workspace_state(
     id: &str,
     new_state: &WorkspaceState,
 ) -> Result<Workspace, AppError> {
-    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = now_utc_millis();
     let sql = format!(
         "UPDATE workspaces SET state = $1, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
     );
@@ -175,7 +182,7 @@ pub async fn update_claude_session(
     id: &str,
     session_id: Option<&str>,
 ) -> Result<Workspace, AppError> {
-    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = now_utc_millis();
     let sql = format!(
         "UPDATE workspaces SET session_id = $1, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
     );
@@ -195,7 +202,7 @@ pub async fn update_claude_session(
 /// Touch the `last_active_at` DB-internal timestamp. Returns `true` if updated.
 #[allow(dead_code)]
 pub async fn update_last_active(pool: &SqlitePool, id: &str) -> Result<bool, AppError> {
-    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = now_utc_millis();
     let result = sqlx::query("UPDATE workspaces SET last_active_at = $1 WHERE id = $2")
         .bind(&now)
         .bind(id)
@@ -209,7 +216,7 @@ pub async fn update_last_active(pool: &SqlitePool, id: &str) -> Result<bool, App
 /// and update `updated_at`. Returns the archived workspace.
 #[allow(dead_code)]
 pub async fn archive_workspace(pool: &SqlitePool, id: &str) -> Result<Workspace, AppError> {
-    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = now_utc_millis();
     let sql = format!(
         "UPDATE workspaces SET state = $1, worktree_path = NULL, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
     );
@@ -255,7 +262,7 @@ pub async fn get_notes(
     workspace_id: &str,
 ) -> Result<Vec<WorkspaceNote>, AppError> {
     let sql = format!(
-        "SELECT {NOTE_COLS} FROM workspace_notes WHERE workspace_id = $1 ORDER BY created_at ASC"
+        "SELECT {NOTE_COLS} FROM workspace_notes WHERE workspace_id = $1 ORDER BY created_at ASC, id ASC"
     );
     let rows: Vec<WorkspaceNoteRow> = sqlx::query_as(&sql)
         .bind(workspace_id)
@@ -323,8 +330,9 @@ mod tests {
         assert!(result.worktree_path.is_some());
         assert!(result.session_id.is_none());
 
-        // Duplicate (same repo_id + PR number) should fail via UNIQUE constraint
-        let dup = create_workspace(&pool, &ws).await;
+        // Different id but same (repo_id, pull_request_number) → UNIQUE constraint
+        let ws2 = sample_workspace("ws-other", 42);
+        let dup = create_workspace(&pool, &ws2).await;
         assert!(dup.is_err());
 
         pool.close().await;
@@ -448,8 +456,26 @@ mod tests {
         let ws = sample_workspace("ws-1", 42);
         create_workspace(&pool, &ws).await.unwrap();
 
+        // Verify last_active_at starts as NULL
+        let before: Option<String> =
+            sqlx::query_scalar("SELECT last_active_at FROM workspaces WHERE id = $1")
+                .bind("ws-1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(before.is_none(), "last_active_at should be NULL initially");
+
         let updated = update_last_active(&pool, "ws-1").await.unwrap();
         assert!(updated);
+
+        // Verify last_active_at is now set
+        let after: Option<String> =
+            sqlx::query_scalar("SELECT last_active_at FROM workspaces WHERE id = $1")
+                .bind("ws-1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(after.is_some(), "last_active_at should be set after update");
 
         let missing = update_last_active(&pool, "nonexistent").await.unwrap();
         assert!(!missing);
