@@ -6,7 +6,7 @@ use crate::types::{CiStatus, PrState, Priority, PullRequest};
 /// Row representation matching the `pull_requests` table columns.
 /// Enums stored as TEXT, labels as JSON TEXT, number as INTEGER.
 #[derive(sqlx::FromRow)]
-struct PullRequestRow {
+pub(crate) struct PullRequestRow {
     id: String,
     number: i64,
     title: String,
@@ -106,7 +106,7 @@ impl TryFrom<PullRequestRow> for PullRequest {
 }
 
 /// Explicit column list for all SELECT queries.
-const PR_COLS: &str = "id, number, title, author, state, ci_status, priority, repo_id, url, labels, created_at, updated_at";
+pub(crate) const PR_COLS: &str = "id, number, title, author, state, ci_status, priority, repo_id, url, labels, created_at, updated_at";
 
 /// Insert or update a pull request. On conflict (same `id`), updates all fields.
 /// Uses `RETURNING` for an atomic read-after-write.

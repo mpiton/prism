@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod config;
+pub mod dashboard;
 pub mod db;
 pub mod issues;
 pub mod notifications;
