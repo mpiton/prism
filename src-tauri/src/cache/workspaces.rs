@@ -92,6 +92,14 @@ const WS_COLS: &str = "id, repo_id, pull_request_number, state, worktree_path, s
 
 const NOTE_COLS: &str = "id, workspace_id, content, created_at";
 
+/// Convert an optional workspace row to a `Workspace`, returning `NotFound` if absent.
+#[allow(dead_code)]
+fn require_workspace(row: Option<WorkspaceRow>, id: &str) -> Result<Workspace, AppError> {
+    row.map(Workspace::try_from)
+        .transpose()?
+        .ok_or_else(|| AppError::NotFound(format!("workspace '{id}'")))
+}
+
 // ── Workspace CRUD ────────────────────────────────────────────────
 
 /// Create a new workspace. Uses `RETURNING` for atomic read-after-write.
@@ -150,7 +158,8 @@ pub async fn list_workspaces(
 }
 
 /// Update the workspace state and `updated_at` timestamp.
-/// Returns the updated workspace via `RETURNING`.
+/// When transitioning to `Archived`, also clears `worktree_path` for consistency
+/// with [`archive_workspace`].
 #[allow(dead_code)]
 pub async fn update_workspace_state(
     pool: &SqlitePool,
@@ -158,9 +167,15 @@ pub async fn update_workspace_state(
     new_state: &WorkspaceState,
 ) -> Result<Workspace, AppError> {
     let now = now_utc_millis();
-    let sql = format!(
-        "UPDATE workspaces SET state = $1, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
-    );
+    let sql = if *new_state == WorkspaceState::Archived {
+        format!(
+            "UPDATE workspaces SET state = $1, worktree_path = NULL, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
+        )
+    } else {
+        format!(
+            "UPDATE workspaces SET state = $1, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
+        )
+    };
 
     let row: Option<WorkspaceRow> = sqlx::query_as(&sql)
         .bind(workspace_state_to_str(new_state))
@@ -169,9 +184,7 @@ pub async fn update_workspace_state(
         .fetch_optional(pool)
         .await?;
 
-    row.map(Workspace::try_from)
-        .transpose()?
-        .ok_or_else(|| AppError::NotFound(format!("workspace '{id}'")))
+    require_workspace(row, id)
 }
 
 /// Update the Claude Code session ID and `updated_at` timestamp.
@@ -194,9 +207,7 @@ pub async fn update_claude_session(
         .fetch_optional(pool)
         .await?;
 
-    row.map(Workspace::try_from)
-        .transpose()?
-        .ok_or_else(|| AppError::NotFound(format!("workspace '{id}'")))
+    require_workspace(row, id)
 }
 
 /// Touch the `last_active_at` DB-internal timestamp. Returns `true` if updated.
@@ -228,9 +239,7 @@ pub async fn archive_workspace(pool: &SqlitePool, id: &str) -> Result<Workspace,
         .fetch_optional(pool)
         .await?;
 
-    row.map(Workspace::try_from)
-        .transpose()?
-        .ok_or_else(|| AppError::NotFound(format!("workspace '{id}'")))
+    require_workspace(row, id)
 }
 
 // ── Workspace Notes CRUD ──────────────────────────────────────────
@@ -413,6 +422,16 @@ mod tests {
         assert_ne!(
             updated.updated_at, ws.updated_at,
             "updated_at should change"
+        );
+
+        // Transitioning to Archived via update_workspace_state also clears worktree_path
+        let archived = update_workspace_state(&pool, "ws-1", &WorkspaceState::Archived)
+            .await
+            .unwrap();
+        assert_eq!(archived.state, WorkspaceState::Archived);
+        assert!(
+            archived.worktree_path.is_none(),
+            "worktree_path should be cleared when archiving via update_workspace_state"
         );
 
         // Non-existent workspace returns NotFound
