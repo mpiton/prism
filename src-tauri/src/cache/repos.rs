@@ -125,25 +125,23 @@ pub async fn set_local_path(
         .ok_or_else(|| AppError::NotFound(format!("repo '{id}'")))
 }
 
-/// Update the `last_sync_at` timestamp for a repo.
+/// Update the `last_sync_at` timestamp for a repo and return the updated repo.
+/// Uses `RETURNING` for an atomic read-after-write.
 #[allow(dead_code)]
 pub async fn update_last_sync(
     pool: &SqlitePool,
     id: &str,
     synced_at: &str,
-) -> Result<(), AppError> {
-    let rows_affected = sqlx::query("UPDATE repos SET last_sync_at = $1 WHERE id = $2")
+) -> Result<Repo, AppError> {
+    let sql = format!("UPDATE repos SET last_sync_at = $1 WHERE id = $2 RETURNING {REPO_COLS}");
+    let row: Option<RepoRow> = sqlx::query_as(&sql)
         .bind(synced_at)
         .bind(id)
-        .execute(pool)
-        .await?
-        .rows_affected();
+        .fetch_optional(pool)
+        .await?;
 
-    if rows_affected == 0 {
-        return Err(AppError::NotFound(format!("repo '{id}'")));
-    }
-
-    Ok(())
+    row.map(Repo::from)
+        .ok_or_else(|| AppError::NotFound(format!("repo '{id}'")))
 }
 
 #[cfg(test)]
