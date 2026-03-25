@@ -7,18 +7,18 @@ use crate::types::{CiStatus, PrState, Priority, PullRequest};
 /// Enums stored as TEXT, labels as JSON TEXT, number as INTEGER.
 #[derive(sqlx::FromRow)]
 pub(crate) struct PullRequestRow {
-    id: String,
-    number: i64,
-    title: String,
-    author: String,
-    state: String,
-    ci_status: String,
-    priority: String,
-    repo_id: String,
-    url: String,
-    labels: String,
-    created_at: String,
-    updated_at: String,
+    pub(crate) id: String,
+    pub(crate) number: i64,
+    pub(crate) title: String,
+    pub(crate) author: String,
+    pub(crate) state: String,
+    pub(crate) ci_status: String,
+    pub(crate) priority: String,
+    pub(crate) repo_id: String,
+    pub(crate) url: String,
+    pub(crate) labels: String,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
 }
 
 fn pr_state_to_str(s: &PrState) -> &'static str {

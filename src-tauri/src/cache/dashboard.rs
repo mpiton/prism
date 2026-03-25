@@ -4,7 +4,8 @@ use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::types::{
-    DashboardData, PullRequest, PullRequestWithReview, Workspace, WorkspaceSummary,
+    DashboardData, PullRequest, PullRequestWithReview, ReviewStatus, Workspace, WorkspaceState,
+    WorkspaceSummary,
 };
 
 use super::activity::get_recent_activity;
@@ -16,7 +17,7 @@ use super::workspaces::list_workspaces;
 /// Assemble the full dashboard data for a given user.
 ///
 /// Composes data from multiple cache tables into a single [`DashboardData`]:
-/// 1. PRs where the user is a requested reviewer
+/// 1. PRs where the user has a **pending** review request
 /// 2. PRs authored by the user
 /// 3. Issues authored by the user
 /// 4. Recent activity (last 50 events)
@@ -29,15 +30,16 @@ pub async fn assemble_dashboard_data(
     pool: &SqlitePool,
     username: &str,
 ) -> Result<DashboardData, AppError> {
-    // 1. Fetch all workspaces once for lookup
+    // 1. Fetch all workspaces once for lookup (Active preferred over Suspended/Archived)
     let all_workspaces = list_workspaces(pool, None).await?;
     let workspace_map = build_workspace_map(&all_workspaces);
 
-    // 2. PRs where user is a requested reviewer (deduplicated)
+    // 2. PRs where user has a pending review request (filter out completed reviews)
     let review_reqs = get_review_requests_for_user(pool, username).await?;
     let review_pr_ids: Vec<String> = {
         let set: std::collections::HashSet<String> = review_reqs
             .iter()
+            .filter(|rr| rr.status == ReviewStatus::Pending)
             .map(|rr| rr.pull_request_id.clone())
             .collect();
         set.into_iter().collect()
@@ -71,32 +73,64 @@ pub async fn assemble_dashboard_data(
 // ── Internal helpers ──────────────────────────────────────────────
 
 /// Build a lookup map from `(repo_id, pr_number)` to `Workspace`.
+///
+/// When multiple workspaces exist for the same PR (e.g. an archived and an active one),
+/// the most relevant state wins: Active > Suspended > Archived.
 fn build_workspace_map(workspaces: &[Workspace]) -> HashMap<(String, u32), Workspace> {
-    workspaces
-        .iter()
-        .map(|ws| ((ws.repo_id.clone(), ws.pull_request_number), ws.clone()))
-        .collect()
+    let mut map: HashMap<(String, u32), Workspace> = HashMap::new();
+
+    for ws in workspaces {
+        let key = (ws.repo_id.clone(), ws.pull_request_number);
+        match map.get(&key) {
+            Some(existing)
+                if workspace_state_rank(&existing.state) >= workspace_state_rank(&ws.state) =>
+            {
+                // Keep the existing one (higher or equal rank)
+            }
+            _ => {
+                map.insert(key, ws.clone());
+            }
+        }
+    }
+
+    map
 }
 
-/// Fetch pull requests by a list of IDs.
+/// Rank workspace states: Active (2) > Suspended (1) > Archived (0).
+fn workspace_state_rank(state: &WorkspaceState) -> u8 {
+    match state {
+        WorkspaceState::Active => 2,
+        WorkspaceState::Suspended => 1,
+        WorkspaceState::Archived => 0,
+    }
+}
+
+/// Fetch pull requests by a list of IDs, chunked to respect `SQLite`'s parameter limit.
 async fn fetch_prs_by_ids(pool: &SqlitePool, ids: &[String]) -> Result<Vec<PullRequest>, AppError> {
+    const CHUNK_SIZE: usize = 998;
+
     if ids.is_empty() {
         return Ok(vec![]);
     }
+    let mut all_rows: Vec<PullRequestRow> = Vec::with_capacity(ids.len());
 
-    let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${i}")).collect();
-    let sql = format!(
-        "SELECT {PR_COLS} FROM pull_requests WHERE id IN ({}) ORDER BY updated_at DESC",
-        placeholders.join(", ")
-    );
+    for chunk in ids.chunks(CHUNK_SIZE) {
+        let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("${i}")).collect();
+        let sql = format!(
+            "SELECT {PR_COLS} FROM pull_requests WHERE id IN ({}) ORDER BY updated_at DESC",
+            placeholders.join(", ")
+        );
 
-    let mut query = sqlx::query_as::<_, PullRequestRow>(&sql);
-    for id in ids {
-        query = query.bind(id);
+        let mut query = sqlx::query_as::<_, PullRequestRow>(&sql);
+        for id in chunk {
+            query = query.bind(id);
+        }
+        all_rows.extend(query.fetch_all(pool).await?);
     }
-    let rows = query.fetch_all(pool).await?;
 
-    rows.into_iter().map(PullRequest::try_from).collect()
+    // Re-sort across chunks to maintain consistent ordering
+    all_rows.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    all_rows.into_iter().map(PullRequest::try_from).collect()
 }
 
 /// Fetch pull requests authored by a given user.
@@ -178,9 +212,7 @@ mod tests {
     use crate::cache::repos::upsert_repo;
     use crate::cache::reviews::upsert_review_request;
     use crate::cache::workspaces::{add_note, create_workspace};
-    use crate::types::{
-        CiStatus, PrState, Priority, Repo, ReviewStatus, WorkspaceNote, WorkspaceState,
-    };
+    use crate::types::{CiStatus, PrState, Priority, Repo, WorkspaceNote};
 
     async fn test_pool() -> (SqlitePool, tempfile::TempDir) {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -242,6 +274,7 @@ mod tests {
         assert!(data.recent_activity.is_empty());
         assert!(data.workspaces.is_empty());
         assert!(data.synced_at.is_none());
+        pool.close().await;
     }
 
     #[tokio::test]
@@ -281,6 +314,7 @@ mod tests {
             .map(|p| p.pull_request.id.as_str())
             .collect();
         assert!(!all_pr_ids.contains(&"pr-3"));
+        pool.close().await;
     }
 
     #[tokio::test]
@@ -329,6 +363,7 @@ mod tests {
         // Workspace also appears in the workspaces list
         assert_eq!(data.workspaces.len(), 1);
         assert_eq!(data.workspaces[0].id, "ws-1");
+        pool.close().await;
     }
 
     #[tokio::test]
@@ -370,5 +405,36 @@ mod tests {
         assert_eq!(summary.reviewers.len(), 2);
         assert!(summary.reviewers.contains(&"bob".to_string()));
         assert!(summary.reviewers.contains(&"charlie".to_string()));
+        pool.close().await;
+    }
+
+    /// Regression: non-pending review requests must NOT appear in dashboard review_requests.
+    #[tokio::test]
+    async fn test_assemble_dashboard_excludes_non_pending_reviews() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // PR authored by bob
+        let pr = sample_pr("pr-1", 1, "bob");
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        // alice already approved this PR — should NOT show in her review queue
+        let rr_approved = crate::types::ReviewRequest {
+            id: "rr-1".to_string(),
+            pull_request_id: "pr-1".to_string(),
+            reviewer: "alice".to_string(),
+            status: ReviewStatus::Approved,
+            requested_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        upsert_review_request(&pool, &rr_approved).await.unwrap();
+
+        let data = assemble_dashboard_data(&pool, "alice").await.unwrap();
+
+        // Approved review should not appear in review_requests
+        assert!(
+            data.review_requests.is_empty(),
+            "approved review request should be excluded from dashboard"
+        );
+        pool.close().await;
     }
 }
