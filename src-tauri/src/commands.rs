@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::error::AppError;
 use crate::github::auth;
 
 /// Authentication status returned by [`auth_get_status`].
@@ -8,14 +9,20 @@ use crate::github::auth;
 pub struct AuthStatus {
     pub connected: bool,
     pub username: Option<String>,
+    /// Non-null when a transient error (network, rate-limit) prevents validation.
+    pub error: Option<String>,
 }
 
 /// Validates and stores a GitHub token. Returns the authenticated username.
 #[tauri::command]
 pub async fn auth_set_token(token: String) -> Result<String, String> {
-    let token = token.trim();
-    let username = auth::validate_token(token).await.map_err(String::from)?;
-    auth::store_token(token).map_err(String::from)?;
+    let token = token.trim().to_string();
+    let username = auth::validate_token(&token).await.map_err(String::from)?;
+    let token_clone = token.clone();
+    tokio::task::spawn_blocking(move || auth::store_token(&token_clone))
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
+        .map_err(String::from)?;
     Ok(username)
 }
 
@@ -23,33 +30,48 @@ pub async fn auth_set_token(token: String) -> Result<String, String> {
 ///
 /// If a token is stored, validates it against GitHub to confirm it is still
 /// active and returns `connected: true` with the username.
-/// If no token or validation fails, returns `connected: false`.
+/// Auth errors (invalid/expired token) return `connected: false`.
+/// Transient errors (network, rate-limit) return `connected: false` with an
+/// `error` field so the frontend can distinguish offline from logged-out.
 #[tauri::command]
 pub async fn auth_get_status() -> Result<AuthStatus, String> {
-    let token = auth::get_token().map_err(String::from)?;
+    let token: Option<String> = tokio::task::spawn_blocking(auth::get_token)
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
+        .map_err(String::from)?;
     match token {
-        Some(t) => match auth::validate_token(&t).await {
+        Some(ref t) => match auth::validate_token(t).await {
             Ok(username) => Ok(AuthStatus {
                 connected: true,
                 username: Some(username),
+                error: None,
             }),
-            Err(_) => Ok(AuthStatus {
+            Err(AppError::Auth(_)) => Ok(AuthStatus {
                 connected: false,
                 username: None,
+                error: None,
+            }),
+            Err(e) => Ok(AuthStatus {
+                connected: false,
+                username: None,
+                error: Some(e.to_string()),
             }),
         },
         None => Ok(AuthStatus {
             connected: false,
             username: None,
+            error: None,
         }),
     }
 }
 
 /// Deletes the stored GitHub token (logout).
-/// Synchronous: keyring deletion is a blocking syscall with no async I/O.
 #[tauri::command]
-pub fn auth_logout() -> Result<(), String> {
-    auth::delete_token().map_err(String::from)
+pub async fn auth_logout() -> Result<(), String> {
+    tokio::task::spawn_blocking(auth::delete_token)
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
+        .map_err(String::from)
 }
 
 #[cfg(test)]
@@ -61,10 +83,12 @@ mod tests {
         let status = AuthStatus {
             connected: true,
             username: Some("testuser".into()),
+            error: None,
         };
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["connected"], true);
         assert_eq!(json["username"], "testuser");
+        assert!(json["error"].is_null());
     }
 
     #[test]
@@ -72,6 +96,7 @@ mod tests {
         let status = AuthStatus {
             connected: false,
             username: None,
+            error: None,
         };
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["connected"], false);
@@ -79,16 +104,15 @@ mod tests {
     }
 
     #[test]
-    fn test_auth_status_uses_camel_case() {
+    fn test_auth_status_serializes_with_error() {
         let status = AuthStatus {
-            connected: true,
-            username: Some("user".into()),
+            connected: false,
+            username: None,
+            error: Some("GitHub API error: request failed: timeout".into()),
         };
-        let json = serde_json::to_string(&status).unwrap();
-        assert!(json.contains("connected"));
-        assert!(json.contains("username"));
-        // Verify camelCase — no snake_case keys
-        assert!(!json.contains("user_name"));
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["connected"], false);
+        assert!(json["error"].as_str().unwrap().contains("timeout"));
     }
 
     #[tokio::test]
@@ -106,17 +130,11 @@ mod tests {
     }
 
     #[test]
-    fn test_auth_logout_returns_ok_type() {
-        // Verify the function signature compiles — actual keyring
-        // interaction tested in integration tests
-        let _: fn() -> Result<(), String> = auth_logout;
-    }
-
-    #[test]
     fn test_auth_status_debug_impl() {
         let status = AuthStatus {
             connected: true,
             username: Some("user".into()),
+            error: None,
         };
         let debug = format!("{status:?}");
         assert!(debug.contains("AuthStatus"));
