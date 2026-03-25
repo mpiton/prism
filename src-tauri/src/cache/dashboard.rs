@@ -77,20 +77,30 @@ pub async fn assemble_dashboard_data(
 ///
 /// When multiple workspaces exist for the same PR (e.g. an archived and an active one),
 /// the most relevant state wins: Active > Suspended > Archived.
+/// Ties are broken by `updated_at` (newest first), then `id` (lexicographic).
 fn build_workspace_map(workspaces: &[Workspace]) -> HashMap<(String, u32), Workspace> {
     let mut map: HashMap<(String, u32), Workspace> = HashMap::new();
 
     for ws in workspaces {
         let key = (ws.repo_id.clone(), ws.pull_request_number);
-        match map.get(&key) {
-            Some(existing)
-                if workspace_state_rank(&existing.state) >= workspace_state_rank(&ws.state) =>
-            {
-                // Keep the existing one (higher or equal rank)
+        let dominated = match map.get(&key) {
+            Some(existing) => {
+                let new_rank = (
+                    workspace_state_rank(&ws.state),
+                    ws.updated_at.as_str(),
+                    ws.id.as_str(),
+                );
+                let old_rank = (
+                    workspace_state_rank(&existing.state),
+                    existing.updated_at.as_str(),
+                    existing.id.as_str(),
+                );
+                new_rank > old_rank
             }
-            _ => {
-                map.insert(key, ws.clone());
-            }
+            None => true,
+        };
+        if dominated {
+            map.insert(key, ws.clone());
         }
     }
 
@@ -118,7 +128,7 @@ async fn fetch_prs_by_ids(pool: &SqlitePool, ids: &[String]) -> Result<Vec<PullR
     for chunk in ids.chunks(CHUNK_SIZE) {
         let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("${i}")).collect();
         let sql = format!(
-            "SELECT {PR_COLS} FROM pull_requests WHERE id IN ({}) ORDER BY updated_at DESC",
+            "SELECT {PR_COLS} FROM pull_requests WHERE id IN ({}) AND state IN ('open', 'draft') ORDER BY updated_at DESC, id DESC",
             placeholders.join(", ")
         );
 
@@ -130,7 +140,11 @@ async fn fetch_prs_by_ids(pool: &SqlitePool, ids: &[String]) -> Result<Vec<PullR
     }
 
     // Re-sort across chunks to maintain consistent ordering
-    all_rows.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    all_rows.sort_by(|a, b| {
+        b.updated_at
+            .cmp(&a.updated_at)
+            .then_with(|| b.id.cmp(&a.id))
+    });
     all_rows.into_iter().map(PullRequest::try_from).collect()
 }
 
@@ -142,7 +156,7 @@ async fn fetch_prs_by_author(
     let sql = format!(
         "SELECT {PR_COLS} FROM pull_requests \
          WHERE author = $1 AND state IN ('open', 'draft') \
-         ORDER BY updated_at DESC"
+         ORDER BY updated_at DESC, id DESC"
     );
     let rows: Vec<PullRequestRow> = sqlx::query_as(&sql).bind(author).fetch_all(pool).await?;
 
