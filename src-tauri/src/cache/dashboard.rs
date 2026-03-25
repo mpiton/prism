@@ -212,57 +212,45 @@ async fn build_workspace_summary(
     })
 }
 
-/// Compute dashboard counter stats via COUNT queries.
+/// Saturating conversion from SQL `COUNT(*)` (i64) to u32.
+fn count_to_u32(count: i64) -> u32 {
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
+/// Compute dashboard counter stats via a single SQL query with sub-selects.
 ///
 /// Returns a [`DashboardStats`] with counts of:
-/// - `pending_reviews`: review requests for the user with status `pending`
+/// - `pending_reviews`: review requests for the user with status `pending` (open/draft PRs only)
 /// - `open_prs`: pull requests authored by the user in `open` or `draft` state
 /// - `open_issues`: issues authored by the user in `open` state
-/// - `active_workspaces`: workspaces in `active` state
-/// - `unread_activity`: activity events with `is_read = 0`
+/// - `active_workspaces`: all workspaces in `active` state (global, not user-scoped)
+/// - `unread_activity`: all activity events with `is_read = 0` (global, not user-scoped)
 #[allow(dead_code)]
 pub async fn compute_dashboard_stats(
     pool: &SqlitePool,
     username: &str,
 ) -> Result<DashboardStats, AppError> {
-    let pending_reviews: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM review_requests rr \
-         JOIN pull_requests pr ON pr.id = rr.pull_request_id \
-         WHERE rr.reviewer = $1 AND rr.status = 'pending' \
-         AND pr.state IN ('open', 'draft')",
+    let row: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+         (SELECT COUNT(*) FROM review_requests rr \
+          JOIN pull_requests pr ON pr.id = rr.pull_request_id \
+          WHERE rr.reviewer = $1 AND rr.status = 'pending' \
+          AND pr.state IN ('open', 'draft')), \
+         (SELECT COUNT(*) FROM pull_requests WHERE author = $1 AND state IN ('open', 'draft')), \
+         (SELECT COUNT(*) FROM issues WHERE author = $1 AND state = 'open'), \
+         (SELECT COUNT(*) FROM workspaces WHERE state = 'active'), \
+         (SELECT COUNT(*) FROM activity WHERE is_read = 0)",
     )
     .bind(username)
     .fetch_one(pool)
     .await?;
-
-    let open_prs: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM pull_requests WHERE author = $1 AND state IN ('open', 'draft')",
-    )
-    .bind(username)
-    .fetch_one(pool)
-    .await?;
-
-    let open_issues: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM issues WHERE author = $1 AND state = 'open'")
-            .bind(username)
-            .fetch_one(pool)
-            .await?;
-
-    let active_workspaces: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM workspaces WHERE state = 'active'")
-            .fetch_one(pool)
-            .await?;
-
-    let unread_activity: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM activity WHERE is_read = 0")
-        .fetch_one(pool)
-        .await?;
 
     Ok(DashboardStats {
-        pending_reviews: u32::try_from(pending_reviews.0).unwrap_or(0),
-        open_prs: u32::try_from(open_prs.0).unwrap_or(0),
-        open_issues: u32::try_from(open_issues.0).unwrap_or(0),
-        active_workspaces: u32::try_from(active_workspaces.0).unwrap_or(0),
-        unread_activity: u32::try_from(unread_activity.0).unwrap_or(0),
+        pending_reviews: count_to_u32(row.0),
+        open_prs: count_to_u32(row.1),
+        open_issues: count_to_u32(row.2),
+        active_workspaces: count_to_u32(row.3),
+        unread_activity: count_to_u32(row.4),
     })
 }
 
