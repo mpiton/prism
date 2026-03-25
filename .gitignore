@@ -71,3 +71,8 @@ docs/
 # Claude Code local config
 # ──────────────────────────────────────
 .claude/
+
+# ──────────────────────────────────────
+# Audit / telemetry
+# ──────────────────────────────────────
+.insaits_audit_session.jsonl
