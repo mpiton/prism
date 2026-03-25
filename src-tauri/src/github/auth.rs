@@ -85,7 +85,8 @@ pub fn delete_token() -> Result<(), AppError> {
 /// Returns the authenticated username on success.
 #[allow(dead_code)] // Called from T-026 Tauri commands
 pub async fn validate_token(token: &str) -> Result<String, AppError> {
-    if token.trim().is_empty() {
+    let token = token.trim();
+    if token.is_empty() {
         return Err(AppError::Auth("token must not be empty".into()));
     }
     validate_token_with_url(GITHUB_API_URL, token).await
@@ -98,7 +99,7 @@ async fn validate_token_with_url(base_url: &str, token: &str) -> Result<String, 
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await
-        .map_err(|e| AppError::Auth(format!("request failed: {e}")))?;
+        .map_err(|e| AppError::GitHub(format!("request failed: {e}")))?;
 
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err(AppError::Auth("invalid or expired token".into()));
@@ -113,12 +114,12 @@ async fn validate_token_with_url(base_url: &str, token: &str) -> Result<String, 
     let body: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| AppError::Auth(format!("parse error: {e}")))?;
+        .map_err(|e| AppError::GitHub(format!("parse error: {e}")))?;
 
     body["login"]
         .as_str()
         .map(String::from)
-        .ok_or_else(|| AppError::Auth("missing login in response".into()))
+        .ok_or_else(|| AppError::GitHub("missing login in response".into()))
 }
 
 #[cfg(test)]
@@ -251,10 +252,15 @@ mod tests {
 
         let result = validate_token_with_url(&server.url(), "ghp_no_login").await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = result.unwrap_err();
         assert!(
-            err.contains("missing login in response"),
-            "expected 'missing login in response' in '{err}'"
+            err.to_string().contains("missing login in response"),
+            "expected 'missing login in response' in '{}'",
+            err
+        );
+        assert!(
+            matches!(err, AppError::GitHub(_)),
+            "expected AppError::GitHub, got {err:?}"
         );
         mock.assert_async().await;
     }
@@ -272,10 +278,15 @@ mod tests {
 
         let result = validate_token_with_url(&server.url(), "ghp_token").await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = result.unwrap_err();
         assert!(
-            err.contains("unexpected status 500"),
-            "expected 'unexpected status 500' in '{err}'"
+            err.to_string().contains("unexpected status 500"),
+            "expected 'unexpected status 500' in '{}'",
+            err
+        );
+        assert!(
+            matches!(err, AppError::GitHub(_)),
+            "expected AppError::GitHub, got {err:?}"
         );
         mock.assert_async().await;
     }
