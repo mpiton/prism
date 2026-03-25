@@ -149,8 +149,7 @@ mod tests {
 
     #[test]
     fn test_status_from_validation_auth_error() {
-        let status =
-            status_from_validation(Err(AppError::Auth("invalid or expired token".into())));
+        let status = status_from_validation(Err(AppError::Auth("invalid or expired token".into())));
         assert!(!status.connected);
         assert!(status.username.is_none());
         assert!(status.error.is_none());
@@ -163,10 +162,7 @@ mod tests {
         assert!(!status.connected);
         assert!(status.username.is_none());
         let err = status.error.unwrap();
-        assert!(
-            err.contains("timeout"),
-            "expected 'timeout' in '{err}'"
-        );
+        assert!(err.contains("timeout"), "expected 'timeout' in '{err}'");
     }
 
     #[test]
