@@ -61,7 +61,8 @@ impl TokenStore for KeyringTokenStore {
 /// Rejects empty or whitespace-only tokens.
 #[allow(dead_code)] // Called from T-026 Tauri commands
 pub fn store_token(token: &str) -> Result<(), AppError> {
-    if token.trim().is_empty() {
+    let token = token.trim();
+    if token.is_empty() {
         return Err(AppError::Auth("token must not be empty".into()));
     }
     KeyringTokenStore.store_token(token)
@@ -84,6 +85,9 @@ pub fn delete_token() -> Result<(), AppError> {
 /// Returns the authenticated username on success.
 #[allow(dead_code)] // Called from T-026 Tauri commands
 pub async fn validate_token(token: &str) -> Result<String, AppError> {
+    if token.trim().is_empty() {
+        return Err(AppError::Auth("token must not be empty".into()));
+    }
     validate_token_with_url(GITHUB_API_URL, token).await
 }
 
@@ -100,8 +104,8 @@ async fn validate_token_with_url(base_url: &str, token: &str) -> Result<String, 
         return Err(AppError::Auth("invalid or expired token".into()));
     }
     if !resp.status().is_success() {
-        return Err(AppError::Auth(format!(
-            "GitHub API error: status {}",
+        return Err(AppError::GitHub(format!(
+            "unexpected status {}",
             resp.status()
         )));
     }
@@ -270,8 +274,8 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
-            err.contains("GitHub API error: status 500"),
-            "expected 'GitHub API error: status 500' in '{err}'"
+            err.contains("unexpected status 500"),
+            "expected 'unexpected status 500' in '{err}'"
         );
         mock.assert_async().await;
     }
