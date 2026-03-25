@@ -77,16 +77,20 @@ pub enum WorkspaceState {
 
 // ── Core structs (T-009) ────────────────────────────────────────
 
-/// GitHub repository.
+/// GitHub repository with local tracking state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Repo {
     pub id: String,
+    pub org: String,
     pub name: String,
     pub full_name: String,
     pub url: String,
     pub default_branch: String,
     pub is_archived: bool,
+    pub enabled: bool,
+    pub local_path: Option<String>,
+    pub last_sync_at: Option<String>,
 }
 
 /// Pull request.
@@ -517,16 +521,22 @@ mod tests {
     fn test_repo_json_roundtrip() {
         let repo = Repo {
             id: "r-1".to_string(),
+            org: "mpiton".to_string(),
             name: "prism".to_string(),
             full_name: "mpiton/prism".to_string(),
             url: "https://github.com/mpiton/prism".to_string(),
             default_branch: "main".to_string(),
             is_archived: false,
+            enabled: true,
+            local_path: Some("/home/user/repos/prism".to_string()),
+            last_sync_at: None,
         };
         let json = serde_json::to_string(&repo).unwrap();
         assert!(json.contains("\"fullName\""));
         assert!(json.contains("\"defaultBranch\""));
         assert!(json.contains("\"isArchived\""));
+        assert!(json.contains("\"localPath\""));
+        assert!(json.contains("\"lastSyncAt\""));
         let deserialized: Repo = serde_json::from_str(&json).unwrap();
         assert_eq!(repo, deserialized);
     }
