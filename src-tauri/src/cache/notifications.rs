@@ -1,6 +1,5 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 use crate::error::AppError;
 
@@ -23,8 +22,11 @@ pub async fn has_been_notified(
 
 /// Record that a notification was sent for the given event.
 ///
-/// Uses `INSERT OR IGNORE` for deduplication via the
-/// `UNIQUE(event_type, event_id)` constraint.
+/// Uses `INSERT OR IGNORE` for deduplication. Both the deterministic PK
+/// and the `UNIQUE(event_type, event_id)` constraint enforce the invariant
+/// (defense-in-depth). Safe because `event_type` values are controlled enum
+/// strings and `event_id` values are GitHub alphanumeric IDs — neither
+/// contains `/`.
 #[allow(dead_code)]
 pub async fn mark_notified(
     pool: &SqlitePool,
@@ -32,7 +34,7 @@ pub async fn mark_notified(
     event_id: &str,
 ) -> Result<(), AppError> {
     let now = Utc::now().to_rfc3339();
-    let id = Uuid::new_v4().to_string();
+    let id = format!("{event_type}/{event_id}");
 
     sqlx::query(
         "INSERT OR IGNORE INTO notification_log (id, event_type, event_id, notified_at) \

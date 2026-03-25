@@ -13,6 +13,8 @@ const KEY_WORKSPACES_DIR: &str = "workspaces_dir";
 
 /// Minimum allowed value for `poll_interval_secs`.
 const MIN_POLL_INTERVAL_SECS: u64 = 30;
+/// Minimum allowed value for `max_active_workspaces`.
+const MIN_MAX_ACTIVE_WORKSPACES: u32 = 1;
 
 /// Row from the `config` key-value table.
 #[derive(sqlx::FromRow)]
@@ -21,9 +23,34 @@ struct ConfigRow {
     value: String,
 }
 
+/// Clamp `poll_interval_secs` to its minimum, warning on violation.
+fn clamp_poll_interval(value: u64) -> u64 {
+    if value < MIN_POLL_INTERVAL_SECS {
+        warn!(
+            "poll_interval_secs {value} is below the minimum of {MIN_POLL_INTERVAL_SECS}; clamping"
+        );
+        MIN_POLL_INTERVAL_SECS
+    } else {
+        value
+    }
+}
+
+/// Clamp `max_active_workspaces` to its minimum, warning on violation.
+fn clamp_max_workspaces(value: u32) -> u32 {
+    if value < MIN_MAX_ACTIVE_WORKSPACES {
+        warn!(
+            "max_active_workspaces {value} would evict all workspaces; clamping to {MIN_MAX_ACTIVE_WORKSPACES}"
+        );
+        MIN_MAX_ACTIVE_WORKSPACES
+    } else {
+        value
+    }
+}
+
 /// Read the full application configuration from the `config` table.
 ///
 /// Missing keys are filled with [`AppConfig::default()`] values.
+/// Values below documented minimums are clamped with a warning.
 #[allow(dead_code)]
 pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
     let rows: Vec<ConfigRow> = sqlx::query_as("SELECT key, value FROM config")
@@ -35,14 +62,14 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
     for row in rows {
         match row.key.as_str() {
             KEY_POLL_INTERVAL => match row.value.parse::<u64>() {
-                Ok(v) => config.poll_interval_secs = v,
+                Ok(v) => config.poll_interval_secs = clamp_poll_interval(v),
                 Err(_) => warn!(
                     "ignoring non-parseable config value for '{}': '{}', using default",
                     KEY_POLL_INTERVAL, row.value
                 ),
             },
             KEY_MAX_WORKSPACES => match row.value.parse::<u32>() {
-                Ok(v) => config.max_active_workspaces = v,
+                Ok(v) => config.max_active_workspaces = clamp_max_workspaces(v),
                 Err(_) => warn!(
                     "ignoring non-parseable config value for '{}': '{}', using default",
                     KEY_MAX_WORKSPACES, row.value
@@ -69,28 +96,16 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
 /// All writes are wrapped in a transaction for atomicity.
 /// `Option::None` fields are deleted so that future reads fall back
 /// to [`AppConfig::default()`]. Values below documented minimums are
-/// clamped with a warning. Returns the configuration as re-read from DB.
+/// clamped with a warning. Returns the clamped config as written.
 #[allow(dead_code)]
 pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConfig, AppError> {
-    let poll_interval = if config.poll_interval_secs < MIN_POLL_INTERVAL_SECS {
-        warn!(
-            "poll_interval_secs {} is below the minimum of {}; clamping",
-            config.poll_interval_secs, MIN_POLL_INTERVAL_SECS
-        );
-        MIN_POLL_INTERVAL_SECS
-    } else {
-        config.poll_interval_secs
-    };
+    let poll_interval = clamp_poll_interval(config.poll_interval_secs);
+    let max_workspaces = clamp_max_workspaces(config.max_active_workspaces);
 
     let mut tx = pool.begin().await?;
 
     upsert_key(&mut *tx, KEY_POLL_INTERVAL, &poll_interval.to_string()).await?;
-    upsert_key(
-        &mut *tx,
-        KEY_MAX_WORKSPACES,
-        &config.max_active_workspaces.to_string(),
-    )
-    .await?;
+    upsert_key(&mut *tx, KEY_MAX_WORKSPACES, &max_workspaces.to_string()).await?;
 
     set_optional_key(&mut *tx, KEY_GITHUB_TOKEN, config.github_token.as_deref()).await?;
     set_optional_key(&mut *tx, KEY_DATA_DIR, config.data_dir.as_deref()).await?;
@@ -103,7 +118,14 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
 
     tx.commit().await?;
 
-    get_config(pool).await
+    // Return the config as written — no re-read to avoid TOCTOU races.
+    Ok(AppConfig {
+        poll_interval_secs: poll_interval,
+        max_active_workspaces: max_workspaces,
+        github_token: config.github_token.clone(),
+        data_dir: config.data_dir.clone(),
+        workspaces_dir: config.workspaces_dir.clone(),
+    })
 }
 
 /// Upsert a single key-value pair.
@@ -235,6 +257,22 @@ mod tests {
         assert_eq!(
             result.poll_interval_secs, MIN_POLL_INTERVAL_SECS,
             "should clamp to minimum"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_set_config_clamps_max_workspaces() {
+        let (pool, _tmp) = test_pool().await;
+
+        let mut config = get_config(&pool).await.unwrap();
+        config.max_active_workspaces = 0;
+
+        let result = set_config(&pool, &config).await.unwrap();
+        assert_eq!(
+            result.max_active_workspaces, MIN_MAX_ACTIVE_WORKSPACES,
+            "should clamp 0 to minimum of 1"
         );
 
         pool.close().await;
