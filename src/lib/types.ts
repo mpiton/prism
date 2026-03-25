@@ -26,11 +26,15 @@ export type WorkspaceState = "active" | "suspended" | "archived";
 
 export interface Repo {
   readonly id: string;
+  readonly org: string;
   readonly name: string;
   readonly fullName: string;
   readonly url: string;
   readonly defaultBranch: string;
   readonly isArchived: boolean;
+  readonly enabled: boolean;
+  readonly localPath: string | null;
+  readonly lastSyncAt: string | null;
 }
 
 export interface PullRequest {
