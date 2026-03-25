@@ -51,7 +51,8 @@ pub async fn assemble_dashboard_data(
     let my_prs = fetch_prs_by_author(pool, username).await?;
     let my_pull_requests = enrich_prs(pool, my_prs, &workspace_map).await?;
 
-    // 4. Issues authored by user
+    // 4. Issues authored by user (the issues table has no assignee column;
+    //    in this schema "assigned" maps to "authored" for the current user)
     let assigned_issues = get_issues_for_author(pool, username).await?;
 
     // 5. Recent activity
@@ -133,13 +134,16 @@ async fn fetch_prs_by_ids(pool: &SqlitePool, ids: &[String]) -> Result<Vec<PullR
     all_rows.into_iter().map(PullRequest::try_from).collect()
 }
 
-/// Fetch pull requests authored by a given user.
+/// Fetch open/draft pull requests authored by a given user.
 async fn fetch_prs_by_author(
     pool: &SqlitePool,
     author: &str,
 ) -> Result<Vec<PullRequest>, AppError> {
-    let sql =
-        format!("SELECT {PR_COLS} FROM pull_requests WHERE author = $1 ORDER BY updated_at DESC");
+    let sql = format!(
+        "SELECT {PR_COLS} FROM pull_requests \
+         WHERE author = $1 AND state IN ('open', 'draft') \
+         ORDER BY updated_at DESC"
+    );
     let rows: Vec<PullRequestRow> = sqlx::query_as(&sql).bind(author).fetch_all(pool).await?;
 
     rows.into_iter().map(PullRequest::try_from).collect()
@@ -147,9 +151,9 @@ async fn fetch_prs_by_author(
 
 /// Enrich a list of PRs with review summaries and optional workspace summaries.
 ///
-/// Uses per-PR queries for review summaries. Acceptable for personal dashboards
-/// (typically < 50 PRs). For larger scale, batch `review_requests` with a single
-/// `WHERE pull_request_id IN (...)` query.
+/// Uses per-PR queries for review summaries and workspace notes. Acceptable for
+/// personal dashboards (typically < 50 PRs). For larger scale, batch both
+/// `review_requests` and `workspace_notes` with `WHERE ... IN (...)` queries.
 async fn enrich_prs(
     pool: &SqlitePool,
     prs: Vec<PullRequest>,
@@ -406,6 +410,41 @@ mod tests {
         assert!(summary.reviewers.contains(&"bob".to_string()));
         assert!(summary.reviewers.contains(&"charlie".to_string()));
         pool.close().await;
+    }
+
+    /// Workspace map prefers Active over Archived when both exist for the same PR.
+    #[tokio::test]
+    async fn test_workspace_map_prefers_active_over_archived() {
+        let archived = Workspace {
+            id: "ws-archived".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 1,
+            state: WorkspaceState::Archived,
+            worktree_path: None,
+            session_id: None,
+            created_at: "2026-03-01T10:00:00Z".to_string(),
+            updated_at: "2026-03-01T10:00:00Z".to_string(),
+        };
+        let active = Workspace {
+            id: "ws-active".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 1,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/tmp/ws".to_string()),
+            session_id: None,
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+
+        // Insert Archived first, then Active — Active should win
+        let map = build_workspace_map(&[archived.clone(), active.clone()]);
+        assert_eq!(map.len(), 1);
+        assert_eq!(map[&("repo-1".to_string(), 1)].id, "ws-active");
+
+        // Insert Active first, then Archived — Active should still win
+        let map = build_workspace_map(&[active, archived]);
+        assert_eq!(map.len(), 1);
+        assert_eq!(map[&("repo-1".to_string(), 1)].id, "ws-active");
     }
 
     /// Regression: non-pending review requests must NOT appear in dashboard review_requests.
