@@ -1,6 +1,8 @@
 pub mod activity;
+pub mod config;
 pub mod db;
 pub mod issues;
+pub mod notifications;
 pub mod pull_requests;
 pub mod repos;
 pub mod reviews;
