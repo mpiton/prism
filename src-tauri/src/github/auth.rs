@@ -5,7 +5,6 @@ use crate::error::AppError;
 
 const SERVICE_NAME: &str = "prism-github";
 const ACCOUNT_NAME: &str = "default";
-#[allow(dead_code)] // Used by validate_token, called from T-026 Tauri commands
 const GITHUB_API_URL: &str = "https://api.github.com";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -70,7 +69,6 @@ impl TokenStore for KeyringTokenStore {
 
 /// Stores a GitHub token in the system keychain.
 /// Rejects empty or whitespace-only tokens.
-#[allow(dead_code)] // Called from T-026 Tauri commands
 pub fn store_token(token: &str) -> Result<(), AppError> {
     let token = token.trim();
     if token.is_empty() {
@@ -81,20 +79,17 @@ pub fn store_token(token: &str) -> Result<(), AppError> {
 
 /// Retrieves the GitHub token from the system keychain.
 /// Returns `Ok(None)` if no token is stored. Propagates keychain errors.
-#[allow(dead_code)] // Called from T-026 Tauri commands
 pub fn get_token() -> Result<Option<String>, AppError> {
     KeyringTokenStore.get_token()
 }
 
 /// Deletes the GitHub token from the system keychain.
-#[allow(dead_code)] // Called from T-026 Tauri commands
 pub fn delete_token() -> Result<(), AppError> {
     KeyringTokenStore.delete_token()
 }
 
 /// Validates a GitHub token by calling GET /user on the GitHub API.
 /// Returns the authenticated username on success.
-#[allow(dead_code)] // Called from T-026 Tauri commands
 pub async fn validate_token(token: &str) -> Result<String, AppError> {
     let token = token.trim();
     if token.is_empty() {
