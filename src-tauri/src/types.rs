@@ -133,6 +133,18 @@ pub struct ReviewSummary {
     pub reviewers: Vec<String>,
 }
 
+/// Code review submitted on a pull request.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Review {
+    pub id: String,
+    pub pull_request_id: String,
+    pub reviewer: String,
+    pub status: ReviewStatus,
+    pub body: Option<String>,
+    pub submitted_at: String,
+}
+
 /// GitHub issue.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -661,6 +673,33 @@ mod tests {
         assert!(json.contains("\"sessionId\""));
         let deserialized: Workspace = serde_json::from_str(&json).unwrap();
         assert_eq!(ws, deserialized);
+    }
+
+    #[test]
+    fn test_review_json_roundtrip() {
+        let review = Review {
+            id: "rev-1".to_string(),
+            pull_request_id: "pr-1".to_string(),
+            reviewer: "alice".to_string(),
+            status: ReviewStatus::Approved,
+            body: Some("Looks good!".to_string()),
+            submitted_at: "2026-03-24T10:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&review).unwrap();
+        assert!(json.contains("\"pullRequestId\""));
+        assert!(json.contains("\"submittedAt\""));
+        let deserialized: Review = serde_json::from_str(&json).unwrap();
+        assert_eq!(review, deserialized);
+
+        // Verify null body roundtrips
+        let no_body = Review {
+            body: None,
+            ..review.clone()
+        };
+        let json2 = serde_json::to_string(&no_body).unwrap();
+        assert!(json2.contains("\"body\":null"));
+        let deserialized2: Review = serde_json::from_str(&json2).unwrap();
+        assert_eq!(no_body, deserialized2);
     }
 
     // ── T-010: Composite struct roundtrip tests ─────────────────────
