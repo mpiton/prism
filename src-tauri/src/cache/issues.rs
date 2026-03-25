@@ -98,6 +98,7 @@ pub async fn upsert_issue(pool: &SqlitePool, issue: &Issue) -> Result<Issue, App
              author = excluded.author,
              state = excluded.state,
              priority = excluded.priority,
+             repo_id = excluded.repo_id,
              url = excluded.url,
              labels = excluded.labels,
              updated_at = excluded.updated_at
@@ -132,14 +133,10 @@ pub async fn get_issues_by_repo(pool: &SqlitePool, repo_id: &str) -> Result<Vec<
     rows.into_iter().map(Issue::try_from).collect()
 }
 
-/// Return all issues where `author` matches the given user, across all repos,
+/// Return all issues created by the given author, across all repos,
 /// ordered by `updated_at DESC`.
-///
-/// Note: the current schema stores only the issue creator as `author`.
-/// GitHub assignees are not yet modelled — a dedicated `assignees` JSON
-/// column would be needed for accurate assignee filtering.
 #[allow(dead_code)]
-pub async fn get_issues_for_assignee(
+pub async fn get_issues_for_author(
     pool: &SqlitePool,
     author: &str,
 ) -> Result<Vec<Issue>, AppError> {
@@ -320,7 +317,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_issues_for_assignee() {
+    async fn test_get_issues_for_author() {
         let (pool, _tmp) = test_pool().await;
         upsert_repo(&pool, &sample_repo()).await.unwrap();
 
@@ -334,16 +331,16 @@ mod tests {
         upsert_issue(&pool, &i2).await.unwrap();
         upsert_issue(&pool, &i3).await.unwrap();
 
-        let alice_issues = get_issues_for_assignee(&pool, "alice").await.unwrap();
+        let alice_issues = get_issues_for_author(&pool, "alice").await.unwrap();
         assert_eq!(alice_issues.len(), 2);
         assert_eq!(alice_issues[0].id, "issue-3", "ordered by updated_at DESC");
         assert_eq!(alice_issues[1].id, "issue-1");
 
-        let bob_issues = get_issues_for_assignee(&pool, "bob").await.unwrap();
+        let bob_issues = get_issues_for_author(&pool, "bob").await.unwrap();
         assert_eq!(bob_issues.len(), 1);
         assert_eq!(bob_issues[0].id, "issue-2");
 
-        let nobody = get_issues_for_assignee(&pool, "nobody").await.unwrap();
+        let nobody = get_issues_for_author(&pool, "nobody").await.unwrap();
         assert!(nobody.is_empty());
 
         pool.close().await;
@@ -427,6 +424,45 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_stale_issues_multi_chunk() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Create CHUNK_SIZE + 2 issues total (1000)
+        let total = 1000_u32;
+        let keep_count = 3_u32;
+
+        for i in 1..=total {
+            let issue = sample_issue(&format!("issue-{i}"), i, &format!("Issue {i}"));
+            upsert_issue(&pool, &issue).await.unwrap();
+        }
+
+        // Keep only 3 issues — the remaining 997 are stale and span 2 chunks
+        let current_ids: Vec<String> = (1..=keep_count).map(|i| format!("issue-{i}")).collect();
+
+        let deleted = delete_stale_issues(&pool, "repo-1", &current_ids, false)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            deleted,
+            u64::from(total - keep_count),
+            "should delete all stale issues across chunk boundaries"
+        );
+
+        let remaining = get_issues_by_repo(&pool, "repo-1").await.unwrap();
+        assert_eq!(remaining.len(), keep_count as usize);
+
+        let remaining_ids: std::collections::HashSet<String> =
+            remaining.into_iter().map(|i| i.id).collect();
+        for i in 1..=keep_count {
+            assert!(remaining_ids.contains(&format!("issue-{i}")));
+        }
 
         pool.close().await;
     }
