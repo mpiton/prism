@@ -142,6 +142,14 @@ export interface DashboardStats {
   readonly unreadActivity: number;
 }
 
+// ── Auth (T-027) ─────────────────────────────────────────────────
+
+export interface AuthStatus {
+  readonly connected: boolean;
+  readonly username: string | null;
+  readonly error: string | null;
+}
+
 // ── IPC payloads (T-011) ─────────────────────────────────────────
 
 export interface OpenWorkspaceRequest {
