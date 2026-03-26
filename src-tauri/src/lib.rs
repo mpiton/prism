@@ -7,6 +7,8 @@ mod notifications;
 pub mod types;
 mod workspace;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -18,12 +20,25 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Initialize SQLite database
+            let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir)?;
+            let db_path = data_dir.join("prism.db");
+            let pool = tauri::async_runtime::block_on(cache::db::init_db(&db_path))
+                .map_err(|e| e.to_string())?;
+            app.manage(pool);
+
+            // Cached GitHub username — populated on first dashboard access
+            app.manage(commands::GithubUsername::default());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::auth_set_token,
             commands::auth_get_status,
             commands::auth_logout,
+            commands::github_get_dashboard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
