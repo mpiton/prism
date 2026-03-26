@@ -271,6 +271,8 @@ mod tests {
             repo_id: "repo-1".to_string(),
             url: "https://github.com/mpiton/prism/pull/42".to_string(),
             labels: vec![],
+            additions: 50,
+            deletions: 10,
             created_at: "2026-03-01T10:00:00Z".to_string(),
             updated_at: "2026-03-20T15:00:00Z".to_string(),
         }

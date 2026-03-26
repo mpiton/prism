@@ -17,6 +17,8 @@ pub(crate) struct PullRequestRow {
     pub(crate) repo_id: String,
     pub(crate) url: String,
     pub(crate) labels: String,
+    pub(crate) additions: i64,
+    pub(crate) deletions: i64,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
 }
@@ -86,11 +88,24 @@ impl TryFrom<PullRequestRow> for PullRequest {
     fn try_from(row: PullRequestRow) -> Result<Self, Self::Error> {
         let labels: Vec<String> = serde_json::from_str(&row.labels)
             .map_err(|e| AppError::Config(format!("labels for PR '{}': {e}", row.id)))?;
+        let number = u32::try_from(row.number)
+            .map_err(|_| AppError::Config(format!("invalid PR number: {}", row.number)))?;
+        let additions = u32::try_from(row.additions).map_err(|_| {
+            AppError::Config(format!(
+                "invalid additions for PR '{}': {}",
+                row.id, row.additions
+            ))
+        })?;
+        let deletions = u32::try_from(row.deletions).map_err(|_| {
+            AppError::Config(format!(
+                "invalid deletions for PR '{}': {}",
+                row.id, row.deletions
+            ))
+        })?;
 
         Ok(Self {
             id: row.id,
-            number: u32::try_from(row.number)
-                .map_err(|_| AppError::Config(format!("invalid PR number: {}", row.number)))?,
+            number,
             title: row.title,
             author: row.author,
             state: pr_state_from_str(&row.state)?,
@@ -99,6 +114,8 @@ impl TryFrom<PullRequestRow> for PullRequest {
             repo_id: row.repo_id,
             url: row.url,
             labels,
+            additions,
+            deletions,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -106,7 +123,7 @@ impl TryFrom<PullRequestRow> for PullRequest {
 }
 
 /// Explicit column list for all SELECT queries.
-pub(crate) const PR_COLS: &str = "id, number, title, author, state, ci_status, priority, repo_id, url, labels, created_at, updated_at";
+pub(crate) const PR_COLS: &str = "id, number, title, author, state, ci_status, priority, repo_id, url, labels, additions, deletions, created_at, updated_at";
 
 /// Insert or update a pull request. On conflict (same `id`), updates all fields.
 /// Uses `RETURNING` for an atomic read-after-write.
@@ -119,8 +136,8 @@ pub async fn upsert_pull_request(
         serde_json::to_string(&pr.labels).map_err(|e| AppError::Config(e.to_string()))?;
 
     let sql = format!(
-        "INSERT INTO pull_requests (id, number, title, author, state, ci_status, priority, repo_id, url, labels, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        "INSERT INTO pull_requests (id, number, title, author, state, ci_status, priority, repo_id, url, labels, additions, deletions, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT(id) DO UPDATE SET
              number = excluded.number,
              title = excluded.title,
@@ -130,6 +147,8 @@ pub async fn upsert_pull_request(
              priority = excluded.priority,
              url = excluded.url,
              labels = excluded.labels,
+             additions = excluded.additions,
+             deletions = excluded.deletions,
              updated_at = excluded.updated_at
          RETURNING {PR_COLS}"
     );
@@ -145,6 +164,8 @@ pub async fn upsert_pull_request(
         .bind(&pr.repo_id)
         .bind(&pr.url)
         .bind(&labels_json)
+        .bind(i64::from(pr.additions))
+        .bind(i64::from(pr.deletions))
         .bind(&pr.created_at)
         .bind(&pr.updated_at)
         .fetch_one(pool)
@@ -225,11 +246,11 @@ pub async fn delete_stale_prs(
     Ok(total_deleted)
 }
 
-/// Compute a priority score for sorting pull requests.
-/// Higher score = higher priority. Dominant factor is the priority enum,
+/// Sort key for ordering pull requests by priority.
+/// Higher value = higher priority. Dominant factor is the priority enum,
 /// with state and CI status as tiebreakers.
 #[allow(dead_code)]
-pub fn compute_priority_score(pr: &PullRequest) -> i64 {
+pub fn priority_sort_weight(pr: &PullRequest) -> i64 {
     let priority_weight = match pr.priority {
         Priority::Critical => 400,
         Priority::High => 300,
@@ -292,6 +313,8 @@ mod tests {
             repo_id: "repo-1".to_string(),
             url: format!("https://github.com/mpiton/prism/pull/{number}"),
             labels: vec!["bug".to_string(), "urgent".to_string()],
+            additions: 50,
+            deletions: 10,
             created_at: "2026-03-01T10:00:00Z".to_string(),
             updated_at: "2026-03-20T15:00:00Z".to_string(),
         }
@@ -428,9 +451,9 @@ mod tests {
             ..sample_pr("pr-3", 3, "High")
         };
 
-        let score_critical = compute_priority_score(&critical_open_failing);
-        let score_low = compute_priority_score(&low_merged_success);
-        let score_high = compute_priority_score(&high_open_success);
+        let score_critical = priority_sort_weight(&critical_open_failing);
+        let score_low = priority_sort_weight(&low_merged_success);
+        let score_high = priority_sort_weight(&high_open_success);
 
         assert!(
             score_critical > score_high,

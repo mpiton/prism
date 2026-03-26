@@ -109,6 +109,18 @@ pub fn map_pr(pr: &PrFields) -> Result<PullRequest, AppError> {
         repo_id: pr.repository.name_with_owner.clone(),
         url: pr.url.clone(),
         labels,
+        additions: u32::try_from(pr.additions).map_err(|_| {
+            AppError::GitHub(format!(
+                "invalid additions for PR '{}': {}",
+                pr.id, pr.additions
+            ))
+        })?,
+        deletions: u32::try_from(pr.deletions).map_err(|_| {
+            AppError::GitHub(format!(
+                "invalid deletions for PR '{}': {}",
+                pr.id, pr.deletions
+            ))
+        })?,
         created_at: pr.created_at.clone(),
         updated_at: pr.updated_at.clone(),
     })
