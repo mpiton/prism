@@ -15,7 +15,7 @@ use crate::cache::config::get_config;
 use crate::cache::sync::sync_dashboard;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
-use crate::types::DashboardStats;
+use crate::types::{AppConfig, DashboardStats};
 
 // ── Trait for testability ────────────────────────────────────────
 
@@ -52,9 +52,14 @@ impl PollingContext for RealPollingContext {
     }
 
     async fn poll_interval_secs(&self) -> u64 {
-        get_config(&self.pool)
-            .await
-            .map_or(300, |c| c.poll_interval_secs)
+        match get_config(&self.pool).await {
+            Ok(config) => config.poll_interval_secs,
+            Err(e) => {
+                let fallback = AppConfig::default().poll_interval_secs;
+                warn!("failed to read poll interval, using default {fallback}s: {e}");
+                fallback
+            }
+        }
     }
 
     fn emit_updated(&self, stats: &DashboardStats) {
@@ -72,10 +77,18 @@ impl PollingContext for RealPollingContext {
 
 // ── Core loop ────────────────────────────────────────────────────
 
+/// Result of a single polling iteration.
+pub(crate) enum PollOutcome {
+    /// Sync succeeded.
+    Ok,
+    /// Sync failed with a transient error; use normal interval.
+    Failed,
+    /// Rate-limited; caller should back off until `reset_at`.
+    RateLimited { reset_at: String },
+}
+
 /// Execute a single polling iteration: sync then emit.
-///
-/// Returns `true` on success, `false` on error.
-pub(crate) async fn poll_once(ctx: &(impl PollingContext + ?Sized)) -> bool {
+pub(crate) async fn poll_once(ctx: &(impl PollingContext + ?Sized)) -> PollOutcome {
     match ctx.sync().await {
         Ok(stats) => {
             info!(
@@ -83,25 +96,57 @@ pub(crate) async fn poll_once(ctx: &(impl PollingContext + ?Sized)) -> bool {
                 stats.pending_reviews
             );
             ctx.emit_updated(&stats);
-            true
+            PollOutcome::Ok
+        }
+        Err(AppError::RateLimit { ref reset_at }) => {
+            warn!("rate limited until {reset_at}; backing off");
+            ctx.emit_sync_error(&format!("rate limited until {reset_at}"));
+            PollOutcome::RateLimited {
+                reset_at: reset_at.clone(),
+            }
         }
         Err(e) => {
             warn!("polling sync failed: {e}");
             ctx.emit_sync_error(&e.to_string());
-            false
+            PollOutcome::Failed
         }
+    }
+}
+
+/// Compute backoff duration from a rate-limit `reset_at` timestamp.
+///
+/// Falls back to 60 s if the timestamp cannot be parsed.
+fn rate_limit_backoff(reset_at: &str) -> Duration {
+    let fallback = Duration::from_secs(60);
+    let Ok(reset) = chrono::DateTime::parse_from_rfc3339(reset_at) else {
+        warn!("unparseable rate-limit reset_at '{reset_at}'; backing off 60s");
+        return fallback;
+    };
+    let now = chrono::Utc::now();
+    let delta = reset.signed_duration_since(now);
+    if let Some(secs) = u64::try_from(delta.num_seconds()).ok().filter(|&s| s > 0) {
+        Duration::from_secs(secs)
+    } else {
+        // Reset already passed — retry soon.
+        Duration::from_secs(5)
     }
 }
 
 /// Run the polling loop until the task is cancelled.
 ///
 /// Syncs immediately on start, then sleeps for the configured interval.
+/// On rate-limit errors, backs off until the `reset_at` timestamp.
 #[allow(dead_code)] // TODO(T-035+): remove after wiring polling into app setup
 async fn polling_loop(ctx: impl PollingContext) {
     loop {
-        poll_once(&ctx).await;
-        let interval = ctx.poll_interval_secs().await;
-        tokio::time::sleep(Duration::from_secs(interval)).await;
+        let sleep_duration = match poll_once(&ctx).await {
+            PollOutcome::Ok | PollOutcome::Failed => {
+                let secs = ctx.poll_interval_secs().await;
+                Duration::from_secs(secs)
+            }
+            PollOutcome::RateLimited { reset_at } => rate_limit_backoff(&reset_at),
+        };
+        tokio::time::sleep(sleep_duration).await;
     }
 }
 
@@ -204,9 +249,12 @@ mod tests {
         let stats = make_stats(3);
         let (ctx, recorder) = MockCtx::new(vec![Ok(stats.clone())]);
 
-        let ok = poll_once(&ctx).await;
+        let outcome = poll_once(&ctx).await;
 
-        assert!(ok, "poll_once should return true on success");
+        assert!(
+            matches!(outcome, PollOutcome::Ok),
+            "poll_once should return Ok on success"
+        );
         let updates = recorder.updates.lock().unwrap();
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0], stats);
@@ -233,21 +281,73 @@ mod tests {
 
     #[tokio::test]
     async fn test_polling_handles_sync_error() {
-        let err = AppError::GitHub("rate limit exceeded".into());
+        let err = AppError::GitHub("connection reset".into());
         let (ctx, recorder) = MockCtx::new(vec![Err(err)]);
 
-        let ok = poll_once(&ctx).await;
+        let outcome = poll_once(&ctx).await;
 
-        assert!(!ok, "poll_once should return false on error");
+        assert!(
+            matches!(outcome, PollOutcome::Failed),
+            "poll_once should return Failed on transient error"
+        );
         let errors = recorder.errors.lock().unwrap();
         assert_eq!(errors.len(), 1);
         assert!(
-            errors[0].contains("rate limit exceeded"),
+            errors[0].contains("connection reset"),
             "error message should contain the original error"
         );
         assert!(
             recorder.updates.lock().unwrap().is_empty(),
             "no updates should be emitted on error"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_polling_rate_limit_returns_backoff() {
+        let err = AppError::RateLimit {
+            reset_at: "2026-03-26T15:30:00Z".into(),
+        };
+        let (ctx, recorder) = MockCtx::new(vec![Err(err)]);
+
+        let outcome = poll_once(&ctx).await;
+
+        assert!(
+            matches!(outcome, PollOutcome::RateLimited { .. }),
+            "poll_once should return RateLimited on rate-limit error"
+        );
+        let errors = recorder.errors.lock().unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].contains("rate limited"),
+            "error message should mention rate limiting"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_backoff_future_timestamp() {
+        let future = (chrono::Utc::now() + chrono::Duration::seconds(120)).to_rfc3339();
+        let backoff = rate_limit_backoff(&future);
+        assert!(
+            backoff.as_secs() > 100 && backoff.as_secs() <= 120,
+            "backoff should be ~120s, got {}s",
+            backoff.as_secs()
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_backoff_past_timestamp() {
+        let past = (chrono::Utc::now() - chrono::Duration::seconds(60)).to_rfc3339();
+        let backoff = rate_limit_backoff(&past);
+        assert_eq!(backoff.as_secs(), 5, "past reset should retry quickly");
+    }
+
+    #[test]
+    fn test_rate_limit_backoff_unparseable() {
+        let backoff = rate_limit_backoff("not-a-timestamp");
+        assert_eq!(
+            backoff.as_secs(),
+            60,
+            "unparseable timestamp should fall back to 60s"
         );
     }
 }
