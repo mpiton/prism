@@ -133,6 +133,33 @@ pub async fn mark_all_read(pool: &SqlitePool) -> Result<u64, AppError> {
     Ok(result.rows_affected())
 }
 
+/// Insert an activity, ignoring duplicates (by primary key).
+///
+/// Returns `true` if a new row was inserted, `false` if the ID already existed.
+/// Accepts any sqlx executor (pool, connection, or transaction) for flexibility.
+#[allow(dead_code)]
+pub async fn upsert_activity<'e, E>(executor: E, activity: &Activity) -> Result<bool, AppError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    let result = sqlx::query(
+        "INSERT OR IGNORE INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, created_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(&activity.id)
+    .bind(activity_type_to_str(&activity.activity_type))
+    .bind(&activity.actor)
+    .bind(&activity.repo_id)
+    .bind(&activity.pull_request_id)
+    .bind(&activity.issue_id)
+    .bind(&activity.message)
+    .bind(&activity.created_at)
+    .execute(executor)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
 /// Retrieve a single activity by ID.
 #[allow(dead_code)]
 pub async fn get_activity_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Activity>, AppError> {
