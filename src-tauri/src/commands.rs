@@ -52,17 +52,33 @@ pub async fn auth_set_token(token: String) -> Result<String, String> {
 
 /// Returns the current authentication status.
 ///
-/// If a token is stored, validates it against GitHub to confirm it is still
-/// active and returns `connected: true` with the username.
+/// **Note:** this command performs a live HTTP request to the GitHub API
+/// to validate the stored token. Callers should debounce or cache results
+/// (e.g. via `TanStack Query` `staleTime`) to avoid excessive API usage.
+///
 /// Auth errors (invalid/expired token) return `connected: false`.
-/// Transient errors (network, rate-limit) return `connected: false` with an
-/// `error` field so the frontend can distinguish offline from logged-out.
+/// Transient errors (network, rate-limit, keychain) return `connected: false`
+/// with an `error` field so the frontend can distinguish offline from
+/// logged-out.
 #[tauri::command]
 pub async fn auth_get_status() -> Result<AuthStatus, String> {
-    let token: Option<String> = tokio::task::spawn_blocking(auth::get_token)
-        .await
-        .map_err(|e| format!("task join error: {e}"))?
-        .map_err(String::from)?;
+    let token: Option<String> = match tokio::task::spawn_blocking(auth::get_token).await {
+        Ok(Ok(t)) => t,
+        Ok(Err(e)) => {
+            return Ok(AuthStatus {
+                connected: false,
+                username: None,
+                error: Some(e.to_string()),
+            });
+        }
+        Err(e) => {
+            return Ok(AuthStatus {
+                connected: false,
+                username: None,
+                error: Some(format!("task join error: {e}")),
+            });
+        }
+    };
     match token {
         Some(ref t) => Ok(status_from_validation(auth::validate_token(t).await)),
         None => Ok(AuthStatus {
