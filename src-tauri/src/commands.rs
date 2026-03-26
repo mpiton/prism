@@ -221,7 +221,7 @@ async fn resolve_credentials(cached: &GithubUsername) -> Result<(String, String)
     if let Ok(guard) = cached.0.lock()
         && let Some(ref u) = *guard
     {
-        return Ok((u.clone(), token.clone()));
+        return Ok((u.clone(), token));
     }
 
     // Slow path: validate token, cache username
@@ -396,11 +396,11 @@ mod tests {
     // -- resolve_credentials tests (T-036) --
 
     #[tokio::test]
-    async fn test_resolve_credentials_returns_cached_username_with_token() {
-        // When the cache has a username and the keychain has a token,
-        // resolve_credentials should return both without HTTP validation.
-        // Without a real keychain, this test verifies the error path instead:
-        // empty cache + no stored token = auth error.
+    async fn test_resolve_credentials_errors_when_no_token_stored() {
+        // With an empty cache and no keychain entry, resolve_credentials
+        // should return an authentication error (no token stored).
+        // The cached-username fast path requires a real keychain fixture
+        // and is therefore not covered here.
         let cached = GithubUsername::default();
         let result = resolve_credentials(&cached).await;
         assert!(result.is_err());
