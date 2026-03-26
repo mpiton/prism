@@ -31,7 +31,7 @@ export function AuthSetup() {
   const isConnected = status?.connected === true;
   const transientError = status?.error ?? null;
   const mutationError = setTokenMutation.error
-    ? String(setTokenMutation.error.message ?? setTokenMutation.error)
+    ? setTokenMutation.error.message
     : null;
   const displayError = mutationError ?? transientError;
 
@@ -54,7 +54,7 @@ export function AuthSetup() {
     return (
       <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-surface p-6">
         <p className="text-sm text-muted">Connected as</p>
-        <p className="text-lg font-semibold text-accent">{status?.username}</p>
+        <p className="text-lg font-semibold text-accent">{status.username ?? "unknown"}</p>
         <button
           type="button"
           onClick={() => logoutMutation.mutate()}
