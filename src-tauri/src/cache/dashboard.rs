@@ -25,7 +25,6 @@ use super::workspaces::list_workspaces;
 ///
 /// For each PR, joins the [`ReviewSummary`] and optional [`WorkspaceSummary`].
 /// Computes `synced_at` as the most recent `last_sync_at` across all repos.
-#[allow(dead_code)]
 pub async fn assemble_dashboard_data(
     pool: &SqlitePool,
     username: &str,
@@ -225,7 +224,6 @@ fn count_to_u32(count: i64) -> u32 {
 /// - `open_issues`: issues authored by the user in `open` state
 /// - `active_workspaces`: all workspaces in `active` state (global, not user-scoped)
 /// - `unread_activity`: all activity events with `is_read = 0` (global, not user-scoped)
-#[allow(dead_code)]
 pub async fn compute_dashboard_stats(
     pool: &SqlitePool,
     username: &str,

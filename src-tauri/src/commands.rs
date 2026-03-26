@@ -3,11 +3,14 @@ use std::sync::Mutex;
 use log::warn;
 use serde::Serialize;
 use sqlx::SqlitePool;
+use tauri::Emitter;
 
-use crate::cache::dashboard::assemble_dashboard_data;
+use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
+use crate::cache::sync::sync_dashboard;
 use crate::error::AppError;
 use crate::github::auth;
-use crate::types::DashboardData;
+use crate::github::client::GitHubClient;
+use crate::types::{DashboardData, DashboardStats};
 
 /// Authentication status returned by [`auth_get_status`].
 #[derive(Debug, Serialize)]
@@ -185,6 +188,79 @@ pub async fn github_get_dashboard(
         .map_err(|e| e.to_string())
 }
 
+/// Returns dashboard statistics (counts) from the local cache.
+///
+/// After the first call (which may validate the token via HTTP to resolve
+/// the username), subsequent calls are pure DB queries with no network I/O.
+/// Use for displaying badge counts, status indicators, etc.
+#[tauri::command]
+pub async fn github_get_stats(
+    pool: tauri::State<'_, SqlitePool>,
+    cached: tauri::State<'_, GithubUsername>,
+) -> Result<DashboardStats, String> {
+    let username = resolve_username(&cached).await?;
+    compute_dashboard_stats(&pool, &username)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Resolves the authenticated username and token in a single pass.
+///
+/// Used by commands that need the raw token (e.g., `github_force_sync`).
+/// Reads the token once from the keychain, checks the username cache,
+/// and validates only if the cache is empty — avoiding the TOCTOU window
+/// of reading the keychain twice.
+async fn resolve_credentials(cached: &GithubUsername) -> Result<(String, String), String> {
+    let token = tokio::task::spawn_blocking(auth::get_token)
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
+        .map_err(String::from)?
+        .ok_or_else(|| "not authenticated: no token stored".to_string())?;
+
+    // Fast path: return cached username + token
+    if let Ok(guard) = cached.0.lock()
+        && let Some(ref u) = *guard
+    {
+        return Ok((u.clone(), token));
+    }
+
+    // Slow path: validate token, cache username
+    let username = auth::validate_token(&token).await.map_err(String::from)?;
+
+    match cached.0.lock() {
+        Ok(mut guard) => *guard = Some(username.clone()),
+        Err(e) => warn!("failed to cache username (mutex poisoned): {e}"),
+    }
+
+    Ok((username, token))
+}
+
+/// Triggers an immediate GitHub data sync, bypassing the polling timer.
+///
+/// Reads the stored token and cached username in a single pass, creates
+/// a temporary [`GitHubClient`], runs `sync_dashboard`, and emits a
+/// `github:updated` event with the resulting [`DashboardStats`] payload.
+/// The frontend should listen for this event to refresh its data.
+#[tauri::command]
+pub async fn github_force_sync(
+    pool: tauri::State<'_, SqlitePool>,
+    cached: tauri::State<'_, GithubUsername>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let (username, token) = resolve_credentials(&cached).await?;
+    let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
+
+    let stats = sync_dashboard(&client, &pool, &username)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Err(e) = app_handle.emit("github:updated", &stats) {
+        warn!("failed to emit github:updated after force sync: {e}");
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,6 +372,64 @@ mod tests {
         let cached = GithubUsername(Mutex::new(Some("alice".into())));
         let result = resolve_username(&cached).await.unwrap();
         assert_eq!(result, "alice");
+    }
+
+    // -- DashboardStats IPC contract tests (T-036) --
+
+    #[test]
+    fn test_dashboard_stats_serializes_camel_case() {
+        let stats = DashboardStats {
+            pending_reviews: 3,
+            open_prs: 7,
+            open_issues: 2,
+            active_workspaces: 1,
+            unread_activity: 5,
+        };
+        let json = serde_json::to_value(&stats).unwrap();
+        assert_eq!(json["pendingReviews"], 3);
+        assert_eq!(json["openPrs"], 7);
+        assert_eq!(json["openIssues"], 2);
+        assert_eq!(json["activeWorkspaces"], 1);
+        assert_eq!(json["unreadActivity"], 5);
+    }
+
+    // -- resolve_credentials tests (T-036) --
+
+    #[tokio::test]
+    async fn test_resolve_credentials_errors_when_no_token_stored() {
+        // With an empty cache and no keychain entry, resolve_credentials
+        // should return an authentication error (no token stored).
+        // The cached-username fast path requires a real keychain fixture
+        // and is therefore not covered here.
+        let cached = GithubUsername::default();
+        let result = resolve_credentials(&cached).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not authenticated") || err.contains("token"),
+            "expected auth error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_credentials_skips_poisoned_cache() {
+        let cached = GithubUsername::default();
+        let cached_ref = &cached;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = cached_ref.0.lock().unwrap();
+            panic!("intentional poison");
+        }));
+
+        // Poisoned lock should not produce a lock error — it falls through
+        // to token validation (which fails without a keychain entry).
+        let result = resolve_credentials(&cached).await;
+        match result {
+            Ok(_) => {}
+            Err(err) => assert!(
+                !err.contains("lock error"),
+                "poisoned lock should not bubble up, got: {err}"
+            ),
+        }
     }
 
     #[tokio::test]
