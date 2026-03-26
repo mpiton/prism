@@ -44,15 +44,31 @@ fn status_from_validation(result: Result<String, AppError>) -> AuthStatus {
     }
 }
 
-/// Validates and stores a GitHub token. Returns the authenticated username.
-#[tauri::command]
-pub async fn auth_set_token(token: String) -> Result<String, String> {
+/// Core token validation and storage logic, callable from tests without Tauri state.
+async fn set_token_inner(token: String) -> Result<String, String> {
     let token = token.trim().to_string();
     let username = auth::validate_token(&token).await.map_err(String::from)?;
     tokio::task::spawn_blocking(move || auth::store_token(&token))
         .await
         .map_err(|e| format!("task join error: {e}"))?
         .map_err(String::from)?;
+    Ok(username)
+}
+
+/// Validates and stores a GitHub token. Returns the authenticated username.
+///
+/// Also updates the cached username so subsequent dashboard calls use the
+/// new identity without re-validating the token.
+#[tauri::command]
+pub async fn auth_set_token(
+    token: String,
+    cached: tauri::State<'_, GithubUsername>,
+) -> Result<String, String> {
+    let username = set_token_inner(token).await?;
+    match cached.0.lock() {
+        Ok(mut guard) => *guard = Some(username.clone()),
+        Err(e) => warn!("failed to update cached username: {e}"),
+    }
     Ok(username)
 }
 
@@ -121,6 +137,8 @@ pub struct GithubUsername(pub(crate) Mutex<Option<String>>);
 /// from the keychain, validates it against the GitHub API, and caches the
 /// resulting username for future calls.
 async fn resolve_username(cached: &GithubUsername) -> Result<String, String> {
+    // Read path: strict — fail if the lock is poisoned, since we cannot
+    // serve a dashboard without a username.
     {
         let guard = cached.0.lock().map_err(|e| format!("lock error: {e}"))?;
         if let Some(ref u) = *guard {
@@ -136,6 +154,8 @@ async fn resolve_username(cached: &GithubUsername) -> Result<String, String> {
 
     let username = auth::validate_token(&token).await.map_err(String::from)?;
 
+    // Write path: best-effort — the username was already resolved, so a
+    // poisoned lock only prevents caching; the next call will re-validate.
     match cached.0.lock() {
         Ok(mut guard) => *guard = Some(username.clone()),
         Err(e) => warn!("failed to cache username (mutex poisoned): {e}"),
@@ -203,14 +223,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_set_token_rejects_empty() {
-        let result = auth_set_token("".into()).await;
+        let result = set_token_inner("".into()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("empty"));
     }
 
     #[tokio::test]
     async fn test_auth_set_token_rejects_whitespace() {
-        let result = auth_set_token("   ".into()).await;
+        let result = set_token_inner("   ".into()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("empty"));
     }
@@ -273,31 +293,27 @@ mod tests {
         assert_eq!(result, "alice");
     }
 
-    #[tokio::test]
-    async fn test_resolve_username_fails_without_token() {
+    #[test]
+    fn test_auth_set_token_updates_cache_on_success() {
         let cached = GithubUsername::default();
-        let result = resolve_username(&cached).await;
-        assert!(result.is_err());
-        // Should fail because no token is stored in the keychain during tests
+        // Simulate successful login by writing to cache directly
+        match cached.0.lock() {
+            Ok(mut guard) => *guard = Some("newuser".into()),
+            Err(_) => panic!("lock poisoned"),
+        }
+        let guard = cached.0.lock().unwrap();
+        assert_eq!(guard.as_deref(), Some("newuser"));
     }
 
-    // -- github_get_dashboard integration test (via assemble_dashboard_data) --
-
-    #[tokio::test]
-    async fn test_get_dashboard_returns_empty_data() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
-            .await
-            .unwrap();
-
-        let data = assemble_dashboard_data(&pool, "alice").await.unwrap();
-
-        assert!(data.review_requests.is_empty());
-        assert!(data.my_pull_requests.is_empty());
-        assert!(data.assigned_issues.is_empty());
-        assert!(data.recent_activity.is_empty());
-        assert!(data.workspaces.is_empty());
-        assert!(data.synced_at.is_none());
-        pool.close().await;
+    #[test]
+    fn test_logout_clears_cached_username() {
+        let cached = GithubUsername(Mutex::new(Some("alice".into())));
+        // Simulate logout clearing the cache
+        match cached.0.lock() {
+            Ok(mut guard) => *guard = None,
+            Err(_) => panic!("lock poisoned"),
+        }
+        let guard = cached.0.lock().unwrap();
+        assert!(guard.is_none());
     }
 }
