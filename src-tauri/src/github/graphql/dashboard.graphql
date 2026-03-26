@@ -1,0 +1,91 @@
+fragment PrFields on PullRequest {
+  id
+  number
+  title
+  author { __typename login }
+  state
+  isDraft
+  url
+  createdAt
+  updatedAt
+  additions
+  deletions
+  headRefName
+  repository { nameWithOwner }
+  labels(first: 10) { nodes { name } }
+  reviewRequests(first: 10) {
+    totalCount
+    nodes {
+      requestedReviewer {
+        __typename
+        ... on User { login }
+        ... on Team { name }
+      }
+    }
+  }
+  reviews(first: 50) {
+    nodes {
+      author { __typename login }
+      state
+      createdAt
+    }
+  }
+  commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup { state }
+      }
+    }
+  }
+}
+
+fragment IssueFields on Issue {
+  id
+  number
+  title
+  author { __typename login }
+  state
+  url
+  createdAt
+  updatedAt
+  repository { nameWithOwner }
+  labels(first: 10) { nodes { name } }
+}
+
+query DashboardData(
+  $reviewQuery: String!
+  $myPrsQuery: String!
+  $issuesQuery: String!
+  $first: Int!
+) {
+  # NOTE: Pagination (after/endCursor) intentionally deferred to a future task.
+  # The schema supports `after: String` on search(); add $after variables here when needed.
+  reviewRequests: search(query: $reviewQuery, type: ISSUE, first: $first) {
+    nodes {
+      __typename
+      ... on PullRequest { ...PrFields }
+    }
+  }
+  myPullRequests: search(query: $myPrsQuery, type: ISSUE, first: $first) {
+    nodes {
+      __typename
+      ... on PullRequest { ...PrFields }
+    }
+  }
+  assignedIssues: search(query: $issuesQuery, type: ISSUE, first: $first) {
+    nodes {
+      __typename
+      ... on Issue { ...IssueFields }
+    }
+  }
+}
+
+query RecentActivity($activityQuery: String!, $first: Int!) {
+  search(query: $activityQuery, type: ISSUE, first: $first) {
+    nodes {
+      __typename
+      ... on PullRequest { ...PrFields }
+      ... on Issue { ...IssueFields }
+    }
+  }
+}
