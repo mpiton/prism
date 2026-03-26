@@ -127,11 +127,16 @@ pub(crate) const PR_COLS: &str = "id, number, title, author, state, ci_status, p
 
 /// Insert or update a pull request. On conflict (same `id`), updates all fields.
 /// Uses `RETURNING` for an atomic read-after-write.
+///
+/// Accepts any sqlx executor (pool, connection, or transaction).
 #[allow(dead_code)]
-pub async fn upsert_pull_request(
-    pool: &SqlitePool,
+pub async fn upsert_pull_request<'e, E>(
+    executor: E,
     pr: &PullRequest,
-) -> Result<PullRequest, AppError> {
+) -> Result<PullRequest, AppError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let labels_json =
         serde_json::to_string(&pr.labels).map_err(|e| AppError::Config(e.to_string()))?;
 
@@ -168,7 +173,7 @@ pub async fn upsert_pull_request(
         .bind(i64::from(pr.deletions))
         .bind(&pr.created_at)
         .bind(&pr.updated_at)
-        .fetch_one(pool)
+        .fetch_one(executor)
         .await?;
 
     PullRequest::try_from(row)

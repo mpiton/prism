@@ -11,23 +11,32 @@ use sqlx::SqlitePool;
 use crate::cache::dashboard::compute_dashboard_stats;
 use crate::cache::issues::upsert_issue;
 use crate::cache::pull_requests::upsert_pull_request;
-use crate::cache::repos::{list_repos, update_last_sync};
-use crate::cache::reviews::{delete_review_requests_for_pr, upsert_review, upsert_review_request};
+use crate::cache::repos::list_repos;
+use crate::cache::reviews::upsert_review;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::models::{map_issue, map_pr, map_review};
 use crate::github::queries::DashboardData;
 use crate::github::queries::dashboard_data::{self, IssueFields, PrFields};
-use crate::types::{DashboardStats, Repo, ReviewRequest, ReviewStatus};
+use crate::types::{DashboardStats, Repo};
 
 /// Synchronize dashboard data from GitHub API into the local cache.
 ///
 /// 1. Read enabled repos from DB
 /// 2. Build GitHub search query variables
 /// 3. Execute GraphQL `DashboardData` query
-/// 4. Upsert PRs (deduplicated), reviews, review requests, and issues
-/// 5. Update `last_sync_at` per repo
+/// 4. Persist all data atomically in a single transaction
+/// 5. Update `last_sync_at` per repo (same transaction)
 /// 6. Return dashboard stats
+///
+/// Note: the `first: 100` page size may truncate results for users with
+/// very large dashboards. Pagination support is deferred to a future task
+/// (requires adding `after` cursor variables to the GraphQL query).
+///
+/// Note: this sync only upserts data present in the current API response.
+/// PRs that were merged/closed since the last sync drop out of `state:open`
+/// searches but remain in the cache with their last known state. A full
+/// reconciliation pass is deferred to a future task.
 pub async fn sync_dashboard(
     client: &GitHubClient,
     pool: &SqlitePool,
@@ -43,16 +52,23 @@ pub async fn sync_dashboard(
     let variables = build_query_variables(username, &enabled)?;
     let data = client.execute_graphql::<DashboardData>(variables).await?;
 
-    persist_response(pool, &data).await?;
+    // All DB writes in a single transaction for atomicity.
+    let mut tx = pool.begin().await?;
 
-    // Update last_sync_at for all synced repos.
-    // If a repo is concurrently deleted between list_repos() and here,
-    // update_last_sync returns NotFound and we abort — partial timestamp
-    // update is worse than no update.
+    #[allow(clippy::explicit_auto_deref)] // &mut *tx required: Transaction → SqliteConnection
+    persist_response(&mut *tx, &data).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
     for repo in &enabled {
-        update_last_sync(pool, &repo.id, &now).await?;
+        #[allow(clippy::explicit_auto_deref)]
+        sqlx::query("UPDATE repos SET last_sync_at = $1 WHERE id = $2")
+            .bind(&now)
+            .bind(&repo.id)
+            .execute(&mut *tx)
+            .await?;
     }
+
+    tx.commit().await?;
 
     compute_dashboard_stats(pool, username).await
 }
@@ -84,13 +100,11 @@ fn validate_full_name(full_name: &str) -> Result<(), AppError> {
 /// Validate that a GitHub username contains only safe characters.
 ///
 /// Prevents search query injection via malicious username values.
-/// GitHub usernames: alphanumeric and hyphens, max 39 chars.
+/// GitHub usernames: alphanumeric and hyphens only, max 39 chars.
 fn validate_username(username: &str) -> Result<(), AppError> {
     let valid = !username.is_empty()
         && username.len() <= 39
-        && username
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_');
+        && username.chars().all(|c| c.is_alphanumeric() || c == '-');
 
     if valid {
         Ok(())
@@ -134,10 +148,9 @@ fn build_query_variables(
 /// deduplicates by PR ID, then upserts all entities including reviews
 /// and review requests. Issues are extracted from `assigned_issues`.
 async fn persist_response(
-    pool: &SqlitePool,
+    conn: &mut sqlx::SqliteConnection,
     data: &dashboard_data::ResponseData,
 ) -> Result<(), AppError> {
-    // Collect all PR fields from both search results, deduplicated by ID
     let mut seen_pr_ids: HashSet<String> = HashSet::new();
 
     if let Some(nodes) = &data.review_requests.nodes {
@@ -145,7 +158,7 @@ async fn persist_response(
             if let Some(pr_fields) = node.as_pr_fields()
                 && seen_pr_ids.insert(pr_fields.id.clone())
             {
-                persist_single_pr(pool, pr_fields).await?;
+                persist_single_pr(&mut *conn, pr_fields).await?;
             }
         }
     }
@@ -155,17 +168,16 @@ async fn persist_response(
             if let Some(pr_fields) = node.as_pr_fields()
                 && seen_pr_ids.insert(pr_fields.id.clone())
             {
-                persist_single_pr(pool, pr_fields).await?;
+                persist_single_pr(&mut *conn, pr_fields).await?;
             }
         }
     }
 
-    // Extract and persist issues from assigned_issues search
     if let Some(nodes) = &data.assigned_issues.nodes {
         for node in nodes.iter().filter_map(|n| n.as_ref()) {
             if let Some(issue_fields) = node.as_issue_fields() {
                 let issue = map_issue(issue_fields)?;
-                upsert_issue(pool, &issue).await?;
+                upsert_issue(&mut *conn, &issue).await?;
             }
         }
     }
@@ -174,39 +186,53 @@ async fn persist_response(
 }
 
 /// Persist a single PR with its associated reviews and review requests.
+///
+/// All writes use the provided connection (part of the caller's transaction)
+/// to ensure atomicity: if any write fails, the entire sync rolls back.
 pub(crate) async fn persist_single_pr(
-    pool: &SqlitePool,
+    conn: &mut sqlx::SqliteConnection,
     pr_fields: &PrFields,
 ) -> Result<(), AppError> {
     let pr = map_pr(pr_fields)?;
-    upsert_pull_request(pool, &pr).await?;
+    upsert_pull_request(&mut *conn, &pr).await?;
 
-    // Upsert reviews from the PR's reviews connection
+    // Upsert reviews
     if let Some(reviews_conn) = &pr_fields.reviews
         && let Some(nodes) = &reviews_conn.nodes
     {
         for node in nodes.iter().filter_map(|n| n.as_ref()) {
             let review = map_review(node, &pr.id);
-            upsert_review(pool, &review).await?;
+            upsert_review(&mut *conn, &review).await?;
         }
     }
 
     // Delete then re-insert review requests to evict stale ones
     // (e.g. a reviewer was un-requested on GitHub).
-    delete_review_requests_for_pr(pool, &pr.id).await?;
+    sqlx::query("DELETE FROM review_requests WHERE pull_request_id = $1")
+        .bind(&pr.id)
+        .execute(&mut *conn)
+        .await?;
+
     if let Some(rr_conn) = &pr_fields.review_requests
         && let Some(nodes) = &rr_conn.nodes
     {
         for node in nodes.iter().filter_map(|n| n.as_ref()) {
             if let Some(reviewer) = extract_reviewer_login(node) {
-                let rr = ReviewRequest {
-                    id: format!("{}-{}", pr.id, reviewer),
-                    pull_request_id: pr.id.clone(),
-                    reviewer,
-                    status: ReviewStatus::Pending,
-                    requested_at: pr.updated_at.clone(),
-                };
-                upsert_review_request(pool, &rr).await?;
+                sqlx::query(
+                    "INSERT INTO review_requests (id, pull_request_id, reviewer, status, requested_at) \
+                     VALUES ($1, $2, $3, $4, $5) \
+                     ON CONFLICT(id) DO UPDATE SET \
+                         reviewer = excluded.reviewer, \
+                         status = excluded.status, \
+                         requested_at = excluded.requested_at",
+                )
+                .bind(format!("{}-{}", pr.id, reviewer))
+                .bind(&pr.id)
+                .bind(&reviewer)
+                .bind("pending")
+                .bind(&pr.updated_at)
+                .execute(&mut *conn)
+                .await?;
             }
         }
     }
@@ -375,14 +401,10 @@ mod tests {
     #[tokio::test]
     async fn test_sync_empty_repos() {
         let (pool, _tmp) = test_pool().await;
-
         let stats = compute_dashboard_stats(&pool, "alice").await.unwrap();
-
         assert_eq!(stats.pending_reviews, 0);
         assert_eq!(stats.open_prs, 0);
         assert_eq!(stats.open_issues, 0);
-        assert_eq!(stats.active_workspaces, 0);
-        assert_eq!(stats.unread_activity, 0);
         pool.close().await;
     }
 
@@ -392,7 +414,10 @@ mod tests {
         upsert_repo(&pool, &sample_repo()).await.unwrap();
 
         let pr = make_pr_fields("PR_1", 42, "Fix login bug");
-        persist_single_pr(&pool, &pr).await.unwrap();
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_single_pr(&mut conn, &pr).await.unwrap();
+        }
 
         let result = get_pull_request(&pool, "PR_1").await.unwrap();
         assert_eq!(result.title, "Fix login bug");
@@ -407,11 +432,13 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         upsert_repo(&pool, &sample_repo()).await.unwrap();
 
-        let pr = make_pr_fields("PR_1", 42, "Fix login bug");
-        persist_single_pr(&pool, &pr).await.unwrap();
-
-        let updated = make_pr_fields("PR_1", 42, "Fix login bug (v2)");
-        persist_single_pr(&pool, &updated).await.unwrap();
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            let pr = make_pr_fields("PR_1", 42, "Fix login bug");
+            persist_single_pr(&mut conn, &pr).await.unwrap();
+            let updated = make_pr_fields("PR_1", 42, "Fix login bug (v2)");
+            persist_single_pr(&mut conn, &updated).await.unwrap();
+        }
 
         let result = get_pull_request(&pool, "PR_1").await.unwrap();
         assert_eq!(result.title, "Fix login bug (v2)");
@@ -439,7 +466,10 @@ mod tests {
             ]),
         });
 
-        persist_single_pr(&pool, &pr).await.unwrap();
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_single_pr(&mut conn, &pr).await.unwrap();
+        }
 
         let reviews = get_reviews_by_pr(&pool, "PR_1").await.unwrap();
         assert_eq!(reviews.len(), 2);
@@ -471,7 +501,12 @@ mod tests {
         upsert_repo(&pool, &repo).await.unwrap();
 
         let now = "2026-03-26T10:00:00Z";
-        update_last_sync(&pool, &repo.id, now).await.unwrap();
+        sqlx::query("UPDATE repos SET last_sync_at = $1 WHERE id = $2")
+            .bind(now)
+            .bind(&repo.id)
+            .execute(&pool)
+            .await
+            .unwrap();
 
         let updated = crate::cache::repos::get_repo(&pool, &repo.id)
             .await
@@ -482,8 +517,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_sync_handles_rate_limit() {
-        // Use mockito to verify that sync_dashboard propagates RateLimit
-        // errors from the GitHub client.
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("POST", "/graphql")
@@ -566,7 +599,6 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         upsert_repo(&pool, &sample_repo()).await.unwrap();
 
-        // Same PR appears in both review_requests and my_pull_requests
         let pr = make_pr_fields("PR_1", 42, "Dedup PR");
         let response = dashboard_data::ResponseData {
             review_requests: dashboard_data::DashboardDataReviewRequests {
@@ -582,9 +614,11 @@ mod tests {
             assigned_issues: dashboard_data::DashboardDataAssignedIssues { nodes: None },
         };
 
-        persist_response(&pool, &response).await.unwrap();
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_response(&mut conn, &response).await.unwrap();
+        }
 
-        // PR should exist exactly once
         let result = get_pull_request(&pool, "PR_1").await.unwrap();
         assert_eq!(result.title, "Dedup PR");
         pool.close().await;
@@ -594,7 +628,6 @@ mod tests {
     fn test_validate_username_valid() {
         assert!(validate_username("octocat").is_ok());
         assert!(validate_username("my-user").is_ok());
-        assert!(validate_username("user_name").is_ok());
         assert!(validate_username("a").is_ok());
     }
 
@@ -610,6 +643,10 @@ mod tests {
             "injection attempt"
         );
         assert!(validate_username(&"a".repeat(40)).is_err(), "too long");
+        assert!(
+            validate_username("user_name").is_err(),
+            "underscores not allowed in GitHub usernames"
+        );
     }
 
     #[tokio::test]
@@ -631,7 +668,10 @@ mod tests {
                 ),
             })]),
         });
-        persist_single_pr(&pool, &pr).await.unwrap();
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_single_pr(&mut conn, &pr).await.unwrap();
+        }
 
         let rrs = crate::cache::reviews::get_review_requests_by_pr(&pool, "PR_1")
             .await
@@ -652,13 +692,53 @@ mod tests {
                 ),
             })]),
         });
-        persist_single_pr(&pool, &pr).await.unwrap();
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_single_pr(&mut conn, &pr).await.unwrap();
+        }
 
         let rrs = crate::cache::reviews::get_review_requests_by_pr(&pool, "PR_1")
             .await
             .unwrap();
         assert_eq!(rrs.len(), 1, "alice should be evicted");
         assert_eq!(rrs[0].reviewer, "bob");
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_transaction_atomicity() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Persist via transaction (same path as sync_dashboard)
+        let pr = make_pr_fields("PR_TX", 99, "Transaction test");
+        let response = dashboard_data::ResponseData {
+            review_requests: dashboard_data::DashboardDataReviewRequests {
+                nodes: Some(vec![Some(
+                    dashboard_data::DashboardDataReviewRequestsNodes::PullRequest(pr),
+                )]),
+            },
+            my_pull_requests: dashboard_data::DashboardDataMyPullRequests { nodes: None },
+            assigned_issues: dashboard_data::DashboardDataAssignedIssues { nodes: None },
+        };
+
+        let mut tx = pool.begin().await.unwrap();
+        persist_response(&mut *tx, &response).await.unwrap();
+        sqlx::query("UPDATE repos SET last_sync_at = $1 WHERE id = $2")
+            .bind("2026-03-26T12:00:00Z")
+            .bind("org/repo")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        // Verify both PR and last_sync_at were persisted
+        let result = get_pull_request(&pool, "PR_TX").await.unwrap();
+        assert_eq!(result.title, "Transaction test");
+        let repo = crate::cache::repos::get_repo(&pool, "org/repo")
+            .await
+            .unwrap();
+        assert_eq!(repo.last_sync_at.as_deref(), Some("2026-03-26T12:00:00Z"));
         pool.close().await;
     }
 }

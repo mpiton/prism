@@ -203,8 +203,13 @@ pub async fn delete_review_requests_for_pr(
 
 /// Insert or update a review. On conflict (same `id`), updates all fields.
 /// Uses `RETURNING` for an atomic read-after-write.
+///
+/// Accepts any sqlx executor (pool, connection, or transaction).
 #[allow(dead_code)]
-pub async fn upsert_review(pool: &SqlitePool, review: &Review) -> Result<Review, AppError> {
+pub async fn upsert_review<'e, E>(executor: E, review: &Review) -> Result<Review, AppError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let sql = format!(
         "INSERT INTO reviews (id, pull_request_id, reviewer, status, body, submitted_at)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -223,7 +228,7 @@ pub async fn upsert_review(pool: &SqlitePool, review: &Review) -> Result<Review,
         .bind(review_status_to_str(&review.status))
         .bind(&review.body)
         .bind(&review.submitted_at)
-        .fetch_one(pool)
+        .fetch_one(executor)
         .await?;
 
     Review::try_from(row)

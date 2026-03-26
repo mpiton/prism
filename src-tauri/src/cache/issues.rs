@@ -84,8 +84,13 @@ const ISSUE_COLS: &str =
 
 /// Insert or update an issue. On conflict (same `id`), updates all fields
 /// except `created_at`. Uses `RETURNING` for an atomic read-after-write.
+///
+/// Accepts any sqlx executor (pool, connection, or transaction).
 #[allow(dead_code)]
-pub async fn upsert_issue(pool: &SqlitePool, issue: &Issue) -> Result<Issue, AppError> {
+pub async fn upsert_issue<'e, E>(executor: E, issue: &Issue) -> Result<Issue, AppError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let labels_json =
         serde_json::to_string(&issue.labels).map_err(|e| AppError::Config(e.to_string()))?;
 
@@ -117,7 +122,7 @@ pub async fn upsert_issue(pool: &SqlitePool, issue: &Issue) -> Result<Issue, App
         .bind(&labels_json)
         .bind(&issue.created_at)
         .bind(&issue.updated_at)
-        .fetch_one(pool)
+        .fetch_one(executor)
         .await?;
 
     Issue::try_from(row)
