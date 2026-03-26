@@ -112,16 +112,21 @@ pub async fn auth_get_status() -> Result<AuthStatus, String> {
 }
 
 /// Deletes the stored GitHub token and clears the cached username (logout).
+///
+/// Credential deletion runs first; the cache is only cleared after the
+/// token is confirmed removed, avoiding an inconsistent state where the
+/// cache is empty but the credential still exists.
 #[tauri::command]
 pub async fn auth_logout(cached: tauri::State<'_, GithubUsername>) -> Result<(), String> {
+    tokio::task::spawn_blocking(auth::delete_token)
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
+        .map_err(String::from)?;
     match cached.0.lock() {
         Ok(mut guard) => *guard = None,
         Err(e) => warn!("failed to clear cached username (mutex poisoned): {e}"),
     }
-    tokio::task::spawn_blocking(auth::delete_token)
-        .await
-        .map_err(|e| format!("task join error: {e}"))?
-        .map_err(String::from)
+    Ok(())
 }
 
 /// Cached GitHub username, populated on first dashboard access.
@@ -137,13 +142,13 @@ pub struct GithubUsername(pub(crate) Mutex<Option<String>>);
 /// from the keychain, validates it against the GitHub API, and caches the
 /// resulting username for future calls.
 async fn resolve_username(cached: &GithubUsername) -> Result<String, String> {
-    // Read path: strict — fail if the lock is poisoned, since we cannot
-    // serve a dashboard without a username.
+    // Read path: best-effort — if the lock is poisoned, skip the cache
+    // and fall through to token re-validation rather than breaking the
+    // dashboard permanently.
+    if let Ok(guard) = cached.0.lock()
+        && let Some(ref u) = *guard
     {
-        let guard = cached.0.lock().map_err(|e| format!("lock error: {e}"))?;
-        if let Some(ref u) = *guard {
-            return Ok(u.clone());
-        }
+        return Ok(u.clone());
     }
 
     let token = tokio::task::spawn_blocking(auth::get_token)
@@ -293,27 +298,28 @@ mod tests {
         assert_eq!(result, "alice");
     }
 
-    #[test]
-    fn test_auth_set_token_updates_cache_on_success() {
+    #[tokio::test]
+    async fn test_resolve_username_skips_poisoned_cache() {
+        // A poisoned lock must not permanently break the dashboard;
+        // resolve_username should fall through to token validation.
         let cached = GithubUsername::default();
-        // Simulate successful login by writing to cache directly
-        match cached.0.lock() {
-            Ok(mut guard) => *guard = Some("newuser".into()),
-            Err(_) => panic!("lock poisoned"),
-        }
-        let guard = cached.0.lock().unwrap();
-        assert_eq!(guard.as_deref(), Some("newuser"));
-    }
 
-    #[test]
-    fn test_logout_clears_cached_username() {
-        let cached = GithubUsername(Mutex::new(Some("alice".into())));
-        // Simulate logout clearing the cache
-        match cached.0.lock() {
-            Ok(mut guard) => *guard = None,
-            Err(_) => panic!("lock poisoned"),
-        }
-        let guard = cached.0.lock().unwrap();
-        assert!(guard.is_none());
+        // Poison the lock by panicking inside a thread that holds it.
+        let cached_ref = &cached;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = cached_ref.0.lock().unwrap();
+            panic!("intentional poison");
+        }));
+
+        // Lock is now poisoned — resolve_username should NOT return
+        // a lock error; it should skip the cache and try token validation,
+        // which will fail with "no token stored" in test environments.
+        let result = resolve_username(&cached).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            !err.contains("lock error"),
+            "poisoned lock should not bubble up as lock error, got: {err}"
+        );
     }
 }
