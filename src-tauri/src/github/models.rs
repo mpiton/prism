@@ -12,14 +12,20 @@ use crate::github::queries::dashboard_data::{
 use crate::types::{CiStatus, PrState, Priority, PullRequest, ReviewStatus};
 
 /// Maps a GraphQL `PullRequestState` + `isDraft` to a `PRism` `PrState`.
+///
+/// Draft is only applied to `OPEN` PRs — closed/merged PRs retain their
+/// terminal state even if `isDraft` is still true on the GitHub side.
 pub fn map_pr_state(state: &PullRequestState, is_draft: bool) -> PrState {
-    if is_draft {
-        return PrState::Draft;
-    }
     match state {
         PullRequestState::CLOSED => PrState::Closed,
         PullRequestState::MERGED => PrState::Merged,
-        PullRequestState::OPEN | PullRequestState::Other(_) => PrState::Open,
+        PullRequestState::OPEN | PullRequestState::Other(_) => {
+            if is_draft {
+                PrState::Draft
+            } else {
+                PrState::Open
+            }
+        }
     }
 }
 
@@ -121,9 +127,9 @@ pub fn map_review_status(state: &PullRequestReviewState) -> ReviewStatus {
 
 /// Maps a GraphQL `PrFieldsReviewsNodes` to a `PRism` `Review`.
 ///
-/// Note: The review `id` is a synthetic composite of `pull_request_id` and `created_at`.
-/// This can collide if two reviews on the same PR share a timestamp. A future improvement
-/// should add the `id` field to the GraphQL fragment and use the stable GitHub node ID.
+/// Uses the stable GitHub node ID for the review `id`.
+/// `submitted_at` uses the GraphQL `submittedAt` field (when the reviewer
+/// clicked "Submit"), falling back to `createdAt` if null (draft reviews).
 pub fn map_review(
     review: &dashboard_data::PrFieldsReviewsNodes,
     pull_request_id: &str,
@@ -133,13 +139,19 @@ pub fn map_review(
         .as_ref()
         .map_or_else(|| "ghost".to_string(), |a| a.login.clone());
 
+    let submitted_at = review
+        .submitted_at
+        .as_deref()
+        .unwrap_or(&review.created_at)
+        .to_string();
+
     crate::types::Review {
-        id: format!("{}-{}", pull_request_id, review.created_at),
+        id: review.id.clone(),
         pull_request_id: pull_request_id.to_string(),
         reviewer,
         status: map_review_status(&review.state),
         body: None,
-        submitted_at: review.created_at.clone(),
+        submitted_at,
     }
 }
 
@@ -391,6 +403,28 @@ mod tests {
     }
 
     #[test]
+    fn test_map_pr_closed_draft_is_closed_not_draft() {
+        let pr = make_pr_fields(PrFieldsOverrides {
+            state: Some(PullRequestState::CLOSED),
+            is_draft: Some(true),
+            ..Default::default()
+        });
+        let result = map_pr(&pr).unwrap();
+        assert_eq!(result.state, PrState::Closed);
+    }
+
+    #[test]
+    fn test_map_pr_merged_draft_is_merged_not_draft() {
+        let pr = make_pr_fields(PrFieldsOverrides {
+            state: Some(PullRequestState::MERGED),
+            is_draft: Some(true),
+            ..Default::default()
+        });
+        let result = map_pr(&pr).unwrap();
+        assert_eq!(result.state, PrState::Merged);
+    }
+
+    #[test]
     fn test_map_pr_null_fields() {
         let mut pr = make_pr_fields(PrFieldsOverrides::default());
         pr.author = None;
@@ -439,30 +473,35 @@ mod tests {
     #[test]
     fn test_map_review_approved() {
         let review_node = PrFieldsReviewsNodes {
+            id: "PRR_abc123".to_string(),
             author: Some(PrFieldsReviewsNodesAuthor {
                 login: "reviewer1".to_string(),
                 on: PrFieldsReviewsNodesAuthorOn::User,
             }),
             state: PullRequestReviewState::APPROVED,
             created_at: "2026-03-01T14:00:00Z".to_string(),
+            submitted_at: Some("2026-03-01T14:05:00Z".to_string()),
         };
         let result = map_review(&review_node, "PR_123");
 
+        assert_eq!(result.id, "PRR_abc123");
         assert_eq!(result.reviewer, "reviewer1");
         assert_eq!(result.status, ReviewStatus::Approved);
         assert_eq!(result.pull_request_id, "PR_123");
-        assert_eq!(result.submitted_at, "2026-03-01T14:00:00Z");
+        assert_eq!(result.submitted_at, "2026-03-01T14:05:00Z");
     }
 
     #[test]
     fn test_map_review_changes_requested() {
         let review_node = PrFieldsReviewsNodes {
+            id: "PRR_def456".to_string(),
             author: Some(PrFieldsReviewsNodesAuthor {
                 login: "reviewer2".to_string(),
                 on: PrFieldsReviewsNodesAuthorOn::User,
             }),
             state: PullRequestReviewState::CHANGES_REQUESTED,
             created_at: "2026-03-01T15:00:00Z".to_string(),
+            submitted_at: Some("2026-03-01T15:00:00Z".to_string()),
         };
         let result = map_review(&review_node, "PR_456");
 
@@ -473,12 +512,14 @@ mod tests {
     #[test]
     fn test_map_review_commented() {
         let review_node = PrFieldsReviewsNodes {
+            id: "PRR_ghi789".to_string(),
             author: Some(PrFieldsReviewsNodesAuthor {
                 login: "commenter".to_string(),
                 on: PrFieldsReviewsNodesAuthorOn::User,
             }),
             state: PullRequestReviewState::COMMENTED,
             created_at: "2026-03-01T16:00:00Z".to_string(),
+            submitted_at: None,
         };
         let result = map_review(&review_node, "PR_789");
         assert_eq!(result.status, ReviewStatus::Commented);
@@ -487,15 +528,43 @@ mod tests {
     #[test]
     fn test_map_review_dismissed() {
         let review_node = PrFieldsReviewsNodes {
+            id: "PRR_jkl101".to_string(),
             author: Some(PrFieldsReviewsNodesAuthor {
                 login: "dismisser".to_string(),
                 on: PrFieldsReviewsNodesAuthorOn::User,
             }),
             state: PullRequestReviewState::DISMISSED,
             created_at: "2026-03-01T17:00:00Z".to_string(),
+            submitted_at: Some("2026-03-01T17:00:00Z".to_string()),
         };
         let result = map_review(&review_node, "PR_101");
         assert_eq!(result.status, ReviewStatus::Dismissed);
+    }
+
+    #[test]
+    fn test_map_review_null_author_returns_ghost() {
+        let review_node = PrFieldsReviewsNodes {
+            id: "PRR_ghost".to_string(),
+            author: None,
+            state: PullRequestReviewState::APPROVED,
+            created_at: "2026-03-01T14:00:00Z".to_string(),
+            submitted_at: Some("2026-03-01T14:00:00Z".to_string()),
+        };
+        let result = map_review(&review_node, "PR_123");
+        assert_eq!(result.reviewer, "ghost");
+    }
+
+    #[test]
+    fn test_map_review_submitted_at_falls_back_to_created_at() {
+        let review_node = PrFieldsReviewsNodes {
+            id: "PRR_fallback".to_string(),
+            author: None,
+            state: PullRequestReviewState::PENDING,
+            created_at: "2026-03-01T10:00:00Z".to_string(),
+            submitted_at: None,
+        };
+        let result = map_review(&review_node, "PR_999");
+        assert_eq!(result.submitted_at, "2026-03-01T10:00:00Z");
     }
 
     // ── Issue mapping tests ──────────────────────────────────────

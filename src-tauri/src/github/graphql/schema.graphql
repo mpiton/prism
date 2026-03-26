@@ -193,6 +193,7 @@ type PullRequestReview implements Node {
   author: Actor
   state: PullRequestReviewState!
   createdAt: DateTime!
+  submittedAt: DateTime
 }
 
 # ── CI / Status ───────────────────────────────────────────────────
