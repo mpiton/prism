@@ -1,5 +1,8 @@
-# Minimal GitHub GraphQL schema for PRism queries.
+# Minimal GitHub GraphQL schema subset for PRism queries.
 # Covers only the types used by dashboard.graphql and pull_request_detail.graphql.
+# This is NOT the full GitHub schema — members like ISSUE_ADVANCED (SearchType) and
+# App/MarketplaceListing (SearchResultItem) are intentionally omitted.
+# If queries grow, consider replacing with a full introspection snapshot.
 
 scalar DateTime
 scalar URI

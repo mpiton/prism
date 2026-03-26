@@ -23,7 +23,7 @@ fragment PrFields on PullRequest {
       }
     }
   }
-  reviews(first: 20) {
+  reviews(first: 50) {
     nodes {
       author { __typename login }
       state
@@ -58,26 +58,25 @@ query DashboardData(
   $issuesQuery: String!
   $first: Int!
 ) {
+  # NOTE: Pagination (after/endCursor) intentionally deferred to a future task.
+  # The schema supports `after: String` on search(); add $after variables here when needed.
   reviewRequests: search(query: $reviewQuery, type: ISSUE, first: $first) {
     nodes {
       __typename
       ... on PullRequest { ...PrFields }
     }
-    pageInfo { endCursor hasNextPage }
   }
   myPullRequests: search(query: $myPrsQuery, type: ISSUE, first: $first) {
     nodes {
       __typename
       ... on PullRequest { ...PrFields }
     }
-    pageInfo { endCursor hasNextPage }
   }
   assignedIssues: search(query: $issuesQuery, type: ISSUE, first: $first) {
     nodes {
       __typename
       ... on Issue { ...IssueFields }
     }
-    pageInfo { endCursor hasNextPage }
   }
 }
 
@@ -88,6 +87,5 @@ query RecentActivity($activityQuery: String!, $first: Int!) {
       ... on PullRequest { ...PrFields }
       ... on Issue { ...IssueFields }
     }
-    pageInfo { endCursor hasNextPage }
   }
 }
