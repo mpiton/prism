@@ -73,7 +73,6 @@ pub async fn upsert_repo(pool: &SqlitePool, repo: &Repo) -> Result<Repo, AppErro
 }
 
 /// Return all repos ordered by `full_name`.
-#[allow(dead_code)]
 pub async fn list_repos(pool: &SqlitePool) -> Result<Vec<Repo>, AppError> {
     let sql = format!("SELECT {REPO_COLS} FROM repos ORDER BY full_name");
     let rows: Vec<RepoRow> = sqlx::query_as(&sql).fetch_all(pool).await?;
@@ -93,7 +92,6 @@ pub async fn get_repo(pool: &SqlitePool, id: &str) -> Result<Repo, AppError> {
 
 /// Toggle a repo's `enabled` flag and return the updated repo.
 /// Uses `RETURNING` for an atomic read-after-write.
-#[allow(dead_code)]
 pub async fn toggle_repo(pool: &SqlitePool, id: &str, enabled: bool) -> Result<Repo, AppError> {
     let sql = format!("UPDATE repos SET enabled = $1 WHERE id = $2 RETURNING {REPO_COLS}");
     let row: Option<RepoRow> = sqlx::query_as(&sql)
@@ -108,7 +106,6 @@ pub async fn toggle_repo(pool: &SqlitePool, id: &str, enabled: bool) -> Result<R
 
 /// Set or clear the local clone path for a repo.
 /// Uses `RETURNING` for an atomic read-after-write.
-#[allow(dead_code)]
 pub async fn set_local_path(
     pool: &SqlitePool,
     id: &str,

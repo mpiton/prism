@@ -6,11 +6,12 @@ use sqlx::SqlitePool;
 use tauri::Emitter;
 
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
+use crate::cache::repos::{list_repos, set_local_path, toggle_repo};
 use crate::cache::sync::sync_dashboard;
 use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
-use crate::types::{DashboardData, DashboardStats};
+use crate::types::{DashboardData, DashboardStats, Repo};
 
 /// Authentication status returned by [`auth_get_status`].
 #[derive(Debug, Serialize)]
@@ -261,6 +262,44 @@ pub async fn github_force_sync(
     Ok(())
 }
 
+/// Returns all repos ordered by `full_name` (query).
+#[tauri::command]
+pub async fn repos_list(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<Repo>, String> {
+    list_repos(&pool).await.map_err(|e| e.to_string())
+}
+
+/// Toggles a repo's `enabled` flag and returns the updated repo (command).
+///
+/// Tauri 2 renames `repo_id` → `repoId` and `enabled` → `enabled` for the
+/// JS caller. The frontend invokes this as `{ repoId, enabled }`.
+#[tauri::command]
+pub async fn repos_toggle(
+    pool: tauri::State<'_, SqlitePool>,
+    repo_id: String,
+    enabled: bool,
+) -> Result<Repo, String> {
+    toggle_repo(&pool, &repo_id, enabled)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Sets or clears the local clone path for a repo (command).
+///
+/// Tauri 2 renames `repo_id` → `repoId` for the JS caller.
+/// Pass `path: null` from the frontend to clear the local path.
+/// Callers are expected to supply a canonical absolute path; validation
+/// will be enforced when workspace features consume this value.
+#[tauri::command]
+pub async fn repos_set_local_path(
+    pool: tauri::State<'_, SqlitePool>,
+    repo_id: String,
+    path: Option<String>,
+) -> Result<Repo, String> {
+    set_local_path(&pool, &repo_id, path.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,6 +469,67 @@ mod tests {
                 "poisoned lock should not bubble up, got: {err}"
             ),
         }
+    }
+
+    // -- Repo IPC contract tests (T-037) --
+
+    #[test]
+    fn test_repo_serializes_camel_case() {
+        let repo = crate::types::Repo {
+            id: "r-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: Some("/home/user/prism".into()),
+            last_sync_at: None,
+        };
+        let json = serde_json::to_value(&repo).unwrap();
+        assert_eq!(json["id"], "r-1");
+        assert_eq!(json["fullName"], "mpiton/prism");
+        assert_eq!(json["defaultBranch"], "main");
+        assert_eq!(json["isArchived"], false);
+        assert_eq!(json["localPath"], "/home/user/prism");
+        assert!(json["lastSyncAt"].is_null());
+    }
+
+    #[test]
+    fn test_repo_list_serializes_as_array() {
+        let repos = vec![
+            crate::types::Repo {
+                id: "r-1".into(),
+                org: "mpiton".into(),
+                name: "alpha".into(),
+                full_name: "mpiton/alpha".into(),
+                url: "https://github.com/mpiton/alpha".into(),
+                default_branch: "main".into(),
+                is_archived: false,
+                enabled: true,
+                local_path: None,
+                last_sync_at: None,
+            },
+            crate::types::Repo {
+                id: "r-2".into(),
+                org: "mpiton".into(),
+                name: "beta".into(),
+                full_name: "mpiton/beta".into(),
+                url: "https://github.com/mpiton/beta".into(),
+                default_branch: "develop".into(),
+                is_archived: true,
+                enabled: false,
+                local_path: None,
+                last_sync_at: Some("2026-03-26T10:00:00Z".into()),
+            },
+        ];
+        let json = serde_json::to_value(&repos).unwrap();
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["fullName"], "mpiton/alpha");
+        assert_eq!(arr[1]["isArchived"], true);
+        assert_eq!(arr[1]["lastSyncAt"], "2026-03-26T10:00:00Z");
     }
 
     #[tokio::test]
