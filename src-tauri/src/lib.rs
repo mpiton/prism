@@ -39,6 +39,8 @@ pub fn run() {
             commands::auth_get_status,
             commands::auth_logout,
             commands::github_get_dashboard,
+            commands::github_get_stats,
+            commands::github_force_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
