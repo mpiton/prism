@@ -109,6 +109,18 @@ pub fn map_pr(pr: &PrFields) -> Result<PullRequest, AppError> {
         repo_id: pr.repository.name_with_owner.clone(),
         url: pr.url.clone(),
         labels,
+        additions: u32::try_from(pr.additions).map_err(|_| {
+            AppError::GitHub(format!(
+                "invalid additions for PR '{}': {}",
+                pr.id, pr.additions
+            ))
+        })?,
+        deletions: u32::try_from(pr.deletions).map_err(|_| {
+            AppError::GitHub(format!(
+                "invalid deletions for PR '{}': {}",
+                pr.id, pr.deletions
+            ))
+        })?,
         created_at: pr.created_at.clone(),
         updated_at: pr.updated_at.clone(),
     })
@@ -650,5 +662,31 @@ mod tests {
     fn test_map_ci_status_null() {
         let result = map_ci_status(None);
         assert_eq!(result, CiStatus::Pending);
+    }
+
+    #[test]
+    fn test_map_pr_negative_additions_returns_error() {
+        let pr = make_pr_fields(PrFieldsOverrides {
+            additions: Some(-1),
+            ..Default::default()
+        });
+        let err = map_pr(&pr).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid additions"),
+            "expected 'invalid additions' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_map_pr_negative_deletions_returns_error() {
+        let pr = make_pr_fields(PrFieldsOverrides {
+            deletions: Some(-1),
+            ..Default::default()
+        });
+        let err = map_pr(&pr).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid deletions"),
+            "expected 'invalid deletions' error, got: {err}"
+        );
     }
 }
