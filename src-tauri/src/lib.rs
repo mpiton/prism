@@ -20,6 +20,11 @@ pub fn run() {
             }
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            commands::auth_set_token,
+            commands::auth_get_status,
+            commands::auth_logout,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
