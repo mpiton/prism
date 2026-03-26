@@ -100,7 +100,7 @@ describe("AuthSetup", () => {
       expect(screen.getByLabelText(/token/i)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/token/i), "ghp_validtoken123");
+    await user.type(screen.getByLabelText(/token/i), "  ghp_validtoken123  ");
     await user.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
