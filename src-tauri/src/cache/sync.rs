@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 use sqlx::SqlitePool;
 
+use crate::cache::activity::upsert_activity;
 use crate::cache::dashboard::compute_dashboard_stats;
 use crate::cache::issues::upsert_issue;
 use crate::cache::pull_requests::upsert_pull_request;
@@ -16,9 +17,10 @@ use crate::cache::reviews::upsert_review;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::models::{map_issue, map_pr, map_review};
-use crate::github::queries::DashboardData;
 use crate::github::queries::dashboard_data::{self, IssueFields, PrFields};
-use crate::types::{DashboardStats, Repo};
+use crate::github::queries::recent_activity;
+use crate::github::queries::{DashboardData, RecentActivity};
+use crate::types::{Activity, ActivityType, DashboardStats, Repo};
 
 /// Synchronize dashboard data from GitHub API into the local cache.
 ///
@@ -290,6 +292,157 @@ impl AsIssueFields for dashboard_data::DashboardDataAssignedIssuesNodes {
             _ => None,
         }
     }
+}
+
+// ── Activity sync (T-033) ──────────────────────────────────────
+
+/// Validate that a `since` value contains only ISO 8601 safe characters.
+///
+/// Prevents search query injection via malicious `since` values.
+/// Accepts date (`2026-03-01`) or datetime (`2026-03-01T10:00:00Z`),
+/// including timezone offsets (`+05:30`) and fractional seconds (`.123`).
+fn validate_since(since: &str) -> Result<(), AppError> {
+    let bytes = since.as_bytes();
+    let valid = since.len() >= 10
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && since
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | ':' | 'T' | 'Z' | '+' | '.'));
+
+    if valid {
+        Ok(())
+    } else {
+        Err(AppError::Config(format!("invalid since value: {since}")))
+    }
+}
+
+/// Synchronize recent activity from GitHub API into the local cache.
+///
+/// 1. Build search query: `involves:{username} updated:>{since}`
+/// 2. Execute GraphQL `RecentActivity` query
+/// 3. Map PR and Issue nodes to `Activity` items
+/// 4. Deduplicate by ID in memory
+/// 5. Insert new items (skip already-known IDs via `INSERT OR IGNORE`)
+/// 6. Return the count of newly inserted activities
+///
+/// Note: `pull_request_id` and `issue_id` FK fields on `Activity` are left
+/// `None` because the referenced entities may not exist in the local cache
+/// (e.g. mentions from repos not tracked by `sync_dashboard`). The entity
+/// node ID is embedded in the deterministic `activity.id` for traceability.
+pub async fn sync_activity(
+    client: &GitHubClient,
+    pool: &SqlitePool,
+    username: &str,
+    since: &str,
+) -> Result<u32, AppError> {
+    validate_username(username)?;
+    validate_since(since)?;
+
+    let variables = recent_activity::Variables {
+        activity_query: format!("involves:{username} updated:>{since}"),
+        first: 100,
+    };
+
+    let data = client.execute_graphql::<RecentActivity>(variables).await?;
+
+    let activities = map_activity_nodes(&data);
+    let inserted = persist_activity_batch(pool, &activities).await?;
+
+    Ok(inserted)
+}
+
+/// Map all search nodes from a `RecentActivity` response to `Activity` items.
+///
+/// Skips unrecognized node types (e.g. future GitHub schema additions).
+/// Activity type is derived from the item state (open/merged/closed).
+/// The activity ID is deterministic and state-specific:
+/// `activity-{pr|issue}-{node_id}-{state}` so that state transitions
+/// (e.g. open → merged) produce distinct records in the activity feed.
+fn map_activity_nodes(data: &recent_activity::ResponseData) -> Vec<Activity> {
+    let mut activities = Vec::new();
+
+    let Some(nodes) = &data.search.nodes else {
+        return activities;
+    };
+
+    for node in nodes.iter().filter_map(|n| n.as_ref()) {
+        match node {
+            recent_activity::RecentActivitySearchNodes::PullRequest(pr) => {
+                let (activity_type, state_tag) = match &pr.state {
+                    recent_activity::PullRequestState::MERGED => (ActivityType::PrMerged, "merged"),
+                    recent_activity::PullRequestState::CLOSED => (ActivityType::PrClosed, "closed"),
+                    _ => (ActivityType::PrOpened, "open"),
+                };
+                let actor = pr
+                    .author
+                    .as_ref()
+                    .map_or_else(|| "ghost".to_string(), |a| a.login.clone());
+
+                activities.push(Activity {
+                    id: format!("activity-pr-{}-{state_tag}", pr.id),
+                    activity_type,
+                    actor,
+                    repo_id: pr.repository.name_with_owner.clone(),
+                    pull_request_id: None,
+                    issue_id: None,
+                    message: format!("PR #{}: {}", pr.number, pr.title),
+                    created_at: pr.updated_at.clone(),
+                });
+            }
+            recent_activity::RecentActivitySearchNodes::Issue(issue) => {
+                let (activity_type, state_tag) = match &issue.state {
+                    recent_activity::IssueState::CLOSED => (ActivityType::IssueClosed, "closed"),
+                    _ => (ActivityType::IssueOpened, "open"),
+                };
+                let actor = issue
+                    .author
+                    .as_ref()
+                    .map_or_else(|| "ghost".to_string(), |a| a.login.clone());
+
+                activities.push(Activity {
+                    id: format!("activity-issue-{}-{state_tag}", issue.id),
+                    activity_type,
+                    actor,
+                    repo_id: issue.repository.name_with_owner.clone(),
+                    pull_request_id: None,
+                    issue_id: None,
+                    message: format!("Issue #{}: {}", issue.number, issue.title),
+                    created_at: issue.updated_at.clone(),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    activities
+}
+
+/// Persist a batch of `Activity` items, deduplicating by ID.
+///
+/// Uses a single transaction for atomicity and performance.
+/// In-memory dedup via `HashSet` prevents redundant SQL round-trips
+/// when the same node appears multiple times in the API response.
+/// `INSERT OR IGNORE` skips activities already in the database.
+///
+/// Returns the count of newly inserted rows.
+async fn persist_activity_batch(
+    pool: &SqlitePool,
+    activities: &[Activity],
+) -> Result<u32, AppError> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut inserted: u32 = 0;
+    let mut tx = pool.begin().await?;
+
+    for activity in activities {
+        #[allow(clippy::explicit_auto_deref)]
+        if seen.insert(activity.id.clone()) && upsert_activity(&mut *tx, activity).await? {
+            inserted += 1;
+        }
+    }
+
+    tx.commit().await?;
+    Ok(inserted)
 }
 
 #[cfg(test)]
@@ -736,5 +889,257 @@ mod tests {
             .unwrap();
         assert_eq!(repo.last_sync_at.as_deref(), Some("2026-03-26T12:00:00Z"));
         pool.close().await;
+    }
+
+    // ── Activity sync tests (T-033) ──────────────────────────────
+
+    fn make_activity_pr_node(
+        id: &str,
+        number: i64,
+        title: &str,
+        state: recent_activity::PullRequestState,
+    ) -> recent_activity::RecentActivitySearchNodes {
+        recent_activity::RecentActivitySearchNodes::PullRequest(recent_activity::PrFields {
+            id: id.to_string(),
+            number,
+            title: title.to_string(),
+            author: Some(recent_activity::PrFieldsAuthor {
+                login: "octocat".to_string(),
+                on: recent_activity::PrFieldsAuthorOn::User,
+            }),
+            state,
+            is_draft: false,
+            url: format!("https://github.com/org/repo/pull/{number}"),
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-25T15:00:00Z".to_string(),
+            additions: 10,
+            deletions: 5,
+            head_ref_name: "fix/something".to_string(),
+            repository: recent_activity::PrFieldsRepository {
+                name_with_owner: "org/repo".to_string(),
+            },
+            labels: None,
+            review_requests: None,
+            reviews: None,
+            commits: None,
+        })
+    }
+
+    fn make_activity_issue_node(
+        id: &str,
+        number: i64,
+        title: &str,
+        state: recent_activity::IssueState,
+    ) -> recent_activity::RecentActivitySearchNodes {
+        recent_activity::RecentActivitySearchNodes::Issue(recent_activity::IssueFields {
+            id: id.to_string(),
+            number,
+            title: title.to_string(),
+            author: Some(recent_activity::IssueFieldsAuthor {
+                login: "alice".to_string(),
+                on: recent_activity::IssueFieldsAuthorOn::User,
+            }),
+            state,
+            url: format!("https://github.com/org/repo/issues/{number}"),
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-25T16:00:00Z".to_string(),
+            repository: recent_activity::IssueFieldsRepository {
+                name_with_owner: "org/repo".to_string(),
+            },
+            labels: None,
+        })
+    }
+
+    fn make_activity_response(
+        nodes: Vec<recent_activity::RecentActivitySearchNodes>,
+    ) -> recent_activity::ResponseData {
+        recent_activity::ResponseData {
+            search: recent_activity::RecentActivitySearch {
+                nodes: Some(nodes.into_iter().map(Some).collect()),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sync_activity_inserts_mentions() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let response = make_activity_response(vec![
+            make_activity_pr_node(
+                "PR_A",
+                10,
+                "Fix auth",
+                recent_activity::PullRequestState::OPEN,
+            ),
+            make_activity_issue_node(
+                "ISSUE_B",
+                20,
+                "Bug in login",
+                recent_activity::IssueState::OPEN,
+            ),
+        ]);
+
+        let activities = map_activity_nodes(&response);
+        assert_eq!(activities.len(), 2);
+
+        let inserted = persist_activity_batch(&pool, &activities).await.unwrap();
+        assert_eq!(inserted, 2);
+
+        // Verify the PR activity (state-specific ID: open)
+        let pr_act = crate::cache::activity::get_activity_by_id(&pool, "activity-pr-PR_A-open")
+            .await
+            .unwrap()
+            .expect("PR activity should exist");
+        assert_eq!(pr_act.activity_type, ActivityType::PrOpened);
+        assert_eq!(pr_act.actor, "octocat");
+        assert_eq!(pr_act.repo_id, "org/repo");
+        assert_eq!(pr_act.pull_request_id, None);
+        assert!(pr_act.message.contains("PR #10"));
+
+        // Verify the Issue activity (state-specific ID: open)
+        let issue_act =
+            crate::cache::activity::get_activity_by_id(&pool, "activity-issue-ISSUE_B-open")
+                .await
+                .unwrap()
+                .expect("Issue activity should exist");
+        assert_eq!(issue_act.activity_type, ActivityType::IssueOpened);
+        assert_eq!(issue_act.actor, "alice");
+        assert_eq!(issue_act.issue_id, None);
+        assert!(issue_act.message.contains("Issue #20"));
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_activity_dedup() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Same PR appears twice in the response (can happen with search queries)
+        let response = make_activity_response(vec![
+            make_activity_pr_node(
+                "PR_DUP",
+                42,
+                "Same PR",
+                recent_activity::PullRequestState::OPEN,
+            ),
+            make_activity_pr_node(
+                "PR_DUP",
+                42,
+                "Same PR",
+                recent_activity::PullRequestState::OPEN,
+            ),
+        ]);
+
+        let activities = map_activity_nodes(&response);
+        // Both map to the same activity-pr-PR_DUP-open ID
+        assert_eq!(activities.len(), 2);
+
+        // persist_activity_batch deduplicates by ID
+        let inserted = persist_activity_batch(&pool, &activities).await.unwrap();
+        assert_eq!(inserted, 1, "duplicate should be skipped");
+
+        // Second call: already in DB, INSERT OR IGNORE skips
+        let inserted_again = persist_activity_batch(&pool, &activities).await.unwrap();
+        assert_eq!(
+            inserted_again, 0,
+            "already-persisted items should be skipped"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_activity_empty() {
+        let (pool, _tmp) = test_pool().await;
+
+        let response = recent_activity::ResponseData {
+            search: recent_activity::RecentActivitySearch { nodes: None },
+        };
+
+        let activities = map_activity_nodes(&response);
+        assert!(activities.is_empty());
+
+        let inserted = persist_activity_batch(&pool, &activities).await.unwrap();
+        assert_eq!(inserted, 0);
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_activity_state_transitions() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // First sync: PR is open
+        let response_open = make_activity_response(vec![make_activity_pr_node(
+            "PR_X",
+            99,
+            "My PR",
+            recent_activity::PullRequestState::OPEN,
+        )]);
+        let activities_open = map_activity_nodes(&response_open);
+        let inserted = persist_activity_batch(&pool, &activities_open)
+            .await
+            .unwrap();
+        assert_eq!(inserted, 1);
+
+        // Second sync: same PR is now merged — should produce a NEW record
+        let response_merged = make_activity_response(vec![make_activity_pr_node(
+            "PR_X",
+            99,
+            "My PR",
+            recent_activity::PullRequestState::MERGED,
+        )]);
+        let activities_merged = map_activity_nodes(&response_merged);
+        let inserted = persist_activity_batch(&pool, &activities_merged)
+            .await
+            .unwrap();
+        assert_eq!(
+            inserted, 1,
+            "merged state should produce a new activity record"
+        );
+
+        // Both records exist in DB
+        let open = crate::cache::activity::get_activity_by_id(&pool, "activity-pr-PR_X-open")
+            .await
+            .unwrap();
+        assert!(open.is_some());
+        assert_eq!(open.unwrap().activity_type, ActivityType::PrOpened);
+
+        let merged = crate::cache::activity::get_activity_by_id(&pool, "activity-pr-PR_X-merged")
+            .await
+            .unwrap();
+        assert!(merged.is_some());
+        assert_eq!(merged.unwrap().activity_type, ActivityType::PrMerged);
+
+        pool.close().await;
+    }
+
+    #[test]
+    fn test_validate_since_valid() {
+        assert!(validate_since("2026-03-01").is_ok());
+        assert!(validate_since("2026-03-01T10:00:00Z").is_ok());
+        assert!(validate_since("2026-01-15T23:59:59Z").is_ok());
+        // Timezone offsets
+        assert!(validate_since("2026-03-01T10:00:00+05:30").is_ok());
+        assert!(validate_since("2026-03-01T10:00:00-05:30").is_ok());
+        // Fractional seconds
+        assert!(validate_since("2026-03-01T10:00:00.123Z").is_ok());
+    }
+
+    #[test]
+    fn test_validate_since_invalid() {
+        assert!(validate_since("").is_err(), "empty");
+        assert!(validate_since("short").is_err(), "too short");
+        assert!(
+            validate_since("2026-03-01 involves:evil").is_err(),
+            "injection attempt"
+        );
+        assert!(
+            validate_since("2026-03-01T10:00:00Z extra").is_err(),
+            "space in value"
+        );
     }
 }
