@@ -25,9 +25,11 @@ fragment PrFields on PullRequest {
   }
   reviews(first: 50) {
     nodes {
+      id
       author { __typename login }
       state
       createdAt
+      submittedAt
     }
   }
   commits(last: 1) {
