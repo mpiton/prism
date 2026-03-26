@@ -2,6 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authSetToken, authGetStatus, authLogout } from "../../lib/tauri";
 
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export function AuthSetup() {
   const [token, setToken] = useState("");
   const queryClient = useQueryClient();
@@ -30,15 +35,15 @@ export function AuthSetup() {
   const status = statusQuery.data;
   const isConnected = status?.connected === true;
   const transientError = status?.error ?? null;
-  const mutationError = setTokenMutation.error
-    ? setTokenMutation.error.message
-    : null;
-  const displayError = mutationError ?? transientError;
+  const mutationError = setTokenMutation.error ? extractErrorMessage(setTokenMutation.error) : null;
+  const logoutError = logoutMutation.error ? extractErrorMessage(logoutMutation.error) : null;
+  const displayError = mutationError ?? logoutError ?? transientError;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (token.trim()) {
-      setTokenMutation.mutate(token);
+    const trimmed = token.trim();
+    if (trimmed) {
+      setTokenMutation.mutate(trimmed);
     }
   }
 
@@ -46,6 +51,23 @@ export function AuthSetup() {
     return (
       <div className="flex items-center justify-center p-6">
         <p className="text-sm text-muted">Checking authentication…</p>
+      </div>
+    );
+  }
+
+  if (statusQuery.isError) {
+    return (
+      <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-surface p-6">
+        <p role="alert" className="text-sm text-red">
+          {extractErrorMessage(statusQuery.error)}
+        </p>
+        <button
+          type="button"
+          onClick={() => statusQuery.refetch()}
+          className="rounded-md border border-border bg-bg px-4 py-2 text-sm text-fg transition-colors hover:bg-surface"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -63,6 +85,11 @@ export function AuthSetup() {
         >
           Disconnect
         </button>
+        {logoutError && (
+          <p role="alert" className="text-sm text-red">
+            {logoutError}
+          </p>
+        )}
       </div>
     );
   }

@@ -68,7 +68,7 @@ describe("AuthSetup", () => {
       username: null,
       error: null,
     });
-    mockedAuthSetToken.mockRejectedValue(new Error("invalid or expired token"));
+    mockedAuthSetToken.mockRejectedValue("invalid or expired token");
 
     const user = userEvent.setup();
     render(<AuthSetup />, { wrapper: createWrapper() });
@@ -85,7 +85,7 @@ describe("AuthSetup", () => {
     });
   });
 
-  it("should call auth_set_token on submit", async () => {
+  it("should call auth_set_token on submit with trimmed token", async () => {
     mockedAuthGetStatus.mockResolvedValue({
       connected: false,
       username: null,
@@ -105,7 +105,8 @@ describe("AuthSetup", () => {
 
     await waitFor(() => {
       expect(mockedAuthSetToken).toHaveBeenCalled();
-      expect(mockedAuthSetToken.mock.calls[0]?.[0]).toBe("ghp_validtoken123");
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- guarded by toHaveBeenCalled above
+      expect(mockedAuthSetToken.mock.calls[0]![0]).toBe("ghp_validtoken123");
     });
   });
 
@@ -180,6 +181,39 @@ describe("AuthSetup", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/timeout/i);
+    });
+  });
+
+  it("should show error state when status query fails", async () => {
+    mockedAuthGetStatus.mockRejectedValue("IPC connection failed");
+
+    render(<AuthSetup />, { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/IPC connection failed/i);
+    });
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("should display logout error when disconnect fails", async () => {
+    mockedAuthGetStatus.mockResolvedValue({
+      connected: true,
+      username: "octocat",
+      error: null,
+    });
+    mockedAuthLogout.mockRejectedValue("keyring access denied");
+
+    const user = userEvent.setup();
+    render(<AuthSetup />, { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /disconnect/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /disconnect/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/keyring access denied/i);
     });
   });
 });
