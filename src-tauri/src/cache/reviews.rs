@@ -183,6 +183,22 @@ pub async fn compute_review_summary(
     })
 }
 
+/// Delete all review requests for a given PR.
+///
+/// Used before re-inserting the current set from GitHub to evict
+/// stale requests (e.g. a reviewer was un-requested).
+#[allow(dead_code)]
+pub async fn delete_review_requests_for_pr(
+    pool: &SqlitePool,
+    pull_request_id: &str,
+) -> Result<u64, AppError> {
+    let result = sqlx::query("DELETE FROM review_requests WHERE pull_request_id = $1")
+        .bind(pull_request_id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
+}
+
 // ── reviews CRUD ──────────────────────────────────────────────────
 
 /// Insert or update a review. On conflict (same `id`), updates all fields.

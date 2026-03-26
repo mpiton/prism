@@ -12,7 +12,7 @@ use crate::cache::dashboard::compute_dashboard_stats;
 use crate::cache::issues::upsert_issue;
 use crate::cache::pull_requests::upsert_pull_request;
 use crate::cache::repos::{list_repos, update_last_sync};
-use crate::cache::reviews::{upsert_review, upsert_review_request};
+use crate::cache::reviews::{delete_review_requests_for_pr, upsert_review, upsert_review_request};
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::models::{map_issue, map_pr, map_review};
@@ -81,14 +81,35 @@ fn validate_full_name(full_name: &str) -> Result<(), AppError> {
     }
 }
 
+/// Validate that a GitHub username contains only safe characters.
+///
+/// Prevents search query injection via malicious username values.
+/// GitHub usernames: alphanumeric and hyphens, max 39 chars.
+fn validate_username(username: &str) -> Result<(), AppError> {
+    let valid = !username.is_empty()
+        && username.len() <= 39
+        && username
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_');
+
+    if valid {
+        Ok(())
+    } else {
+        Err(AppError::Config(format!(
+            "invalid GitHub username: {username}"
+        )))
+    }
+}
+
 /// Build the GraphQL search variables from username and active repos.
 ///
-/// Validates each repo's `full_name` against the `owner/repo` pattern
-/// before interpolating into the search query string.
+/// Validates both `username` and each repo's `full_name` before
+/// interpolating into the search query string.
 fn build_query_variables(
     username: &str,
     repos: &[&Repo],
 ) -> Result<dashboard_data::Variables, AppError> {
+    validate_username(username)?;
     for repo in repos {
         validate_full_name(&repo.full_name)?;
     }
@@ -102,7 +123,7 @@ fn build_query_variables(
     Ok(dashboard_data::Variables {
         review_query: format!("type:pr {repo_filter} review-requested:{username} state:open"),
         my_prs_query: format!("type:pr {repo_filter} author:{username} state:open"),
-        issues_query: format!("type:issue {repo_filter} assignee:{username} state:open"),
+        issues_query: format!("type:issue {repo_filter} author:{username} state:open"),
         first: 100,
     })
 }
@@ -170,7 +191,9 @@ pub(crate) async fn persist_single_pr(
         }
     }
 
-    // Upsert review requests from the PR's reviewRequests connection
+    // Delete then re-insert review requests to evict stale ones
+    // (e.g. a reviewer was un-requested on GitHub).
+    delete_review_requests_for_pr(pool, &pr.id).await?;
     if let Some(rr_conn) = &pr_fields.review_requests
         && let Some(nodes) = &rr_conn.nodes
     {
@@ -498,7 +521,7 @@ mod tests {
         assert!(vars.review_query.contains("review-requested:octocat"));
         assert!(vars.review_query.contains("repo:org/repo"));
         assert!(vars.my_prs_query.contains("author:octocat"));
-        assert!(vars.issues_query.contains("assignee:octocat"));
+        assert!(vars.issues_query.contains("author:octocat"));
         assert_eq!(vars.first, 100);
     }
 
@@ -539,18 +562,103 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_sync_deduplicates_prs() {
+    async fn test_sync_deduplicates_prs_via_persist_response() {
         let (pool, _tmp) = test_pool().await;
         upsert_repo(&pool, &sample_repo()).await.unwrap();
 
-        // Persist same PR twice — should only result in one DB entry
-        let pr = make_pr_fields("PR_1", 42, "Same PR");
-        persist_single_pr(&pool, &pr).await.unwrap();
+        // Same PR appears in both review_requests and my_pull_requests
+        let pr = make_pr_fields("PR_1", 42, "Dedup PR");
+        let response = dashboard_data::ResponseData {
+            review_requests: dashboard_data::DashboardDataReviewRequests {
+                nodes: Some(vec![Some(
+                    dashboard_data::DashboardDataReviewRequestsNodes::PullRequest(pr.clone()),
+                )]),
+            },
+            my_pull_requests: dashboard_data::DashboardDataMyPullRequests {
+                nodes: Some(vec![Some(
+                    dashboard_data::DashboardDataMyPullRequestsNodes::PullRequest(pr),
+                )]),
+            },
+            assigned_issues: dashboard_data::DashboardDataAssignedIssues { nodes: None },
+        };
+
+        persist_response(&pool, &response).await.unwrap();
+
+        // PR should exist exactly once
+        let result = get_pull_request(&pool, "PR_1").await.unwrap();
+        assert_eq!(result.title, "Dedup PR");
+        pool.close().await;
+    }
+
+    #[test]
+    fn test_validate_username_valid() {
+        assert!(validate_username("octocat").is_ok());
+        assert!(validate_username("my-user").is_ok());
+        assert!(validate_username("user_name").is_ok());
+        assert!(validate_username("a").is_ok());
+    }
+
+    #[test]
+    fn test_validate_username_invalid() {
+        assert!(validate_username("").is_err());
+        assert!(
+            validate_username("user name").is_err(),
+            "spaces not allowed"
+        );
+        assert!(
+            validate_username("alice state:closed").is_err(),
+            "injection attempt"
+        );
+        assert!(validate_username(&"a".repeat(40)).is_err(), "too long");
+    }
+
+    #[tokio::test]
+    async fn test_sync_evicts_stale_review_requests() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // First sync: PR has review request from alice
+        let mut pr = make_pr_fields("PR_1", 42, "PR with reviewer");
+        pr.review_requests = Some(dashboard_data::PrFieldsReviewRequests {
+            total_count: 1,
+            nodes: Some(vec![Some(dashboard_data::PrFieldsReviewRequestsNodes {
+                requested_reviewer: Some(
+                    dashboard_data::PrFieldsReviewRequestsNodesRequestedReviewer::User(
+                        dashboard_data::PrFieldsReviewRequestsNodesRequestedReviewerOnUser {
+                            login: "alice".to_string(),
+                        },
+                    ),
+                ),
+            })]),
+        });
         persist_single_pr(&pool, &pr).await.unwrap();
 
-        let result = get_pull_request(&pool, "PR_1").await.unwrap();
-        assert_eq!(result.title, "Same PR");
-        // Upsert is idempotent — no error, no duplicate
+        let rrs = crate::cache::reviews::get_review_requests_by_pr(&pool, "PR_1")
+            .await
+            .unwrap();
+        assert_eq!(rrs.len(), 1);
+        assert_eq!(rrs[0].reviewer, "alice");
+
+        // Second sync: alice was un-requested, now only bob
+        pr.review_requests = Some(dashboard_data::PrFieldsReviewRequests {
+            total_count: 1,
+            nodes: Some(vec![Some(dashboard_data::PrFieldsReviewRequestsNodes {
+                requested_reviewer: Some(
+                    dashboard_data::PrFieldsReviewRequestsNodesRequestedReviewer::User(
+                        dashboard_data::PrFieldsReviewRequestsNodesRequestedReviewerOnUser {
+                            login: "bob".to_string(),
+                        },
+                    ),
+                ),
+            })]),
+        });
+        persist_single_pr(&pool, &pr).await.unwrap();
+
+        let rrs = crate::cache::reviews::get_review_requests_by_pr(&pool, "PR_1")
+            .await
+            .unwrap();
+        assert_eq!(rrs.len(), 1, "alice should be evicted");
+        assert_eq!(rrs[0].reviewer, "bob");
         pool.close().await;
     }
 }
