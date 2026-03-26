@@ -220,11 +220,7 @@ pub(crate) async fn persist_single_pr(
             if let Some(reviewer) = extract_reviewer_login(node) {
                 sqlx::query(
                     "INSERT INTO review_requests (id, pull_request_id, reviewer, status, requested_at) \
-                     VALUES ($1, $2, $3, $4, $5) \
-                     ON CONFLICT(id) DO UPDATE SET \
-                         reviewer = excluded.reviewer, \
-                         status = excluded.status, \
-                         requested_at = excluded.requested_at",
+                     VALUES ($1, $2, $3, $4, $5)",
                 )
                 .bind(format!("{}-{}", pr.id, reviewer))
                 .bind(&pr.id)
