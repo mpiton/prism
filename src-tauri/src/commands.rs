@@ -1,7 +1,13 @@
-use serde::Serialize;
+use std::sync::Mutex;
 
+use log::warn;
+use serde::Serialize;
+use sqlx::SqlitePool;
+
+use crate::cache::dashboard::assemble_dashboard_data;
 use crate::error::AppError;
 use crate::github::auth;
+use crate::types::DashboardData;
 
 /// Authentication status returned by [`auth_get_status`].
 #[derive(Debug, Serialize)]
@@ -89,13 +95,69 @@ pub async fn auth_get_status() -> Result<AuthStatus, String> {
     }
 }
 
-/// Deletes the stored GitHub token (logout).
+/// Deletes the stored GitHub token and clears the cached username (logout).
 #[tauri::command]
-pub async fn auth_logout() -> Result<(), String> {
+pub async fn auth_logout(cached: tauri::State<'_, GithubUsername>) -> Result<(), String> {
+    match cached.0.lock() {
+        Ok(mut guard) => *guard = None,
+        Err(e) => warn!("failed to clear cached username (mutex poisoned): {e}"),
+    }
     tokio::task::spawn_blocking(auth::delete_token)
         .await
         .map_err(|e| format!("task join error: {e}"))?
         .map_err(String::from)
+}
+
+/// Cached GitHub username, populated on first dashboard access.
+///
+/// Avoids re-validating the token (HTTP call) on every dashboard load.
+/// Cleared on logout so subsequent calls fail fast with "not authenticated".
+#[derive(Default)]
+pub struct GithubUsername(pub(crate) Mutex<Option<String>>);
+
+/// Resolves the authenticated GitHub username.
+///
+/// Returns the cached value if available; otherwise reads the stored token
+/// from the keychain, validates it against the GitHub API, and caches the
+/// resulting username for future calls.
+async fn resolve_username(cached: &GithubUsername) -> Result<String, String> {
+    {
+        let guard = cached.0.lock().map_err(|e| format!("lock error: {e}"))?;
+        if let Some(ref u) = *guard {
+            return Ok(u.clone());
+        }
+    }
+
+    let token = tokio::task::spawn_blocking(auth::get_token)
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
+        .map_err(String::from)?
+        .ok_or_else(|| "not authenticated: no token stored".to_string())?;
+
+    let username = auth::validate_token(&token).await.map_err(String::from)?;
+
+    match cached.0.lock() {
+        Ok(mut guard) => *guard = Some(username.clone()),
+        Err(e) => warn!("failed to cache username (mutex poisoned): {e}"),
+    }
+
+    Ok(username)
+}
+
+/// Returns the full dashboard data for the authenticated user.
+///
+/// Reads the DB pool and cached username from Tauri managed state.
+/// On the first call (or after logout), validates the stored token to
+/// resolve the username, caching it for subsequent calls.
+#[tauri::command]
+pub async fn github_get_dashboard(
+    pool: tauri::State<'_, SqlitePool>,
+    cached: tauri::State<'_, GithubUsername>,
+) -> Result<DashboardData, String> {
+    let username = resolve_username(&cached).await?;
+    assemble_dashboard_data(&pool, &username)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -193,5 +255,49 @@ mod tests {
             err.contains("rate limited"),
             "expected 'rate limited' in '{err}'"
         );
+    }
+
+    // -- GithubUsername + resolve_username tests --
+
+    #[test]
+    fn test_github_username_default_is_none() {
+        let cached = GithubUsername::default();
+        let guard = cached.0.lock().unwrap();
+        assert!(guard.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_username_returns_cached_value() {
+        let cached = GithubUsername(Mutex::new(Some("alice".into())));
+        let result = resolve_username(&cached).await.unwrap();
+        assert_eq!(result, "alice");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_username_fails_without_token() {
+        let cached = GithubUsername::default();
+        let result = resolve_username(&cached).await;
+        assert!(result.is_err());
+        // Should fail because no token is stored in the keychain during tests
+    }
+
+    // -- github_get_dashboard integration test (via assemble_dashboard_data) --
+
+    #[tokio::test]
+    async fn test_get_dashboard_returns_empty_data() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
+
+        let data = assemble_dashboard_data(&pool, "alice").await.unwrap();
+
+        assert!(data.review_requests.is_empty());
+        assert!(data.my_pull_requests.is_empty());
+        assert!(data.assigned_issues.is_empty());
+        assert!(data.recent_activity.is_empty());
+        assert!(data.workspaces.is_empty());
+        assert!(data.synced_at.is_none());
+        pool.close().await;
     }
 }
