@@ -51,7 +51,8 @@ impl GitHubClient {
     /// Executes a GraphQL query and returns the typed response data.
     ///
     /// Retries on network errors with exponential backoff (max 3 retries).
-    /// Returns `AppError::Auth` on 401, `AppError::GitHub` on rate limit or other HTTP errors,
+    /// Returns `AppError::Auth` on 401, `AppError::RateLimit` when the 403 response
+    /// carries rate-limit headers with `remaining == 0`, `AppError::GitHub` on other HTTP errors,
     /// and `AppError::GraphQL` on GraphQL-level errors.
     pub async fn execute_graphql<Q: GraphQLQuery>(
         &self,
@@ -109,9 +110,10 @@ impl GitHubClient {
             if let Some(rl) = &rate_limit
                 && rl.remaining == 0
             {
-                let reset_at =
-                    chrono::DateTime::from_timestamp(i64::try_from(rl.reset).unwrap_or(0), 0)
-                        .map_or_else(|| rl.reset.to_string(), |dt| dt.to_rfc3339());
+                let reset_at = i64::try_from(rl.reset)
+                    .ok()
+                    .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+                    .map_or_else(|| rl.reset.to_string(), |dt| dt.to_rfc3339());
                 return Err(AppError::RateLimit { reset_at });
             }
             return Err(AppError::GitHub("forbidden".into()));
