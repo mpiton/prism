@@ -337,6 +337,8 @@ mod tests {
         assert_eq!(result.priority, Priority::Medium);
         assert_eq!(result.repo_id, "repo-1");
         assert_eq!(result.labels, vec!["bug", "urgent"]);
+        assert_eq!(result.additions, 50);
+        assert_eq!(result.deletions, 10);
 
         pool.close().await;
     }

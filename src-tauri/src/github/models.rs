@@ -663,4 +663,30 @@ mod tests {
         let result = map_ci_status(None);
         assert_eq!(result, CiStatus::Pending);
     }
+
+    #[test]
+    fn test_map_pr_negative_additions_returns_error() {
+        let pr = make_pr_fields(PrFieldsOverrides {
+            additions: Some(-1),
+            ..Default::default()
+        });
+        let err = map_pr(&pr).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid additions"),
+            "expected 'invalid additions' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_map_pr_negative_deletions_returns_error() {
+        let pr = make_pr_fields(PrFieldsOverrides {
+            deletions: Some(-1),
+            ..Default::default()
+        });
+        let err = map_pr(&pr).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid deletions"),
+            "expected 'invalid deletions' error, got: {err}"
+        );
+    }
 }

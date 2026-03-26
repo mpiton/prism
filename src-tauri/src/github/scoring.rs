@@ -3,7 +3,7 @@ use crate::types::{CiStatus, Priority, PullRequest};
 /// Maximum label weight found in the PR's labels.
 ///
 /// Weights: `critical` = 10, `bug` = 7, `enhancement` = 3, `docs` = 1,
-/// any other label = 2, no labels = 0.
+/// known deprioritisation labels = 0, any other label = 2, no labels = 0.
 fn label_weight(labels: &[String]) -> f64 {
     labels
         .iter()
@@ -12,6 +12,7 @@ fn label_weight(labels: &[String]) -> f64 {
             "bug" => 7.0,
             "enhancement" => 3.0,
             "docs" | "documentation" => 1.0,
+            "wontfix" | "invalid" | "duplicate" | "on-hold" => 0.0,
             _ => 2.0,
         })
         .fold(0.0_f64, f64::max)
@@ -42,7 +43,7 @@ fn age_hours(created_at: &str, now: &str) -> f64 {
 /// Formula: `score = (label_weight × 3) + (age_hours × 0.5) + (small_diff ? 2 : 0) + (ci_pass ? 1 : 0)`
 ///
 /// - `label_weight`: max weight across labels (critical=10, bug=7, enhancement=3, docs=1, default=2)
-/// - `age_hours`: hours since `created_at`
+/// - `age_hours`: hours since `created_at` (capped at 48h to prevent unbounded escalation)
 /// - `small_diff`: `additions + deletions < 200`
 /// - `ci_pass`: `ci_status == Success`
 #[allow(dead_code)]
@@ -53,7 +54,7 @@ pub fn compute_priority_score(pr: &PullRequest) -> f64 {
 /// Testable version that accepts an explicit "now" timestamp.
 pub(crate) fn compute_priority_score_at(pr: &PullRequest, now: &str) -> f64 {
     let lw = label_weight(&pr.labels);
-    let age = age_hours(&pr.created_at, now);
+    let age = age_hours(&pr.created_at, now).min(48.0);
     let small_diff = u64::from(pr.additions) + u64::from(pr.deletions) < 200;
     let ci_pass = pr.ci_status == CiStatus::Success;
 
@@ -224,6 +225,64 @@ mod tests {
         assert_eq!(compute_priority(14.9), Priority::Medium);
         assert_eq!(compute_priority(8.0), Priority::Medium);
         assert_eq!(compute_priority(7.9), Priority::Low);
+    }
+
+    #[test]
+    fn test_small_diff_threshold_boundary() {
+        let at_199 = make_pr(PrOverrides {
+            additions: Some(199),
+            deletions: Some(0),
+            ..Default::default()
+        });
+        let at_200 = make_pr(PrOverrides {
+            additions: Some(200),
+            deletions: Some(0),
+            ..Default::default()
+        });
+        let s199 = compute_priority_score_at(&at_199, NOW);
+        let s200 = compute_priority_score_at(&at_200, NOW);
+        assert!(
+            s199 > s200,
+            "199 should receive small-diff bonus; 200 should not"
+        );
+    }
+
+    #[test]
+    fn test_age_capped_at_48h() {
+        let very_old = make_pr(PrOverrides {
+            created_at: Some("2025-01-01T00:00:00Z".to_string()),
+            ..Default::default()
+        });
+        let at_48h = make_pr(PrOverrides {
+            created_at: Some("2026-03-24T10:00:00Z".to_string()),
+            ..Default::default()
+        });
+        let score_very_old = compute_priority_score_at(&very_old, NOW);
+        let score_48h = compute_priority_score_at(&at_48h, NOW);
+        assert!(
+            (score_very_old - score_48h).abs() < 0.01,
+            "age should be capped at 48h: very_old={score_very_old}, 48h={score_48h}"
+        );
+    }
+
+    #[test]
+    fn test_deprioritisation_labels_zero_weight() {
+        for label in &["wontfix", "invalid", "duplicate", "on-hold"] {
+            let pr = make_pr(PrOverrides {
+                labels: Some(vec![label.to_string()]),
+                ..Default::default()
+            });
+            let no_label = make_pr(PrOverrides {
+                labels: Some(vec![]),
+                ..Default::default()
+            });
+            let score_deprio = compute_priority_score_at(&pr, NOW);
+            let score_none = compute_priority_score_at(&no_label, NOW);
+            assert!(
+                (score_deprio - score_none).abs() < 0.01,
+                "label '{label}' should have zero weight like no labels"
+            );
+        }
     }
 
     #[test]
