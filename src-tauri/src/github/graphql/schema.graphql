@@ -1,0 +1,232 @@
+# Minimal GitHub GraphQL schema for PRism queries.
+# Covers only the types used by dashboard.graphql and pull_request_detail.graphql.
+
+scalar DateTime
+scalar URI
+
+type Query {
+  search(query: String!, type: SearchType!, first: Int, after: String): SearchResultItemConnection!
+  repository(owner: String!, name: String!): Repository
+  viewer: User!
+}
+
+enum SearchType {
+  ISSUE
+  REPOSITORY
+  USER
+  DISCUSSION
+}
+
+interface Node {
+  id: ID!
+}
+
+type SearchResultItemConnection {
+  nodes: [SearchResultItem]
+  pageInfo: PageInfo!
+  issueCount: Int!
+}
+
+union SearchResultItem = PullRequest | Issue | Repository | User | Discussion
+
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+}
+
+# ── Pull Request ──────────────────────────────────────────────────
+
+type PullRequest implements Node {
+  id: ID!
+  number: Int!
+  title: String!
+  author: Actor
+  state: PullRequestState!
+  isDraft: Boolean!
+  url: URI!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  additions: Int!
+  deletions: Int!
+  headRefName: String!
+  baseRefName: String!
+  repository: Repository!
+  labels(first: Int): LabelConnection
+  reviewRequests(first: Int): ReviewRequestConnection
+  reviews(first: Int, states: [PullRequestReviewState!]): PullRequestReviewConnection
+  commits(last: Int): PullRequestCommitConnection
+}
+
+enum PullRequestState {
+  OPEN
+  CLOSED
+  MERGED
+}
+
+# ── Issue ─────────────────────────────────────────────────────────
+
+type Issue implements Node {
+  id: ID!
+  number: Int!
+  title: String!
+  author: Actor
+  state: IssueState!
+  url: URI!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  repository: Repository!
+  labels(first: Int): LabelConnection
+  assignees(first: Int): UserConnection
+}
+
+enum IssueState {
+  OPEN
+  CLOSED
+}
+
+# ── Actors ────────────────────────────────────────────────────────
+
+interface Actor {
+  login: String!
+  avatarUrl: URI
+}
+
+type User implements Node & Actor {
+  id: ID!
+  login: String!
+  avatarUrl: URI
+  name: String
+}
+
+type Bot implements Node & Actor {
+  id: ID!
+  login: String!
+  avatarUrl: URI
+}
+
+type Organization implements Node & Actor {
+  id: ID!
+  login: String!
+  avatarUrl: URI
+}
+
+type Mannequin implements Node & Actor {
+  id: ID!
+  login: String!
+  avatarUrl: URI
+}
+
+type EnterpriseUserAccount implements Node & Actor {
+  id: ID!
+  login: String!
+  avatarUrl: URI
+}
+
+# ── Repository ────────────────────────────────────────────────────
+
+type Repository implements Node {
+  id: ID!
+  name: String!
+  owner: RepositoryOwner!
+  url: URI!
+  defaultBranchRef: Ref
+  isArchived: Boolean!
+  nameWithOwner: String!
+  pullRequest(number: Int!): PullRequest
+}
+
+interface RepositoryOwner {
+  login: String!
+}
+
+type Ref {
+  name: String!
+}
+
+# ── Labels ────────────────────────────────────────────────────────
+
+type LabelConnection {
+  nodes: [Label]
+}
+
+type Label implements Node {
+  id: ID!
+  name: String!
+}
+
+# ── Reviews ───────────────────────────────────────────────────────
+
+type ReviewRequestConnection {
+  nodes: [ReviewRequest]
+  totalCount: Int!
+}
+
+type ReviewRequest {
+  requestedReviewer: RequestedReviewer
+}
+
+union RequestedReviewer = User | Team | Bot | Mannequin
+
+type Team implements Node {
+  id: ID!
+  name: String!
+  slug: String!
+}
+
+type PullRequestReviewConnection {
+  nodes: [PullRequestReview]
+}
+
+enum PullRequestReviewState {
+  PENDING
+  COMMENTED
+  APPROVED
+  CHANGES_REQUESTED
+  DISMISSED
+}
+
+type PullRequestReview implements Node {
+  id: ID!
+  author: Actor
+  state: PullRequestReviewState!
+  createdAt: DateTime!
+}
+
+# ── CI / Status ───────────────────────────────────────────────────
+
+type PullRequestCommitConnection {
+  nodes: [PullRequestCommit]
+}
+
+type PullRequestCommit {
+  commit: Commit!
+}
+
+type Commit implements Node {
+  id: ID!
+  statusCheckRollup: StatusCheckRollup
+}
+
+type StatusCheckRollup {
+  state: StatusState!
+}
+
+enum StatusState {
+  EXPECTED
+  ERROR
+  FAILURE
+  PENDING
+  SUCCESS
+}
+
+# ── Users ─────────────────────────────────────────────────────────
+
+type UserConnection {
+  nodes: [User]
+}
+
+# ── Stub types for union completeness ─────────────────────────────
+
+type Discussion implements Node {
+  id: ID!
+}

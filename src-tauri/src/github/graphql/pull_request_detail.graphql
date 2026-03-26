@@ -1,0 +1,45 @@
+query PullRequestDetail($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      id
+      number
+      title
+      author { __typename login }
+      state
+      isDraft
+      url
+      createdAt
+      updatedAt
+      additions
+      deletions
+      headRefName
+      baseRefName
+      repository { nameWithOwner }
+      labels(first: 20) { nodes { name } }
+      reviewRequests(first: 20) {
+        totalCount
+        nodes {
+          requestedReviewer {
+            __typename
+            ... on User { login }
+            ... on Team { name }
+          }
+        }
+      }
+      reviews(first: 50) {
+        nodes {
+          author { __typename login }
+          state
+          createdAt
+        }
+      }
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup { state }
+          }
+        }
+      }
+    }
+  }
+}
