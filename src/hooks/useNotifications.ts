@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { onEvent } from "../lib/tauri";
 import { TAURI_EVENTS } from "../lib/types";
 
@@ -9,13 +9,6 @@ export interface Notification {
   type: NotificationType;
   payload: unknown;
   timestamp: number;
-}
-
-let nextId = 0;
-
-function makeId(): string {
-  nextId += 1;
-  return `notif-${nextId}`;
 }
 
 const EVENT_TYPE_MAP: ReadonlyArray<{
@@ -29,16 +22,18 @@ const EVENT_TYPE_MAP: ReadonlyArray<{
 
 export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const cancelledRef = useRef(false);
 
   useEffect(() => {
-    cancelledRef.current = false;
+    let cancelled = false;
     const unlistenFns: Array<() => void> = [];
 
     for (const { event, type } of EVENT_TYPE_MAP) {
       onEvent(event, (payload: unknown) => {
+        if (cancelled) {
+          return;
+        }
         const notification: Notification = {
-          id: makeId(),
+          id: crypto.randomUUID(),
           type,
           payload,
           timestamp: Date.now(),
@@ -46,7 +41,7 @@ export function useNotifications() {
         setNotifications((prev) => [...prev, notification]);
       })
         .then((unlisten) => {
-          if (cancelledRef.current) {
+          if (cancelled) {
             unlisten();
           } else {
             unlistenFns.push(unlisten);
@@ -58,7 +53,7 @@ export function useNotifications() {
     }
 
     return () => {
-      cancelledRef.current = true;
+      cancelled = true;
       for (const fn of unlistenFns) {
         fn();
       }
