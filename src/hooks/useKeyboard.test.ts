@@ -144,6 +144,17 @@ describe("useKeyboard", () => {
     hook = renderHook(() => useKeyboard(actions));
   });
 
+  it("should handle shortcuts when Caps Lock is active", () => {
+    fireKey("J");
+    expect(actions.onNavigate).toHaveBeenCalledWith("down");
+    fireKey("K");
+    expect(actions.onNavigate).toHaveBeenCalledWith("up");
+    fireKey("W");
+    expect(actions.onOpenWorkspace).toHaveBeenCalledOnce();
+    fireKey("K", { metaKey: true });
+    expect(actions.onCommandPalette).toHaveBeenCalledOnce();
+  });
+
   it("should ignore plain keys when modifier is held", () => {
     fireKey("j", { ctrlKey: true });
     fireKey("w", { metaKey: true });

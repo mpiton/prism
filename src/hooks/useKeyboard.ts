@@ -27,24 +27,25 @@ export function useKeyboard(actions: KeyboardActions): void {
     function handleKeyDown(event: KeyboardEvent): void {
       if (isInputTarget(event)) return;
 
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
       const actionModifier = event.metaKey || event.ctrlKey;
       const anyModifier = actionModifier || event.altKey;
 
-      if (actionModifier && event.key === "k") {
+      if (actionModifier && key === "k") {
         event.preventDefault();
         actionsRef.current.onCommandPalette();
         return;
       }
 
-      if (actionModifier && event.key >= "1" && event.key <= "3") {
+      if (actionModifier && key >= "1" && key <= "3") {
         event.preventDefault();
-        actionsRef.current.onSwitchWorkspace(Number(event.key) - 1);
+        actionsRef.current.onSwitchWorkspace(Number(key) - 1);
         return;
       }
 
       if (anyModifier) return;
 
-      switch (event.key) {
+      switch (key) {
         case "j":
           actionsRef.current.onNavigate("down");
           break;
