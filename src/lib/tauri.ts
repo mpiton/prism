@@ -45,3 +45,11 @@ export async function getConfig(): Promise<AppConfig> {
 export async function setConfig(partial: PartialAppConfig): Promise<AppConfig> {
   return invoke<AppConfig>(TAURI_COMMANDS.config_set, { partial });
 }
+
+export async function markActivityRead(activityId: string): Promise<boolean> {
+  return invoke<boolean>(TAURI_COMMANDS.activity_mark_read, { activityId });
+}
+
+export async function markAllActivityRead(): Promise<number> {
+  return invoke<number>(TAURI_COMMANDS.activity_mark_all_read);
+}

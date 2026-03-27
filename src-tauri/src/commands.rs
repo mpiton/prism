@@ -5,6 +5,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::Emitter;
 
+use crate::cache::activity::{mark_all_read, mark_read};
 use crate::cache::config::{get_config, set_config};
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{list_repos, set_local_path, set_repo_enabled};
@@ -335,6 +336,31 @@ pub async fn repos_set_local_path(
     set_local_path(&pool, &repo_id, normalized)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Marks a single activity as read. Returns `true` if the activity was
+/// actually updated (i.e. it was previously unread), `false` otherwise.
+///
+/// Tauri 2 renames `activity_id` → `activityId` for the JS caller.
+#[tauri::command]
+pub async fn activity_mark_read(
+    pool: tauri::State<'_, SqlitePool>,
+    activity_id: String,
+) -> Result<bool, String> {
+    mark_read(&pool, &activity_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Marks all unread activities as read. Returns the number of rows updated.
+///
+/// The underlying `mark_all_read` returns `u64`, but we cast to `u32` at the
+/// IPC boundary so the value fits safely in JavaScript's `number` (IEEE-754).
+#[tauri::command]
+pub async fn activity_mark_all_read(pool: tauri::State<'_, SqlitePool>) -> Result<u32, String> {
+    let count = mark_all_read(&pool).await.map_err(|e| e.to_string())?;
+    #[allow(clippy::cast_possible_truncation)] // Desktop SQLite — count will never exceed u32::MAX
+    Ok(count as u32)
 }
 
 #[cfg(test)]
@@ -700,5 +726,33 @@ mod tests {
                 "poisoned lock should not bubble up as lock error, got: {err}"
             ),
         }
+    }
+
+    // -- Activity IPC contract tests (T-039) --
+
+    #[test]
+    fn test_mark_read_result_serializes_as_bool() {
+        // activity_mark_read returns Result<bool, String>.
+        // Verify both outcomes serialize correctly for the frontend.
+        let updated = serde_json::to_value(true).unwrap();
+        assert_eq!(updated, serde_json::Value::Bool(true));
+
+        let already_read = serde_json::to_value(false).unwrap();
+        assert_eq!(already_read, serde_json::Value::Bool(false));
+    }
+
+    #[test]
+    fn test_mark_all_read_count_serializes_as_number() {
+        // activity_mark_all_read returns Result<u32, String>.
+        // Verify the count serializes as a JSON number for the frontend.
+        let count: u32 = 42;
+        let json = serde_json::to_value(count).unwrap();
+        assert!(json.is_number());
+        assert_eq!(json.as_u64(), Some(42));
+
+        // Zero case — no unread activities
+        let zero: u32 = 0;
+        let json = serde_json::to_value(zero).unwrap();
+        assert_eq!(json.as_u64(), Some(0));
     }
 }

@@ -46,6 +46,8 @@ pub fn run() {
             commands::repos_set_local_path,
             commands::config_get,
             commands::config_set,
+            commands::activity_mark_read,
+            commands::activity_mark_all_read,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
