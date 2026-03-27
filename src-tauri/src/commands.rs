@@ -6,7 +6,7 @@ use sqlx::SqlitePool;
 use tauri::Emitter;
 
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
-use crate::cache::repos::{list_repos, set_local_path, toggle_repo};
+use crate::cache::repos::{list_repos, set_local_path, set_repo_enabled};
 use crate::cache::sync::sync_dashboard;
 use crate::error::AppError;
 use crate::github::auth;
@@ -268,17 +268,17 @@ pub async fn repos_list(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<Repo>,
     list_repos(&pool).await.map_err(|e| e.to_string())
 }
 
-/// Toggles a repo's `enabled` flag and returns the updated repo (command).
+/// Sets a repo's `enabled` flag and returns the updated repo (command).
 ///
-/// Tauri 2 renames `repo_id` → `repoId` and `enabled` → `enabled` for the
-/// JS caller. The frontend invokes this as `{ repoId, enabled }`.
+/// Tauri 2 renames `repo_id` → `repoId` for the JS caller.
+/// The frontend invokes this as `{ repoId, enabled }`.
 #[tauri::command]
-pub async fn repos_toggle(
+pub async fn repos_set_enabled(
     pool: tauri::State<'_, SqlitePool>,
     repo_id: String,
     enabled: bool,
 ) -> Result<Repo, String> {
-    toggle_repo(&pool, &repo_id, enabled)
+    set_repo_enabled(&pool, &repo_id, enabled)
         .await
         .map_err(|e| e.to_string())
 }
@@ -287,15 +287,23 @@ pub async fn repos_toggle(
 ///
 /// Tauri 2 renames `repo_id` → `repoId` for the JS caller.
 /// Pass `path: null` from the frontend to clear the local path.
-/// Callers are expected to supply a canonical absolute path; validation
-/// will be enforced when workspace features consume this value.
+/// Empty/whitespace-only strings are normalised to `None`.
+/// Non-absolute paths are rejected.
 #[tauri::command]
 pub async fn repos_set_local_path(
     pool: tauri::State<'_, SqlitePool>,
     repo_id: String,
     path: Option<String>,
 ) -> Result<Repo, String> {
-    set_local_path(&pool, &repo_id, path.as_deref())
+    let normalized = path.as_deref().map(str::trim).filter(|p| !p.is_empty());
+
+    if let Some(p) = normalized
+        && !std::path::Path::new(p).is_absolute()
+    {
+        return Err("path must be an absolute path".to_string());
+    }
+
+    set_local_path(&pool, &repo_id, normalized)
         .await
         .map_err(|e| e.to_string())
 }

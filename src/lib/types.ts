@@ -195,7 +195,7 @@ export type TauriCommandName =
   | "github_get_stats"
   | "github_force_sync"
   | "repos_list"
-  | "repos_toggle"
+  | "repos_set_enabled"
   | "repos_set_local_path"
   | "workspace_open"
   | "workspace_suspend"
@@ -220,7 +220,7 @@ export const TAURI_COMMANDS = {
   github_get_stats: "github_get_stats",
   github_force_sync: "github_force_sync",
   repos_list: "repos_list",
-  repos_toggle: "repos_toggle",
+  repos_set_enabled: "repos_set_enabled",
   repos_set_local_path: "repos_set_local_path",
   workspace_open: "workspace_open",
   workspace_suspend: "workspace_suspend",

@@ -90,9 +90,13 @@ pub async fn get_repo(pool: &SqlitePool, id: &str) -> Result<Repo, AppError> {
         .ok_or_else(|| AppError::NotFound(format!("repo '{id}'")))
 }
 
-/// Toggle a repo's `enabled` flag and return the updated repo.
+/// Set a repo's `enabled` flag and return the updated repo.
 /// Uses `RETURNING` for an atomic read-after-write.
-pub async fn toggle_repo(pool: &SqlitePool, id: &str, enabled: bool) -> Result<Repo, AppError> {
+pub async fn set_repo_enabled(
+    pool: &SqlitePool,
+    id: &str,
+    enabled: bool,
+) -> Result<Repo, AppError> {
     let sql = format!("UPDATE repos SET enabled = $1 WHERE id = $2 RETURNING {REPO_COLS}");
     let row: Option<RepoRow> = sqlx::query_as(&sql)
         .bind(enabled)
@@ -195,7 +199,7 @@ mod tests {
         upsert_repo(&pool, &repo).await.unwrap();
 
         // Toggle enabled off, then upsert again — enabled should be preserved
-        toggle_repo(&pool, "r-1", false).await.unwrap();
+        set_repo_enabled(&pool, "r-1", false).await.unwrap();
 
         let mut updated = repo.clone();
         updated.url = "https://github.com/mpiton/prism-v2".to_string();
@@ -247,16 +251,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_toggle_repo() {
+    async fn test_set_repo_enabled() {
         let (pool, _tmp) = test_pool().await;
         upsert_repo(&pool, &sample_repo("r-1", "mpiton", "prism"))
             .await
             .unwrap();
 
-        let disabled = toggle_repo(&pool, "r-1", false).await.unwrap();
+        let disabled = set_repo_enabled(&pool, "r-1", false).await.unwrap();
         assert!(!disabled.enabled);
 
-        let enabled = toggle_repo(&pool, "r-1", true).await.unwrap();
+        let enabled = set_repo_enabled(&pool, "r-1", true).await.unwrap();
         assert!(enabled.enabled);
 
         pool.close().await;

@@ -30,8 +30,8 @@ export async function listRepos(): Promise<Repo[]> {
   return invoke<Repo[]>(TAURI_COMMANDS.repos_list);
 }
 
-export async function toggleRepo(repoId: string, enabled: boolean): Promise<Repo> {
-  return invoke<Repo>(TAURI_COMMANDS.repos_toggle, { repoId, enabled });
+export async function setRepoEnabled(repoId: string, enabled: boolean): Promise<Repo> {
+  return invoke<Repo>(TAURI_COMMANDS.repos_set_enabled, { repoId, enabled });
 }
 
 export async function setRepoLocalPath(repoId: string, path: string | null): Promise<Repo> {

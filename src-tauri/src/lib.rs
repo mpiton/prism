@@ -42,7 +42,7 @@ pub fn run() {
             commands::github_get_stats,
             commands::github_force_sync,
             commands::repos_list,
-            commands::repos_toggle,
+            commands::repos_set_enabled,
             commands::repos_set_local_path,
         ])
         .run(tauri::generate_context!())
