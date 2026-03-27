@@ -106,6 +106,23 @@ describe("useKeyboard", () => {
     document.body.removeChild(textarea);
   });
 
+  it("should not fire when typing in a select element", () => {
+    const select = document.createElement("select");
+    document.body.appendChild(select);
+    select.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+    expect(actions.onNavigate).not.toHaveBeenCalled();
+    document.body.removeChild(select);
+  });
+
+  it("should not fire when typing in a contenteditable element", () => {
+    const div = document.createElement("div");
+    div.contentEditable = "true";
+    document.body.appendChild(div);
+    div.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+    expect(actions.onNavigate).not.toHaveBeenCalled();
+    document.body.removeChild(div);
+  });
+
   it("should clean up listener on unmount", () => {
     hook.unmount();
     fireKey("j");
@@ -117,7 +134,12 @@ describe("useKeyboard", () => {
   it("should ignore plain keys when modifier is held", () => {
     fireKey("j", { ctrlKey: true });
     fireKey("w", { metaKey: true });
+    fireKey("j", { altKey: true });
+    fireKey("Enter", { altKey: true });
+    fireKey("Escape", { altKey: true });
     expect(actions.onNavigate).not.toHaveBeenCalled();
     expect(actions.onOpenWorkspace).not.toHaveBeenCalled();
+    expect(actions.onOpen).not.toHaveBeenCalled();
+    expect(actions.onEscape).not.toHaveBeenCalled();
   });
 });

@@ -15,20 +15,19 @@ function isInputTarget(event: KeyboardEvent): boolean {
   const target = event.target;
   if (!(target instanceof Element)) return false;
   if (INPUT_TAGS.has(target.tagName)) return true;
-  return target instanceof HTMLElement && target.isContentEditable;
+  return target instanceof HTMLElement &&
+    (target.isContentEditable || target.contentEditable === "true");
 }
 
 export function useKeyboard(actions: KeyboardActions): void {
   const actionsRef = useRef(actions);
-  useEffect(() => {
-    actionsRef.current = actions;
-  });
+  actionsRef.current = actions;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
       if (isInputTarget(event)) return;
 
-      const hasModifier = event.metaKey || event.ctrlKey;
+      const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
 
       if (hasModifier && event.key === "k") {
         event.preventDefault();
@@ -52,6 +51,7 @@ export function useKeyboard(actions: KeyboardActions): void {
           actionsRef.current.onNavigate("up");
           break;
         case "Enter":
+          event.preventDefault();
           actionsRef.current.onOpen();
           break;
         case "w":
