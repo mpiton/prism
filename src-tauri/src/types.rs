@@ -340,6 +340,76 @@ impl Default for AppConfig {
     }
 }
 
+/// Deserializer for `Option<Option<T>>` that distinguishes three JSON states:
+/// - key absent → `None` (don't touch)
+/// - key present with `null` → `Some(None)` (clear)
+/// - key present with value → `Some(Some(v))` (set)
+///
+/// Standard serde collapses absent and `null` into `None` for the outer
+/// `Option`, making `Some(None)` unreachable. This custom deserializer
+/// wraps the inner `Option<T>` result in `Some(...)` whenever the key
+/// is present in the JSON payload (the `#[serde(default)]` on the struct
+/// ensures absent keys produce `None` at the outer level).
+#[allow(clippy::option_option)]
+fn deserialize_double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    // If serde calls this function, the key IS present in the JSON.
+    // Deserialize the inner Option<T>: null → None, value → Some(v).
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
+}
+
+/// Partial update payload for [`AppConfig`], used by the `config_set` IPC command.
+///
+/// Each optional field uses `None` = "don't touch this field".
+/// For nullable fields (`github_token`, `data_dir`, `workspaces_dir`),
+/// `Some(None)` means "explicitly clear to null" and `Some(Some(v))` means "set to v".
+///
+/// **Note:** To update the GitHub token with validation, use `auth_set_token` instead.
+/// Setting `github_token` here bypasses API validation — use only for clearing the token
+/// or for advanced scenarios where the caller has already validated the token.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+#[allow(clippy::option_option)] // Deliberate: None = absent, Some(None) = clear, Some(Some(v)) = set
+pub struct PartialAppConfig {
+    pub poll_interval_secs: Option<u64>,
+    pub max_active_workspaces: Option<u32>,
+    #[serde(deserialize_with = "deserialize_double_option", default)]
+    pub github_token: Option<Option<String>>,
+    #[serde(deserialize_with = "deserialize_double_option", default)]
+    pub data_dir: Option<Option<String>>,
+    #[serde(deserialize_with = "deserialize_double_option", default)]
+    pub workspaces_dir: Option<Option<String>>,
+}
+
+/// Merge a partial update into a base config, returning a new config.
+///
+/// Only fields present in `partial` override the base.
+pub fn merge_partial_config(base: &AppConfig, partial: &PartialAppConfig) -> AppConfig {
+    AppConfig {
+        poll_interval_secs: partial
+            .poll_interval_secs
+            .unwrap_or(base.poll_interval_secs),
+        max_active_workspaces: partial
+            .max_active_workspaces
+            .unwrap_or(base.max_active_workspaces),
+        github_token: match &partial.github_token {
+            Some(v) => v.clone(),
+            None => base.github_token.clone(),
+        },
+        data_dir: match &partial.data_dir {
+            Some(v) => v.clone(),
+            None => base.data_dir.clone(),
+        },
+        workspaces_dir: match &partial.workspaces_dir {
+            Some(v) => v.clone(),
+            None => base.workspaces_dir.clone(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -5,13 +5,16 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::Emitter;
 
+use crate::cache::config::{get_config, set_config};
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{list_repos, set_local_path, set_repo_enabled};
 use crate::cache::sync::sync_dashboard;
 use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
-use crate::types::{DashboardData, DashboardStats, Repo};
+use crate::types::{
+    AppConfig, DashboardData, DashboardStats, PartialAppConfig, Repo, merge_partial_config,
+};
 
 /// Authentication status returned by [`auth_get_status`].
 #[derive(Debug, Serialize)]
@@ -260,6 +263,32 @@ pub async fn github_force_sync(
     }
 
     Ok(())
+}
+
+/// Returns the full application configuration (query).
+#[tauri::command]
+pub async fn config_get(pool: tauri::State<'_, SqlitePool>) -> Result<AppConfig, String> {
+    get_config(&pool).await.map_err(|e| e.to_string())
+}
+
+/// Merges a partial update into the current config and persists it (command).
+///
+/// Reads the current config, applies the partial overrides, and writes
+/// the merged result back. Returns the full config as written (including
+/// any clamped values).
+///
+/// **Concurrency note:** The read-merge-write is not wrapped in a single
+/// transaction, so concurrent `config_set` calls could overwrite each other.
+/// Acceptable for a single-window desktop app; revisit if multi-window
+/// settings editing is added.
+#[tauri::command]
+pub async fn config_set(
+    pool: tauri::State<'_, SqlitePool>,
+    partial: PartialAppConfig,
+) -> Result<AppConfig, String> {
+    let current = get_config(&pool).await.map_err(|e| e.to_string())?;
+    let merged = merge_partial_config(&current, &partial);
+    set_config(&pool, &merged).await.map_err(|e| e.to_string())
 }
 
 /// Returns all repos ordered by `full_name` (query).
@@ -538,6 +567,112 @@ mod tests {
         assert_eq!(arr[0]["fullName"], "mpiton/alpha");
         assert_eq!(arr[1]["isArchived"], true);
         assert_eq!(arr[1]["lastSyncAt"], "2026-03-26T10:00:00Z");
+    }
+
+    // -- AppConfig IPC contract tests (T-038) --
+
+    #[test]
+    fn test_config_serializes_camel_case() {
+        let config = AppConfig {
+            poll_interval_secs: 120,
+            max_active_workspaces: 5,
+            github_token: Some("ghp_test".into()),
+            data_dir: None,
+            workspaces_dir: Some("/ws".into()),
+        };
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["pollIntervalSecs"], 120);
+        assert_eq!(json["maxActiveWorkspaces"], 5);
+        assert_eq!(json["githubToken"], "ghp_test");
+        assert!(json["dataDir"].is_null());
+        assert_eq!(json["workspacesDir"], "/ws");
+    }
+
+    #[test]
+    fn test_partial_config_deserializes_from_frontend() {
+        // Frontend sends only the fields it wants to update
+        let json = serde_json::json!({
+            "pollIntervalSecs": 60
+        });
+        let partial: PartialAppConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(partial.poll_interval_secs, Some(60));
+        assert!(partial.max_active_workspaces.is_none());
+        assert!(partial.github_token.is_none());
+        assert!(partial.data_dir.is_none());
+        assert!(partial.workspaces_dir.is_none());
+    }
+
+    #[test]
+    fn test_partial_config_empty_object() {
+        let json = serde_json::json!({});
+        let partial: PartialAppConfig = serde_json::from_value(json).unwrap();
+        assert!(partial.poll_interval_secs.is_none());
+        assert!(partial.max_active_workspaces.is_none());
+    }
+
+    #[test]
+    fn test_partial_config_deserializes_explicit_null_as_clear() {
+        let json = serde_json::json!({
+            "githubToken": null
+        });
+        let partial: PartialAppConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            partial.github_token,
+            Some(None),
+            "explicit null should produce Some(None), not None"
+        );
+        // poll_interval_secs absent → None (don't touch)
+        assert!(partial.poll_interval_secs.is_none());
+    }
+
+    #[test]
+    fn test_merge_partial_config_overrides_only_provided_fields() {
+        let base = AppConfig {
+            poll_interval_secs: 300,
+            max_active_workspaces: 3,
+            github_token: None,
+            data_dir: None,
+            workspaces_dir: None,
+        };
+        let partial = PartialAppConfig {
+            poll_interval_secs: Some(60),
+            max_active_workspaces: None,
+            github_token: None,
+            data_dir: None,
+            workspaces_dir: None,
+        };
+        let merged = merge_partial_config(&base, &partial);
+        assert_eq!(merged.poll_interval_secs, 60);
+        assert_eq!(merged.max_active_workspaces, 3); // unchanged
+    }
+
+    #[test]
+    fn test_merge_partial_config_clears_optional_with_explicit_null() {
+        let base = AppConfig {
+            poll_interval_secs: 300,
+            max_active_workspaces: 3,
+            github_token: Some("ghp_old".into()),
+            data_dir: Some("/data".into()),
+            workspaces_dir: None,
+        };
+        // Double-option: Some(None) means "explicitly set to null"
+        let partial = PartialAppConfig {
+            poll_interval_secs: None,
+            max_active_workspaces: None,
+            github_token: Some(None), // clear it
+            data_dir: None,           // leave as-is
+            workspaces_dir: None,
+        };
+        let merged = merge_partial_config(&base, &partial);
+        assert!(
+            merged.github_token.is_none(),
+            "github_token should be cleared"
+        );
+        assert_eq!(
+            merged.data_dir.as_deref(),
+            Some("/data"),
+            "data_dir unchanged"
+        );
     }
 
     #[tokio::test]

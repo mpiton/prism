@@ -188,6 +188,22 @@ export interface AppConfig {
   readonly workspacesDir: string | null;
 }
 
+/** Partial update payload for `config_set`. Mirrors Rust `PartialAppConfig`.
+ *
+ * - `undefined` (key absent) = leave unchanged
+ * - `null` (for nullable fields) = explicitly clear to null
+ * - value = set to that value
+ */
+export interface PartialAppConfig {
+  readonly pollIntervalSecs?: number;
+  readonly maxActiveWorkspaces?: number;
+  /** undefined = leave unchanged, null = clear token, string = set token.
+   * Prefer `authSetToken` for validated token updates. */
+  readonly githubToken?: string | null;
+  readonly dataDir?: string | null;
+  readonly workspacesDir?: string | null;
+}
+
 // ── Tauri IPC command & event registries ─────────────────────────
 
 export type TauriCommandName =
