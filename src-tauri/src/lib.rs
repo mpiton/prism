@@ -27,8 +27,7 @@ impl Default for PollingHandle {
 /// Attempts to start background polling if credentials exist in the keychain.
 ///
 /// Runs asynchronously after app setup completes. If no token is stored
-/// or validation fails, polling is silently deferred until the user
-/// authenticates via `auth_set_token`.
+/// or validation fails, polling is deferred until the next app launch.
 async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool) {
     use crate::github::{auth, client::GitHubClient, polling::start_polling};
 
@@ -60,8 +59,14 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
 
     // Pre-populate the username cache so dashboard calls skip re-validation
     let cached = app_handle.state::<commands::GithubUsername>();
-    if let Ok(mut guard) = cached.0.lock() {
-        *guard = Some(username.clone());
+    match cached.0.lock() {
+        Ok(mut guard) => {
+            *guard = Some(username.clone());
+        }
+        Err(e) => {
+            *e.into_inner() = Some(username.clone());
+            log::warn!("GithubUsername mutex was poisoned; recovered");
+        }
     }
 
     // Create client and start polling
