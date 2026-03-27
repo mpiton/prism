@@ -5,6 +5,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::Emitter;
 
+use crate::cache::activity::{mark_all_read, mark_read};
 use crate::cache::config::{get_config, set_config};
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{list_repos, set_local_path, set_repo_enabled};
@@ -335,6 +336,31 @@ pub async fn repos_set_local_path(
     set_local_path(&pool, &repo_id, normalized)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Marks a single activity as read. Returns `true` if the activity was
+/// actually updated (i.e. it was previously unread), `false` otherwise.
+///
+/// Tauri 2 renames `activity_id` → `activityId` for the JS caller.
+#[tauri::command]
+pub async fn activity_mark_read(
+    pool: tauri::State<'_, SqlitePool>,
+    activity_id: String,
+) -> Result<bool, String> {
+    mark_read(&pool, &activity_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Marks all unread activities as read. Returns the number of rows updated.
+///
+/// The underlying `mark_all_read` returns `u64`, but we cast to `u32` at the
+/// IPC boundary so the value fits safely in JavaScript's `number` (IEEE-754).
+#[tauri::command]
+pub async fn activity_mark_all_read(pool: tauri::State<'_, SqlitePool>) -> Result<u32, String> {
+    let count = mark_all_read(&pool).await.map_err(|e| e.to_string())?;
+    #[allow(clippy::cast_possible_truncation)] // Desktop SQLite — count will never exceed u32::MAX
+    Ok(count as u32)
 }
 
 #[cfg(test)]
@@ -700,5 +726,120 @@ mod tests {
                 "poisoned lock should not bubble up as lock error, got: {err}"
             ),
         }
+    }
+
+    // -- Activity IPC integration tests (T-039) --
+
+    #[tokio::test]
+    async fn test_activity_mark_read_via_pool() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
+
+        let repo = crate::types::Repo {
+            id: "repo-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        crate::cache::repos::upsert_repo(&pool, &repo)
+            .await
+            .unwrap();
+
+        let activity = crate::types::Activity {
+            id: "act-1".into(),
+            activity_type: crate::types::ActivityType::PrOpened,
+            actor: "mpiton".into(),
+            repo_id: "repo-1".into(),
+            pull_request_id: None,
+            issue_id: None,
+            message: "Opened PR #42".into(),
+            created_at: "2026-03-27T10:00:00Z".into(),
+        };
+        crate::cache::activity::insert_activity(&pool, &activity)
+            .await
+            .unwrap();
+
+        // First call — unread → true
+        let result = mark_read(&pool, "act-1").await.unwrap();
+        assert!(result);
+
+        // Second call — already read → false
+        let result = mark_read(&pool, "act-1").await.unwrap();
+        assert!(!result);
+
+        // Non-existent ID → false
+        let result = mark_read(&pool, "nonexistent").await.unwrap();
+        assert!(!result);
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_activity_mark_all_read_returns_count() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
+
+        let repo = crate::types::Repo {
+            id: "repo-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        crate::cache::repos::upsert_repo(&pool, &repo)
+            .await
+            .unwrap();
+
+        let a1 = crate::types::Activity {
+            id: "act-1".into(),
+            activity_type: crate::types::ActivityType::PrOpened,
+            actor: "mpiton".into(),
+            repo_id: "repo-1".into(),
+            pull_request_id: None,
+            issue_id: None,
+            message: "First".into(),
+            created_at: "2026-03-27T10:00:00Z".into(),
+        };
+        let a2 = crate::types::Activity {
+            id: "act-2".into(),
+            activity_type: crate::types::ActivityType::PrMerged,
+            actor: "mpiton".into(),
+            repo_id: "repo-1".into(),
+            pull_request_id: None,
+            issue_id: None,
+            message: "Second".into(),
+            created_at: "2026-03-27T11:00:00Z".into(),
+        };
+        crate::cache::activity::insert_activity(&pool, &a1)
+            .await
+            .unwrap();
+        crate::cache::activity::insert_activity(&pool, &a2)
+            .await
+            .unwrap();
+
+        // Both unread → count = 2
+        let count = mark_all_read(&pool).await.unwrap();
+        assert_eq!(count, 2);
+
+        // All already read → count = 0
+        let count = mark_all_read(&pool).await.unwrap();
+        assert_eq!(count, 0);
+
+        pool.close().await;
     }
 }

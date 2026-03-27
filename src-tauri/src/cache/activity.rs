@@ -113,7 +113,6 @@ pub async fn get_recent_activity(
 }
 
 /// Mark a single activity as read. Returns `true` if a row was updated.
-#[allow(dead_code)]
 pub async fn mark_read(pool: &SqlitePool, id: &str) -> Result<bool, AppError> {
     let result = sqlx::query("UPDATE activity SET is_read = 1 WHERE id = $1 AND is_read = 0")
         .bind(id)
@@ -124,7 +123,6 @@ pub async fn mark_read(pool: &SqlitePool, id: &str) -> Result<bool, AppError> {
 }
 
 /// Mark all unread activities as read. Returns the number of rows updated.
-#[allow(dead_code)]
 pub async fn mark_all_read(pool: &SqlitePool) -> Result<u64, AppError> {
     let result = sqlx::query("UPDATE activity SET is_read = 1 WHERE is_read = 0")
         .execute(pool)
