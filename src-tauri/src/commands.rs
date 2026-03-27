@@ -611,6 +611,21 @@ mod tests {
     }
 
     #[test]
+    fn test_partial_config_deserializes_explicit_null_as_clear() {
+        let json = serde_json::json!({
+            "githubToken": null
+        });
+        let partial: PartialAppConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            partial.github_token,
+            Some(None),
+            "explicit null should produce Some(None), not None"
+        );
+        // poll_interval_secs absent → None (don't touch)
+        assert!(partial.poll_interval_secs.is_none());
+    }
+
+    #[test]
     fn test_merge_partial_config_overrides_only_provided_fields() {
         let base = AppConfig {
             poll_interval_secs: 300,

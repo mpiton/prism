@@ -340,6 +340,27 @@ impl Default for AppConfig {
     }
 }
 
+/// Deserializer for `Option<Option<T>>` that distinguishes three JSON states:
+/// - key absent → `None` (don't touch)
+/// - key present with `null` → `Some(None)` (clear)
+/// - key present with value → `Some(Some(v))` (set)
+///
+/// Standard serde collapses absent and `null` into `None` for the outer
+/// `Option`, making `Some(None)` unreachable. This custom deserializer
+/// wraps the inner `Option<T>` result in `Some(...)` whenever the key
+/// is present in the JSON payload (the `#[serde(default)]` on the struct
+/// ensures absent keys produce `None` at the outer level).
+#[allow(clippy::option_option)]
+fn deserialize_double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    // If serde calls this function, the key IS present in the JSON.
+    // Deserialize the inner Option<T>: null → None, value → Some(v).
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
+}
+
 /// Partial update payload for [`AppConfig`], used by the `config_set` IPC command.
 ///
 /// Each optional field uses `None` = "don't touch this field".
@@ -355,8 +376,11 @@ impl Default for AppConfig {
 pub struct PartialAppConfig {
     pub poll_interval_secs: Option<u64>,
     pub max_active_workspaces: Option<u32>,
+    #[serde(deserialize_with = "deserialize_double_option", default)]
     pub github_token: Option<Option<String>>,
+    #[serde(deserialize_with = "deserialize_double_option", default)]
     pub data_dir: Option<Option<String>>,
+    #[serde(deserialize_with = "deserialize_double_option", default)]
     pub workspaces_dir: Option<Option<String>>,
 }
 
