@@ -1,0 +1,45 @@
+import { create } from "zustand";
+import type { Priority, CiStatus } from "../lib/types";
+
+export type DashboardView =
+  | "overview"
+  | "reviews"
+  | "mine"
+  | "issues"
+  | "feed"
+  | "workspaces"
+  | "settings";
+
+export interface DashboardFilters {
+  readonly repo?: string;
+  readonly priority?: Priority;
+  readonly ciStatus?: CiStatus;
+}
+
+interface DashboardUiState {
+  readonly currentView: DashboardView;
+  readonly activeFilters: DashboardFilters;
+}
+
+interface DashboardActions {
+  setView: (view: DashboardView) => void;
+  setFilter: (filter: Partial<DashboardFilters>) => void;
+  clearFilters: () => void;
+}
+
+type DashboardState = DashboardUiState & DashboardActions;
+
+export const useDashboardStore = create<DashboardState>((set) => ({
+  currentView: "overview",
+  activeFilters: {},
+  setView: (view) => set({ currentView: view }),
+  setFilter: (filter) =>
+    set((state) => {
+      const merged = { ...state.activeFilters, ...filter };
+      const cleaned = Object.fromEntries(
+        Object.entries(merged).filter(([, v]) => v !== undefined),
+      ) as DashboardFilters;
+      return { activeFilters: cleaned };
+    }),
+  clearFilters: () => set({ activeFilters: {} }),
+}));
