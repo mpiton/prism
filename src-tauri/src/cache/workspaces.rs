@@ -136,7 +136,6 @@ pub async fn get_workspace(pool: &SqlitePool, id: &str) -> Result<Option<Workspa
 }
 
 /// List workspaces filtered by state, ordered by `updated_at DESC`.
-#[allow(dead_code)]
 pub async fn list_workspaces(
     pool: &SqlitePool,
     state: Option<&WorkspaceState>,
@@ -265,7 +264,6 @@ pub async fn add_note(pool: &SqlitePool, note: &WorkspaceNote) -> Result<Workspa
 }
 
 /// Get all notes for a workspace, ordered by `created_at ASC` (oldest first).
-#[allow(dead_code)]
 pub async fn get_notes(
     pool: &SqlitePool,
     workspace_id: &str,

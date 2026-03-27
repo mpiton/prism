@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { TAURI_COMMANDS } from "./types";
-import type { AppConfig, AuthStatus, DashboardData, DashboardStats, PartialAppConfig, Repo } from "./types";
+import type { AppConfig, AuthStatus, DashboardData, DashboardStats, PartialAppConfig, Repo, Workspace, WorkspaceNote } from "./types";
 
 export async function authSetToken(token: string): Promise<string> {
   return invoke<string>(TAURI_COMMANDS.auth_set_token, { token });
@@ -52,4 +52,12 @@ export async function markActivityRead(activityId: string): Promise<boolean> {
 
 export async function markAllActivityRead(): Promise<number> {
   return invoke<number>(TAURI_COMMANDS.activity_mark_all_read);
+}
+
+export async function listWorkspaces(): Promise<Workspace[]> {
+  return invoke<Workspace[]>(TAURI_COMMANDS.workspace_list);
+}
+
+export async function getWorkspaceNotes(workspaceId: string): Promise<WorkspaceNote[]> {
+  return invoke<WorkspaceNote[]>(TAURI_COMMANDS.workspace_get_notes, { workspaceId });
 }

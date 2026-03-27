@@ -48,6 +48,8 @@ pub fn run() {
             commands::config_set,
             commands::activity_mark_read,
             commands::activity_mark_all_read,
+            commands::workspace_list,
+            commands::workspace_get_notes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
