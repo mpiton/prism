@@ -19,6 +19,19 @@ beforeEach(() => {
   mockListen.mockReset();
 });
 
+// ── Export completeness ──────────────────────────────────────────
+
+describe("IPC wrapper exports", () => {
+  it("should have a wrapper for every TAURI_COMMANDS entry", async () => {
+    const mod = await import("./tauri");
+    const exportedFns = Object.values(mod).filter(
+      (v) => typeof v === "function",
+    );
+    // 1 onEvent + one wrapper per TAURI_COMMANDS entry
+    expect(exportedFns.length).toBe(Object.keys(TAURI_COMMANDS).length + 1);
+  });
+});
+
 // ── Invoke correctness ──────────────────────────────────────────
 
 describe("GitHub wrappers", () => {
