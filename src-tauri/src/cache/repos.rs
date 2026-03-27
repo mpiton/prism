@@ -73,7 +73,6 @@ pub async fn upsert_repo(pool: &SqlitePool, repo: &Repo) -> Result<Repo, AppErro
 }
 
 /// Return all repos ordered by `full_name`.
-#[allow(dead_code)]
 pub async fn list_repos(pool: &SqlitePool) -> Result<Vec<Repo>, AppError> {
     let sql = format!("SELECT {REPO_COLS} FROM repos ORDER BY full_name");
     let rows: Vec<RepoRow> = sqlx::query_as(&sql).fetch_all(pool).await?;
@@ -91,10 +90,13 @@ pub async fn get_repo(pool: &SqlitePool, id: &str) -> Result<Repo, AppError> {
         .ok_or_else(|| AppError::NotFound(format!("repo '{id}'")))
 }
 
-/// Toggle a repo's `enabled` flag and return the updated repo.
+/// Set a repo's `enabled` flag and return the updated repo.
 /// Uses `RETURNING` for an atomic read-after-write.
-#[allow(dead_code)]
-pub async fn toggle_repo(pool: &SqlitePool, id: &str, enabled: bool) -> Result<Repo, AppError> {
+pub async fn set_repo_enabled(
+    pool: &SqlitePool,
+    id: &str,
+    enabled: bool,
+) -> Result<Repo, AppError> {
     let sql = format!("UPDATE repos SET enabled = $1 WHERE id = $2 RETURNING {REPO_COLS}");
     let row: Option<RepoRow> = sqlx::query_as(&sql)
         .bind(enabled)
@@ -108,7 +110,6 @@ pub async fn toggle_repo(pool: &SqlitePool, id: &str, enabled: bool) -> Result<R
 
 /// Set or clear the local clone path for a repo.
 /// Uses `RETURNING` for an atomic read-after-write.
-#[allow(dead_code)]
 pub async fn set_local_path(
     pool: &SqlitePool,
     id: &str,
@@ -198,7 +199,7 @@ mod tests {
         upsert_repo(&pool, &repo).await.unwrap();
 
         // Toggle enabled off, then upsert again — enabled should be preserved
-        toggle_repo(&pool, "r-1", false).await.unwrap();
+        set_repo_enabled(&pool, "r-1", false).await.unwrap();
 
         let mut updated = repo.clone();
         updated.url = "https://github.com/mpiton/prism-v2".to_string();
@@ -250,16 +251,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_toggle_repo() {
+    async fn test_set_repo_enabled() {
         let (pool, _tmp) = test_pool().await;
         upsert_repo(&pool, &sample_repo("r-1", "mpiton", "prism"))
             .await
             .unwrap();
 
-        let disabled = toggle_repo(&pool, "r-1", false).await.unwrap();
+        let disabled = set_repo_enabled(&pool, "r-1", false).await.unwrap();
         assert!(!disabled.enabled);
 
-        let enabled = toggle_repo(&pool, "r-1", true).await.unwrap();
+        let enabled = set_repo_enabled(&pool, "r-1", true).await.unwrap();
         assert!(enabled.enabled);
 
         pool.close().await;
