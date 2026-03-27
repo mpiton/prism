@@ -27,21 +27,22 @@ export function useKeyboard(actions: KeyboardActions): void {
     function handleKeyDown(event: KeyboardEvent): void {
       if (isInputTarget(event)) return;
 
-      const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
+      const actionModifier = event.metaKey || event.ctrlKey;
+      const anyModifier = actionModifier || event.altKey;
 
-      if (hasModifier && event.key === "k") {
+      if (actionModifier && event.key === "k") {
         event.preventDefault();
         actionsRef.current.onCommandPalette();
         return;
       }
 
-      if (hasModifier && event.key >= "1" && event.key <= "3") {
+      if (actionModifier && event.key >= "1" && event.key <= "3") {
         event.preventDefault();
         actionsRef.current.onSwitchWorkspace(Number(event.key) - 1);
         return;
       }
 
-      if (hasModifier) return;
+      if (anyModifier) return;
 
       switch (event.key) {
         case "j":
@@ -51,7 +52,6 @@ export function useKeyboard(actions: KeyboardActions): void {
           actionsRef.current.onNavigate("up");
           break;
         case "Enter":
-          event.preventDefault();
           actionsRef.current.onOpen();
           break;
         case "w":

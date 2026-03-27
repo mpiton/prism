@@ -70,6 +70,19 @@ describe("useKeyboard", () => {
     expect(actions.onNavigate).not.toHaveBeenCalled();
   });
 
+  it("should not trigger command palette when Alt+K is pressed", () => {
+    fireKey("k", { altKey: true });
+    expect(actions.onCommandPalette).not.toHaveBeenCalled();
+    expect(actions.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("should not switch workspace when Alt+1/2/3 is pressed", () => {
+    fireKey("1", { altKey: true });
+    fireKey("2", { altKey: true });
+    fireKey("3", { altKey: true });
+    expect(actions.onSwitchWorkspace).not.toHaveBeenCalled();
+  });
+
   it("should switch workspace when Ctrl+1/2/3 is pressed", () => {
     fireKey("1", { ctrlKey: true });
     fireKey("2", { ctrlKey: true });
