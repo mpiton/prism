@@ -10,11 +10,13 @@ use crate::cache::config::{get_config, set_config};
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{list_repos, set_local_path, set_repo_enabled};
 use crate::cache::sync::sync_dashboard;
+use crate::cache::workspaces::{get_notes, list_workspaces};
 use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
 use crate::types::{
-    AppConfig, DashboardData, DashboardStats, PartialAppConfig, Repo, merge_partial_config,
+    AppConfig, DashboardData, DashboardStats, PartialAppConfig, Repo, Workspace, WorkspaceNote,
+    merge_partial_config,
 };
 
 /// Authentication status returned by [`auth_get_status`].
@@ -361,6 +363,31 @@ pub async fn activity_mark_all_read(pool: tauri::State<'_, SqlitePool>) -> Resul
     let count = mark_all_read(&pool).await.map_err(|e| e.to_string())?;
     #[allow(clippy::cast_possible_truncation)] // Desktop SQLite — count will never exceed u32::MAX
     Ok(count as u32)
+}
+
+/// Returns all workspaces ordered by `updated_at` DESC (query).
+///
+/// No filter is applied — all states (active, suspended, archived) are returned.
+/// The frontend can filter client-side or the caller can add a `state` parameter
+/// in a future iteration.
+#[tauri::command]
+pub async fn workspace_list(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<Workspace>, String> {
+    list_workspaces(&pool, None)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Returns all notes for a workspace ordered by `created_at` ASC (query).
+///
+/// Tauri 2 renames `workspace_id` → `workspaceId` for the JS caller.
+#[tauri::command]
+pub async fn workspace_get_notes(
+    pool: tauri::State<'_, SqlitePool>,
+    workspace_id: String,
+) -> Result<Vec<WorkspaceNote>, String> {
+    get_notes(&pool, &workspace_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -726,6 +753,211 @@ mod tests {
                 "poisoned lock should not bubble up as lock error, got: {err}"
             ),
         }
+    }
+
+    // -- Workspace IPC contract tests (T-040) --
+
+    #[test]
+    fn test_workspace_serializes_camel_case() {
+        let ws = crate::types::Workspace {
+            id: "ws-1".into(),
+            repo_id: "repo-1".into(),
+            pull_request_number: 42,
+            state: crate::types::WorkspaceState::Active,
+            worktree_path: Some("/home/user/.prism/workspaces/prism/worktrees/pr-42".into()),
+            session_id: Some("session-abc".into()),
+            created_at: "2026-03-27T10:00:00Z".into(),
+            updated_at: "2026-03-27T10:00:00Z".into(),
+        };
+        let json = serde_json::to_value(&ws).unwrap();
+        assert_eq!(json["id"], "ws-1");
+        assert_eq!(json["repoId"], "repo-1");
+        assert_eq!(json["pullRequestNumber"], 42);
+        assert_eq!(json["state"], "active");
+        assert_eq!(
+            json["worktreePath"],
+            "/home/user/.prism/workspaces/prism/worktrees/pr-42"
+        );
+        assert_eq!(json["sessionId"], "session-abc");
+        assert_eq!(json["createdAt"], "2026-03-27T10:00:00Z");
+        assert_eq!(json["updatedAt"], "2026-03-27T10:00:00Z");
+    }
+
+    #[test]
+    fn test_workspace_note_serializes_camel_case() {
+        let note = crate::types::WorkspaceNote {
+            id: "wn-1".into(),
+            workspace_id: "ws-1".into(),
+            content: "LGTM".into(),
+            created_at: "2026-03-27T11:00:00Z".into(),
+        };
+        let json = serde_json::to_value(&note).unwrap();
+        assert_eq!(json["id"], "wn-1");
+        assert_eq!(json["workspaceId"], "ws-1");
+        assert_eq!(json["content"], "LGTM");
+        assert_eq!(json["createdAt"], "2026-03-27T11:00:00Z");
+    }
+
+    #[tokio::test]
+    async fn test_workspace_list_via_pool() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
+
+        let repo = crate::types::Repo {
+            id: "repo-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        crate::cache::repos::upsert_repo(&pool, &repo)
+            .await
+            .unwrap();
+
+        // Empty list
+        let result = crate::cache::workspaces::list_workspaces(&pool, None)
+            .await
+            .unwrap();
+        assert!(result.is_empty());
+
+        // Create two workspaces
+        let ws1 = crate::types::Workspace {
+            id: "ws-1".into(),
+            repo_id: "repo-1".into(),
+            pull_request_number: 1,
+            state: crate::types::WorkspaceState::Active,
+            worktree_path: Some("/ws/pr-1".into()),
+            session_id: None,
+            created_at: "2026-03-27T10:00:00Z".into(),
+            updated_at: "2026-03-27T10:00:00Z".into(),
+        };
+        let ws2 = crate::types::Workspace {
+            id: "ws-2".into(),
+            repo_id: "repo-1".into(),
+            pull_request_number: 2,
+            state: crate::types::WorkspaceState::Suspended,
+            worktree_path: None,
+            session_id: None,
+            created_at: "2026-03-27T11:00:00Z".into(),
+            updated_at: "2026-03-27T11:00:00Z".into(),
+        };
+        crate::cache::workspaces::create_workspace(&pool, &ws1)
+            .await
+            .unwrap();
+        crate::cache::workspaces::create_workspace(&pool, &ws2)
+            .await
+            .unwrap();
+
+        // List all — both returned, ordered by updated_at DESC
+        let result = crate::cache::workspaces::list_workspaces(&pool, None)
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 2);
+        // ws2 has later updated_at so it comes first
+        assert_eq!(result[0].id, "ws-2");
+        assert_eq!(result[1].id, "ws-1");
+
+        // Verify serialization works for the IPC contract
+        let json = serde_json::to_value(&result).unwrap();
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["pullRequestNumber"], 2);
+        assert_eq!(arr[1]["state"], "active");
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_workspace_get_notes_via_pool() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
+
+        let repo = crate::types::Repo {
+            id: "repo-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        crate::cache::repos::upsert_repo(&pool, &repo)
+            .await
+            .unwrap();
+
+        let ws = crate::types::Workspace {
+            id: "ws-1".into(),
+            repo_id: "repo-1".into(),
+            pull_request_number: 42,
+            state: crate::types::WorkspaceState::Active,
+            worktree_path: Some("/ws/pr-42".into()),
+            session_id: None,
+            created_at: "2026-03-27T10:00:00Z".into(),
+            updated_at: "2026-03-27T10:00:00Z".into(),
+        };
+        crate::cache::workspaces::create_workspace(&pool, &ws)
+            .await
+            .unwrap();
+
+        // No notes yet
+        let notes = crate::cache::workspaces::get_notes(&pool, "ws-1")
+            .await
+            .unwrap();
+        assert!(notes.is_empty());
+
+        // Add two notes
+        let n1 = crate::types::WorkspaceNote {
+            id: "wn-1".into(),
+            workspace_id: "ws-1".into(),
+            content: "First note".into(),
+            created_at: "2026-03-27T10:00:00Z".into(),
+        };
+        let n2 = crate::types::WorkspaceNote {
+            id: "wn-2".into(),
+            workspace_id: "ws-1".into(),
+            content: "Second note".into(),
+            created_at: "2026-03-27T11:00:00Z".into(),
+        };
+        crate::cache::workspaces::add_note(&pool, &n1)
+            .await
+            .unwrap();
+        crate::cache::workspaces::add_note(&pool, &n2)
+            .await
+            .unwrap();
+
+        // Get notes — ordered by created_at ASC
+        let notes = crate::cache::workspaces::get_notes(&pool, "ws-1")
+            .await
+            .unwrap();
+        assert_eq!(notes.len(), 2);
+        assert_eq!(notes[0].id, "wn-1");
+        assert_eq!(notes[1].id, "wn-2");
+
+        // No notes for non-existent workspace
+        let empty = crate::cache::workspaces::get_notes(&pool, "nonexistent")
+            .await
+            .unwrap();
+        assert!(empty.is_empty());
+
+        // Verify serialization for IPC contract
+        let json = serde_json::to_value(&notes).unwrap();
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr[0]["workspaceId"], "ws-1");
+        assert_eq!(arr[1]["content"], "Second note");
+
+        pool.close().await;
     }
 
     // -- Activity IPC integration tests (T-039) --
