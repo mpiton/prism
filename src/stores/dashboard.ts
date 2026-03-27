@@ -16,7 +16,7 @@ export interface DashboardFilters {
   readonly ciStatus?: CiStatus;
 }
 
-interface DashboardData {
+interface DashboardUiState {
   readonly currentView: DashboardView;
   readonly activeFilters: DashboardFilters;
 }
@@ -27,15 +27,18 @@ interface DashboardActions {
   clearFilters: () => void;
 }
 
-type DashboardState = DashboardData & DashboardActions;
+type DashboardState = DashboardUiState & DashboardActions;
 
 export const useDashboardStore = create<DashboardState>((set) => ({
   currentView: "overview",
   activeFilters: {},
   setView: (view) => set({ currentView: view }),
   setFilter: (filter) =>
-    set((state) => ({
-      activeFilters: { ...state.activeFilters, ...filter },
-    })),
+    set((state) => {
+      const sanitized = Object.fromEntries(
+        Object.entries(filter).filter(([, v]) => v !== undefined),
+      ) as Partial<DashboardFilters>;
+      return { activeFilters: { ...state.activeFilters, ...sanitized } };
+    }),
   clearFilters: () => set({ activeFilters: {} }),
 }));

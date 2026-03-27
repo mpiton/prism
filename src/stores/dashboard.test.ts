@@ -52,6 +52,27 @@ describe("useDashboardStore", () => {
     expect(useDashboardStore.getState().activeFilters).toEqual({});
   });
 
+  it("should handle all filter types together", () => {
+    useDashboardStore.getState().setFilter({
+      repo: "prism",
+      priority: "high",
+      ciStatus: "success",
+    });
+    expect(useDashboardStore.getState().activeFilters).toEqual({
+      repo: "prism",
+      priority: "high",
+      ciStatus: "success",
+    });
+  });
+
+  it("should ignore undefined values in setFilter", () => {
+    useDashboardStore.getState().setFilter({ repo: "prism" });
+    useDashboardStore.getState().setFilter({ priority: undefined });
+    const filters = useDashboardStore.getState().activeFilters;
+    expect(filters).toEqual({ repo: "prism" });
+    expect(Object.keys(filters)).toEqual(["repo"]);
+  });
+
   it("should not mutate previous state on setView", () => {
     const before = useDashboardStore.getState();
     useDashboardStore.getState().setView("workspaces");
