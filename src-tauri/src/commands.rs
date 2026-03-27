@@ -728,31 +728,118 @@ mod tests {
         }
     }
 
-    // -- Activity IPC contract tests (T-039) --
+    // -- Activity IPC integration tests (T-039) --
 
-    #[test]
-    fn test_mark_read_result_serializes_as_bool() {
-        // activity_mark_read returns Result<bool, String>.
-        // Verify both outcomes serialize correctly for the frontend.
-        let updated = serde_json::to_value(true).unwrap();
-        assert_eq!(updated, serde_json::Value::Bool(true));
+    #[tokio::test]
+    async fn test_activity_mark_read_via_pool() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
 
-        let already_read = serde_json::to_value(false).unwrap();
-        assert_eq!(already_read, serde_json::Value::Bool(false));
+        let repo = crate::types::Repo {
+            id: "repo-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        crate::cache::repos::upsert_repo(&pool, &repo)
+            .await
+            .unwrap();
+
+        let activity = crate::types::Activity {
+            id: "act-1".into(),
+            activity_type: crate::types::ActivityType::PrOpened,
+            actor: "mpiton".into(),
+            repo_id: "repo-1".into(),
+            pull_request_id: None,
+            issue_id: None,
+            message: "Opened PR #42".into(),
+            created_at: "2026-03-27T10:00:00Z".into(),
+        };
+        crate::cache::activity::insert_activity(&pool, &activity)
+            .await
+            .unwrap();
+
+        // First call — unread → true
+        let result = mark_read(&pool, "act-1").await.unwrap();
+        assert!(result);
+
+        // Second call — already read → false
+        let result = mark_read(&pool, "act-1").await.unwrap();
+        assert!(!result);
+
+        // Non-existent ID → false
+        let result = mark_read(&pool, "nonexistent").await.unwrap();
+        assert!(!result);
+
+        pool.close().await;
     }
 
-    #[test]
-    fn test_mark_all_read_count_serializes_as_number() {
-        // activity_mark_all_read returns Result<u32, String>.
-        // Verify the count serializes as a JSON number for the frontend.
-        let count: u32 = 42;
-        let json = serde_json::to_value(count).unwrap();
-        assert!(json.is_number());
-        assert_eq!(json.as_u64(), Some(42));
+    #[tokio::test]
+    async fn test_activity_mark_all_read_returns_count() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
 
-        // Zero case — no unread activities
-        let zero: u32 = 0;
-        let json = serde_json::to_value(zero).unwrap();
-        assert_eq!(json.as_u64(), Some(0));
+        let repo = crate::types::Repo {
+            id: "repo-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        crate::cache::repos::upsert_repo(&pool, &repo)
+            .await
+            .unwrap();
+
+        let a1 = crate::types::Activity {
+            id: "act-1".into(),
+            activity_type: crate::types::ActivityType::PrOpened,
+            actor: "mpiton".into(),
+            repo_id: "repo-1".into(),
+            pull_request_id: None,
+            issue_id: None,
+            message: "First".into(),
+            created_at: "2026-03-27T10:00:00Z".into(),
+        };
+        let a2 = crate::types::Activity {
+            id: "act-2".into(),
+            activity_type: crate::types::ActivityType::PrMerged,
+            actor: "mpiton".into(),
+            repo_id: "repo-1".into(),
+            pull_request_id: None,
+            issue_id: None,
+            message: "Second".into(),
+            created_at: "2026-03-27T11:00:00Z".into(),
+        };
+        crate::cache::activity::insert_activity(&pool, &a1)
+            .await
+            .unwrap();
+        crate::cache::activity::insert_activity(&pool, &a2)
+            .await
+            .unwrap();
+
+        // Both unread → count = 2
+        let count = mark_all_read(&pool).await.unwrap();
+        assert_eq!(count, 2);
+
+        // All already read → count = 0
+        let count = mark_all_read(&pool).await.unwrap();
+        assert_eq!(count, 0);
+
+        pool.close().await;
     }
 }
