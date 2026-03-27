@@ -55,7 +55,11 @@ export function useNotifications() {
     return () => {
       cancelled = true;
       for (const fn of unlistenFns) {
-        fn();
+        try {
+          fn();
+        } catch (err) {
+          console.error("[useNotifications] unlisten failed:", err);
+        }
       }
     };
   }, []);
