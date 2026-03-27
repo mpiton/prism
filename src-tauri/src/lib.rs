@@ -15,7 +15,7 @@ use tauri::Manager;
 /// Holds the background polling task handle for cancellation on logout/shutdown.
 ///
 /// Managed as Tauri state. The inner `JoinHandle` is `None` until polling
-/// starts (either at launch if credentials exist, or after `auth_set_token`).
+/// starts at launch when valid credentials already exist in the keychain.
 pub struct PollingHandle(pub(crate) Mutex<Option<tokio::task::JoinHandle<()>>>);
 
 impl Default for PollingHandle {
@@ -35,7 +35,7 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
     let token = match tokio::task::spawn_blocking(auth::get_token).await {
         Ok(Ok(Some(t))) => t,
         Ok(Ok(None)) => {
-            info!("no GitHub token at startup — polling deferred until auth");
+            info!("no GitHub token at startup — polling deferred until next app launch");
             return;
         }
         Ok(Err(e)) => {
@@ -84,11 +84,18 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
     let state = app_handle.state::<PollingHandle>();
     match state.0.lock() {
         Ok(mut guard) => {
-            *guard = Some(join_handle);
+            if let Some(old) = guard.replace(join_handle) {
+                old.abort();
+                info!("replaced existing polling task; aborted previous");
+            }
         }
         Err(e) => {
             // Recover from poison — store the handle anyway so it remains cancellable
-            *e.into_inner() = Some(join_handle);
+            let mut guard = e.into_inner();
+            if let Some(old) = guard.replace(join_handle) {
+                old.abort();
+                info!("replaced existing polling task after poison recovery; aborted previous");
+            }
             log::warn!("PollingHandle mutex was poisoned; recovered");
         }
     }
