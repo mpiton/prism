@@ -65,7 +65,15 @@ describe("useDashboardStore", () => {
     });
   });
 
-  it("should ignore undefined values in setFilter", () => {
+  it("should remove a single filter via undefined", () => {
+    useDashboardStore.getState().setFilter({ repo: "prism", priority: "high" });
+    useDashboardStore.getState().setFilter({ repo: undefined });
+    const filters = useDashboardStore.getState().activeFilters;
+    expect(filters).toEqual({ priority: "high" });
+    expect(Object.keys(filters)).not.toContain("repo");
+  });
+
+  it("should not add ghost keys from undefined values", () => {
     useDashboardStore.getState().setFilter({ repo: "prism" });
     useDashboardStore.getState().setFilter({ priority: undefined });
     const filters = useDashboardStore.getState().activeFilters;
