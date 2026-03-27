@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { TAURI_COMMANDS } from "./types";
 import type {
   AppConfig,
@@ -130,5 +129,11 @@ export async function onEvent<T = unknown>(
   event: TauriEventName,
   handler: (payload: T) => void,
 ): Promise<UnlistenFn> {
-  return listen<T>(event, (e) => handler(e.payload));
+  return listen<T>(event, (e) => {
+    try {
+      handler(e.payload);
+    } catch (error) {
+      console.error(`[onEvent] handler for "${event}" threw:`, error);
+    }
+  });
 }

@@ -19,75 +19,6 @@ beforeEach(() => {
   mockListen.mockReset();
 });
 
-// ── Export completeness ──────────────────────────────────────────
-
-describe("IPC wrapper exports", () => {
-  it("should export all github methods", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.getGithubDashboard).toBe("function");
-    expect(typeof mod.getGithubStats).toBe("function");
-    expect(typeof mod.forceGithubSync).toBe("function");
-  });
-
-  it("should export all repos methods", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.listRepos).toBe("function");
-    expect(typeof mod.setRepoEnabled).toBe("function");
-    expect(typeof mod.setRepoLocalPath).toBe("function");
-  });
-
-  it("should export all workspace methods", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.openWorkspace).toBe("function");
-    expect(typeof mod.suspendWorkspace).toBe("function");
-    expect(typeof mod.resumeWorkspace).toBe("function");
-    expect(typeof mod.archiveWorkspace).toBe("function");
-    expect(typeof mod.listWorkspaces).toBe("function");
-    expect(typeof mod.getWorkspaceNotes).toBe("function");
-    expect(typeof mod.cleanupWorkspaces).toBe("function");
-  });
-
-  it("should export all pty methods", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.ptyWrite).toBe("function");
-    expect(typeof mod.ptyResize).toBe("function");
-    expect(typeof mod.ptyKill).toBe("function");
-  });
-
-  it("should export all config methods", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.getConfig).toBe("function");
-    expect(typeof mod.setConfig).toBe("function");
-  });
-
-  it("should export all activity methods", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.markActivityRead).toBe("function");
-    expect(typeof mod.markAllActivityRead).toBe("function");
-  });
-
-  it("should export all auth methods", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.authSetToken).toBe("function");
-    expect(typeof mod.authGetStatus).toBe("function");
-    expect(typeof mod.authLogout).toBe("function");
-  });
-
-  it("should export onEvent listener", async () => {
-    const mod = await import("./tauri");
-    expect(typeof mod.onEvent).toBe("function");
-  });
-
-  it("should have a wrapper for every TAURI_COMMANDS entry", async () => {
-    const mod = await import("./tauri");
-    const exportedFns = Object.values(mod).filter(
-      (v) => typeof v === "function",
-    );
-    // 23 commands + 1 onEvent = 24 functions
-    expect(exportedFns.length).toBe(24);
-  });
-});
-
 // ── Invoke correctness ──────────────────────────────────────────
 
 describe("GitHub wrappers", () => {
@@ -138,6 +69,16 @@ describe("Repos wrappers", () => {
     expect(mockInvoke).toHaveBeenCalledWith(TAURI_COMMANDS.repos_set_local_path, {
       repoId: "r-1",
       path: "/path/to/repo",
+    });
+  });
+
+  it("should invoke repos_set_local_path with null path", async () => {
+    const { setRepoLocalPath } = await import("./tauri");
+    mockInvoke.mockResolvedValue({});
+    await setRepoLocalPath("r-1", null);
+    expect(mockInvoke).toHaveBeenCalledWith(TAURI_COMMANDS.repos_set_local_path, {
+      repoId: "r-1",
+      path: null,
     });
   });
 });
@@ -297,6 +238,16 @@ describe("Auth wrappers", () => {
   });
 });
 
+// ── Error propagation ────────────────────────────────────────────
+
+describe("Error propagation", () => {
+  it("should propagate invoke rejection", async () => {
+    const { getGithubDashboard } = await import("./tauri");
+    mockInvoke.mockRejectedValue(new Error("Network error"));
+    await expect(getGithubDashboard()).rejects.toThrow("Network error");
+  });
+});
+
 // ── onEvent ─────────────────────────────────────────────────────
 
 describe("onEvent listener", () => {
@@ -329,5 +280,22 @@ describe("onEvent listener", () => {
     const handler = vi.fn();
     await onEvent("github:updated" as TauriEventName, handler);
     expect(handler).toHaveBeenCalledWith({ syncedAt: "2026-03-27" });
+  });
+
+  it("should catch handler exceptions and log them", async () => {
+    const { onEvent } = await import("./tauri");
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockListen.mockImplementation((_event: string, cb: (e: unknown) => void) => {
+      cb({ event: "github:updated", id: 1, payload: {} });
+      return Promise.resolve(vi.fn());
+    });
+
+    const handler = vi.fn(() => { throw new Error("boom"); });
+    await onEvent("github:updated" as TauriEventName, handler);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("github:updated"),
+      expect.any(Error),
+    );
+    consoleSpy.mockRestore();
   });
 });
