@@ -38,7 +38,6 @@ pub(crate) trait PollingContext: Send + Sync + 'static {
 
 // ── Real implementation ──────────────────────────────────────────
 
-#[allow(dead_code)] // TODO(T-035+): remove after wiring polling into app setup
 struct RealPollingContext {
     client: GitHubClient,
     pool: SqlitePool,
@@ -136,7 +135,6 @@ fn rate_limit_backoff(reset_at: &str) -> Duration {
 ///
 /// Syncs immediately on start, then sleeps for the configured interval.
 /// On rate-limit errors, backs off until the `reset_at` timestamp.
-#[allow(dead_code)] // TODO(T-035+): remove after wiring polling into app setup
 async fn polling_loop(ctx: impl PollingContext) {
     loop {
         let sleep_duration = match poll_once(&ctx).await {
@@ -154,7 +152,6 @@ async fn polling_loop(ctx: impl PollingContext) {
 ///
 /// The returned [`JoinHandle`] can be used to cancel the loop via
 /// `handle.abort()` (e.g. on app shutdown or token change).
-#[allow(dead_code)] // TODO(T-035+): remove after wiring polling into app setup
 #[must_use = "dropping the handle makes the polling loop uncancellable"]
 pub(crate) fn start_polling(
     app_handle: AppHandle,
