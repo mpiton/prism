@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { useDashboardStore } from "./stores/dashboard";
@@ -34,9 +34,15 @@ describe("App layout", () => {
   });
 
   it("should switch views based on store", () => {
-    useDashboardStore.setState({ currentView: "reviews" });
+    useDashboardStore.setState({ currentView: "mine" });
     renderApp();
-    expect(screen.getByTestId("review-queue")).toBeInTheDocument();
+    expect(screen.getByTestId("my-prs")).toBeInTheDocument();
+
+    act(() => {
+      useDashboardStore.setState({ currentView: "issues" });
+    });
+    expect(screen.getByTestId("issues")).toBeInTheDocument();
+    expect(screen.queryByTestId("my-prs")).not.toBeInTheDocument();
   });
 
   it("should render review queue for overview", () => {
