@@ -31,6 +31,7 @@ export function useGitHubData(refetchInterval?: number) {
     queryKey: ["github", "stats"],
     queryFn: getGithubStats,
     staleTime: STALE_TIME,
+    refetchInterval,
   });
 
   const syncMutation = useMutation({
@@ -44,14 +45,16 @@ export function useGitHubData(refetchInterval?: number) {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
 
-    onEvent(TAURI_EVENTS["github:updated"], () => {
-      invalidateGitHub(queryClient);
+    onEvent(TAURI_EVENTS["github:updated"], async () => {
+      await invalidateGitHub(queryClient);
     }).then((fn) => {
       if (cancelled) {
         fn();
       } else {
         unlisten = fn;
       }
+    }).catch((err: unknown) => {
+      console.error("[useGitHubData] failed to register github:updated listener:", err);
     });
 
     return () => {
