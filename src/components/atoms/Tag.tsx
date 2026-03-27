@@ -7,7 +7,7 @@ interface TagProps {
 
 export function Tag({ children, className = "" }: TagProps): ReactElement {
   return (
-    <span className={`text-xs font-medium uppercase tracking-wide text-dim ${className}`}>
+    <span className={`text-xs font-medium uppercase tracking-wide ${className || "text-dim"}`}>
       {children}
     </span>
   );

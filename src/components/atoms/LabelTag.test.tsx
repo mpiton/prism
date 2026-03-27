@@ -17,6 +17,17 @@ describe("LabelTag", () => {
 
     const { container: docs } = render(<LabelTag name="documentation" />);
     expect(docs.firstChild).toHaveClass("bg-blue/20", "text-blue");
+
+    const { container: fix } = render(<LabelTag name="fix" />);
+    expect(fix.firstChild).toHaveClass("bg-orange/20", "text-orange");
+
+    const { container: unknown } = render(<LabelTag name="unknown" />);
+    expect(unknown.firstChild).toHaveClass("bg-purple/20", "text-purple");
+  });
+
+  it("should not match substrings like docker as documentation", () => {
+    const { container } = render(<LabelTag name="docker" />);
+    expect(container.firstChild).toHaveClass("bg-purple/20", "text-purple");
   });
 
   it("should render as a pill shape", () => {

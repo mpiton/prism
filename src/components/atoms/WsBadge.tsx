@@ -4,6 +4,7 @@ import type { WorkspaceState } from "../../lib/types";
 interface WsBadgeProps {
   readonly state?: WorkspaceState;
   readonly onClick?: () => void;
+  readonly ariaLabel?: string;
 }
 
 const LABEL_MAP: Record<Exclude<WorkspaceState, "archived">, string> = {
@@ -11,7 +12,7 @@ const LABEL_MAP: Record<Exclude<WorkspaceState, "archived">, string> = {
   suspended: "wake",
 };
 
-export function WsBadge({ state, onClick }: WsBadgeProps): ReactElement | null {
+export function WsBadge({ state, onClick, ariaLabel }: WsBadgeProps): ReactElement | null {
   if (state === "archived") {
     return null;
   }
@@ -22,6 +23,7 @@ export function WsBadge({ state, onClick }: WsBadgeProps): ReactElement | null {
     <button
       type="button"
       onClick={onClick}
+      aria-label={ariaLabel}
       className="rounded border border-accent/30 px-2 py-0.5 text-xs text-accent hover:bg-accent/10"
     >
       {label}

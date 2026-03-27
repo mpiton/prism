@@ -10,8 +10,14 @@ describe("Tag", () => {
     expect(tag).toHaveClass("uppercase");
   });
 
-  it("should apply custom className", () => {
+  it("should use text-dim by default", () => {
+    const { container } = render(<Tag>label</Tag>);
+    expect(container.firstChild).toHaveClass("text-dim");
+  });
+
+  it("should replace text-dim when custom className provided", () => {
     const { container } = render(<Tag className="text-accent">v2</Tag>);
     expect(container.firstChild).toHaveClass("text-accent");
+    expect(container.firstChild).not.toHaveClass("text-dim");
   });
 });

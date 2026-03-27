@@ -4,21 +4,30 @@ interface LabelTagProps {
   readonly name: string;
 }
 
-function colorForLabel(name: string): { bg: string; text: string } {
-  const lower = name.toLowerCase();
-  if (lower.includes("bug") || lower.includes("error")) {
-    return { bg: "bg-red/20", text: "text-red" };
-  }
-  if (lower.includes("feature") || lower.includes("enhancement")) {
-    return { bg: "bg-green/20", text: "text-green" };
-  }
-  if (lower.includes("doc")) {
-    return { bg: "bg-blue/20", text: "text-blue" };
-  }
-  if (lower.includes("fix")) {
-    return { bg: "bg-orange/20", text: "text-orange" };
-  }
-  return { bg: "bg-purple/20", text: "text-purple" };
+interface LabelColor {
+  readonly bg: string;
+  readonly text: string;
+}
+
+const RED: LabelColor = { bg: "bg-red/20", text: "text-red" };
+const GREEN: LabelColor = { bg: "bg-green/20", text: "text-green" };
+const BLUE: LabelColor = { bg: "bg-blue/20", text: "text-blue" };
+const ORANGE: LabelColor = { bg: "bg-orange/20", text: "text-orange" };
+const PURPLE: LabelColor = { bg: "bg-purple/20", text: "text-purple" };
+
+const LABEL_COLORS: Record<string, LabelColor> = {
+  bug: RED,
+  error: RED,
+  feature: GREEN,
+  enhancement: GREEN,
+  documentation: BLUE,
+  docs: BLUE,
+  fix: ORANGE,
+  hotfix: ORANGE,
+};
+
+function colorForLabel(name: string): LabelColor {
+  return LABEL_COLORS[name.toLowerCase()] ?? PURPLE;
 }
 
 export function LabelTag({ name }: LabelTagProps): ReactElement {
