@@ -340,6 +340,52 @@ impl Default for AppConfig {
     }
 }
 
+/// Partial update payload for [`AppConfig`], used by the `config_set` IPC command.
+///
+/// Each optional field uses `None` = "don't touch this field".
+/// For nullable fields (`github_token`, `data_dir`, `workspaces_dir`),
+/// `Some(None)` means "explicitly clear to null" and `Some(Some(v))` means "set to v".
+///
+/// **Note:** To update the GitHub token with validation, use `auth_set_token` instead.
+/// Setting `github_token` here bypasses API validation — use only for clearing the token
+/// or for advanced scenarios where the caller has already validated the token.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+#[allow(clippy::option_option)] // Deliberate: None = absent, Some(None) = clear, Some(Some(v)) = set
+pub struct PartialAppConfig {
+    pub poll_interval_secs: Option<u64>,
+    pub max_active_workspaces: Option<u32>,
+    pub github_token: Option<Option<String>>,
+    pub data_dir: Option<Option<String>>,
+    pub workspaces_dir: Option<Option<String>>,
+}
+
+/// Merge a partial update into a base config, returning a new config.
+///
+/// Only fields present in `partial` override the base.
+pub fn merge_partial_config(base: &AppConfig, partial: &PartialAppConfig) -> AppConfig {
+    AppConfig {
+        poll_interval_secs: partial
+            .poll_interval_secs
+            .unwrap_or(base.poll_interval_secs),
+        max_active_workspaces: partial
+            .max_active_workspaces
+            .unwrap_or(base.max_active_workspaces),
+        github_token: match &partial.github_token {
+            Some(v) => v.clone(),
+            None => base.github_token.clone(),
+        },
+        data_dir: match &partial.data_dir {
+            Some(v) => v.clone(),
+            None => base.data_dir.clone(),
+        },
+        workspaces_dir: match &partial.workspaces_dir {
+            Some(v) => v.clone(),
+            None => base.workspaces_dir.clone(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

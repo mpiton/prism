@@ -51,7 +51,6 @@ fn clamp_max_workspaces(value: u32) -> u32 {
 ///
 /// Missing keys are filled with [`AppConfig::default()`] values.
 /// Values below documented minimums are clamped with a warning.
-#[allow(dead_code)]
 pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
     let rows: Vec<ConfigRow> = sqlx::query_as("SELECT key, value FROM config")
         .fetch_all(pool)
@@ -97,7 +96,6 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
 /// `Option::None` fields are deleted so that future reads fall back
 /// to [`AppConfig::default()`]. Values below documented minimums are
 /// clamped with a warning. Returns the clamped config as written.
-#[allow(dead_code)]
 pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConfig, AppError> {
     let poll_interval = clamp_poll_interval(config.poll_interval_secs);
     let max_workspaces = clamp_max_workspaces(config.max_active_workspaces);

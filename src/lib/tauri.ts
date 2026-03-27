@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { TAURI_COMMANDS } from "./types";
-import type { AuthStatus, DashboardData, DashboardStats, Repo } from "./types";
+import type { AppConfig, AuthStatus, DashboardData, DashboardStats, PartialAppConfig, Repo } from "./types";
 
 export async function authSetToken(token: string): Promise<string> {
   return invoke<string>(TAURI_COMMANDS.auth_set_token, { token });
@@ -36,4 +36,12 @@ export async function setRepoEnabled(repoId: string, enabled: boolean): Promise<
 
 export async function setRepoLocalPath(repoId: string, path: string | null): Promise<Repo> {
   return invoke<Repo>(TAURI_COMMANDS.repos_set_local_path, { repoId, path });
+}
+
+export async function getConfig(): Promise<AppConfig> {
+  return invoke<AppConfig>(TAURI_COMMANDS.config_get);
+}
+
+export async function setConfig(partial: PartialAppConfig): Promise<AppConfig> {
+  return invoke<AppConfig>(TAURI_COMMANDS.config_set, { partial });
 }
