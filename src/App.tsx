@@ -17,7 +17,7 @@ function MainContent({ view }: MainContentProps): ReactElement {
   switch (view) {
     case "overview":
     case "reviews":
-      return <ReviewQueue />;
+      return <ReviewQueue reviews={[]} onOpen={() => {}} />;
     case "mine":
       return <MyPRs />;
     case "issues":
