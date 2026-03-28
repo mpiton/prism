@@ -1,0 +1,122 @@
+import type { ReactElement } from "react";
+import { timeAgo } from "../../lib/timeAgo";
+import type { CiStatus, PullRequestWithReview } from "../../lib/types";
+import { CI } from "../atoms/CI";
+import { Diff } from "../atoms/Diff";
+import { WsBadge } from "../atoms/WsBadge";
+
+interface MyPrCardProps {
+  readonly data: PullRequestWithReview;
+  readonly onOpen: (url: string) => void;
+  readonly onWorkspaceAction?: (workspaceId: string) => void;
+}
+
+function isMergeable(data: PullRequestWithReview): boolean {
+  const { pullRequest: pr, reviewSummary } = data;
+  return (
+    pr.state === "open" &&
+    pr.ciStatus === "success" &&
+    reviewSummary.approved > 0 &&
+    reviewSummary.changesRequested === 0
+  );
+}
+
+const CI_DOT_COLOR: Record<CiStatus, string> = {
+  success: "bg-green",
+  failure: "bg-red",
+  running: "bg-orange",
+  pending: "bg-dim",
+  cancelled: "bg-dim",
+};
+
+interface ReviewDot {
+  readonly key: string;
+  readonly color: string;
+}
+
+function buildReviewDots(reviewSummary: PullRequestWithReview["reviewSummary"]): readonly ReviewDot[] {
+  const dots: ReviewDot[] = [];
+  for (let i = 0; i < reviewSummary.approved; i++) dots.push({ key: `approved-${i}`, color: "bg-green" });
+  for (let i = 0; i < reviewSummary.changesRequested; i++) dots.push({ key: `changes-${i}`, color: "bg-red" });
+  for (let i = 0; i < reviewSummary.pending; i++) dots.push({ key: `pending-${i}`, color: "bg-dim" });
+  return dots;
+}
+
+export function MyPrCard({
+  data,
+  onOpen,
+  onWorkspaceAction,
+}: MyPrCardProps): ReactElement {
+  const { pullRequest: pr, workspace } = data;
+  const merged = pr.state === "merged";
+  const reviewDots = buildReviewDots(data.reviewSummary);
+
+  function handleClick(e: React.MouseEvent) {
+    e.preventDefault();
+    onOpen(pr.url);
+  }
+
+  return (
+    <div
+      data-testid="my-pr-card"
+      className={`flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover${merged ? " opacity-50" : ""}`}
+    >
+      <a
+        href={pr.url}
+        onClick={handleClick}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
+      >
+        <span
+          data-testid="ci-dot"
+          className={`h-2.5 w-2.5 shrink-0 rounded-full ${CI_DOT_COLOR[pr.ciStatus]}`}
+        />
+
+        <span
+          className={`min-w-0 truncate text-sm font-medium text-foreground${merged ? " line-through" : ""}`}
+        >
+          {pr.title}
+        </span>
+
+        <span className="shrink-0 text-xs text-dim">#{pr.number}</span>
+
+        {pr.additions !== undefined && pr.deletions !== undefined && (
+          <Diff additions={pr.additions} deletions={pr.deletions} />
+        )}
+
+        <CI status={pr.ciStatus} />
+
+        <span className="flex items-center gap-0.5">
+          {reviewDots.map((dot) => (
+            <span
+              key={dot.key}
+              data-testid="review-dot"
+              className={`h-2 w-2 rounded-full ${dot.color}`}
+            />
+          ))}
+        </span>
+
+        {isMergeable(data) && (
+          <span className="shrink-0 rounded bg-green/20 px-1.5 py-0.5 text-xs font-semibold text-green">
+            MERGEABLE
+          </span>
+        )}
+
+        <span data-testid="time-ago" className="shrink-0 text-xs text-dim">
+          {timeAgo(pr.updatedAt)}
+        </span>
+      </a>
+
+      {workspace && (
+        <WsBadge
+          state={workspace.state}
+          onClick={
+            onWorkspaceAction
+              ? () => onWorkspaceAction(workspace.id)
+              : undefined
+          }
+          ariaLabel={`${workspace.state === "active" ? "Resume" : workspace.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
+        />
+      )}
+    </div>
+  );
+}
