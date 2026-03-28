@@ -1,3 +1,1 @@
-export function Sidebar() {
-  return <nav data-testid="sidebar">Sidebar</nav>;
-}
+export { Sidebar } from "./Sidebar";
