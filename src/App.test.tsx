@@ -45,9 +45,9 @@ describe("App layout", () => {
     expect(screen.queryByTestId("my-prs")).not.toBeInTheDocument();
   });
 
-  it("should render review queue for overview", () => {
+  it("should render overview for default view", () => {
     renderApp();
-    expect(screen.getByTestId("review-queue")).toBeInTheDocument();
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
   it("should render my-prs view", () => {

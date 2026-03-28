@@ -1,0 +1,320 @@
+import { type ReactElement } from "react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import type {
+  Activity,
+  DashboardData,
+  Issue,
+  PullRequestWithReview,
+} from "../../lib/types";
+import { Overview } from "./Overview";
+
+vi.mock("../../hooks/useGitHubData", () => ({
+  useGitHubData: vi.fn(),
+}));
+
+vi.mock("../../lib/tauri", () => ({
+  markAllActivityRead: vi.fn().mockResolvedValue(0),
+}));
+
+import { useGitHubData } from "../../hooks/useGitHubData";
+import { markAllActivityRead } from "../../lib/tauri";
+
+const mockedUseGitHubData = vi.mocked(useGitHubData);
+const mockedMarkAllActivityRead = vi.mocked(markAllActivityRead);
+
+function renderWithProviders(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
+
+function makePr(n: number): PullRequestWithReview {
+  return {
+    pullRequest: {
+      id: `pr-${n}`,
+      number: n,
+      title: `PR #${n}`,
+      author: "alice",
+      state: "open",
+      ciStatus: "success",
+      priority: "medium",
+      repoId: "repo-1",
+      url: `https://github.com/org/repo/pull/${n}`,
+      labels: [],
+      additions: 10,
+      deletions: 5,
+      createdAt: "2026-03-26T10:00:00Z",
+      updatedAt: "2026-03-26T12:00:00Z",
+    },
+    reviewSummary: {
+      totalReviews: 1,
+      approved: 0,
+      changesRequested: 0,
+      pending: 1,
+      reviewers: ["bob"],
+    },
+    workspace: null,
+  };
+}
+
+function makeIssue(n: number): Issue {
+  return {
+    id: `issue-${n}`,
+    number: n,
+    title: `Issue #${n}`,
+    author: "alice",
+    state: "open",
+    priority: "medium",
+    repoId: "repo-1",
+    url: `https://github.com/org/repo/issues/${n}`,
+    labels: [],
+    createdAt: "2026-03-26T10:00:00Z",
+    updatedAt: "2026-03-26T12:00:00Z",
+  };
+}
+
+function makeActivity(n: number): Activity {
+  return {
+    id: `activity-${n}`,
+    activityType: "comment_added",
+    actor: "bob",
+    repoId: "repo-1",
+    pullRequestId: `pr-${n}`,
+    issueId: null,
+    message: `Comment on PR #${n}`,
+    createdAt: "2026-03-26T10:00:00Z",
+  };
+}
+
+function makeDashboard(overrides: Partial<DashboardData> = {}): DashboardData {
+  return {
+    reviewRequests: [],
+    myPullRequests: [],
+    assignedIssues: [],
+    recentActivity: [],
+    workspaces: [],
+    syncedAt: "2026-03-26T12:00:00Z",
+    ...overrides,
+  };
+}
+
+function setupMock(dashboard: DashboardData | null = makeDashboard()) {
+  mockedUseGitHubData.mockReturnValue({
+    dashboard,
+    stats: null,
+    isLoading: false,
+    error: null,
+    forceSync: vi.fn(),
+    isSyncing: false,
+  });
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  mockedMarkAllActivityRead.mockResolvedValue(0);
+});
+
+describe("Overview", () => {
+  it("should render review queue section", () => {
+    setupMock(
+      makeDashboard({
+        reviewRequests: [makePr(1), makePr(2)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("review-queue")).toBeInTheDocument();
+    expect(screen.getByText("PR #1")).toBeInTheDocument();
+    expect(screen.getByText("PR #2")).toBeInTheDocument();
+  });
+
+  it("should render my PRs section", () => {
+    setupMock(
+      makeDashboard({
+        myPullRequests: [makePr(10), makePr(11)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("my-prs")).toBeInTheDocument();
+    expect(screen.getByText("PR #10")).toBeInTheDocument();
+    expect(screen.getByText("PR #11")).toBeInTheDocument();
+  });
+
+  it("should render issues in side panel", () => {
+    setupMock(
+      makeDashboard({
+        assignedIssues: [makeIssue(1), makeIssue(2)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("issues")).toBeInTheDocument();
+    expect(screen.getByText("Issue #1")).toBeInTheDocument();
+    expect(screen.getByText("Issue #2")).toBeInTheDocument();
+  });
+
+  it("should render activity in side panel", () => {
+    setupMock(
+      makeDashboard({
+        recentActivity: [makeActivity(1), makeActivity(2)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
+    expect(screen.getByText("Comment on PR #1")).toBeInTheDocument();
+    expect(screen.getByText("Comment on PR #2")).toBeInTheDocument();
+  });
+
+  it("should limit review queue to 5 items", () => {
+    const reviews = Array.from({ length: 8 }, (_, i) => makePr(i + 1));
+    setupMock(makeDashboard({ reviewRequests: reviews }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByText("PR #5")).toBeInTheDocument();
+    expect(screen.queryByText("PR #6")).not.toBeInTheDocument();
+  });
+
+  it("should limit my PRs to 5 items", () => {
+    const prs = Array.from({ length: 8 }, (_, i) => makePr(i + 10));
+    setupMock(makeDashboard({ myPullRequests: prs }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByText("PR #14")).toBeInTheDocument();
+    expect(screen.queryByText("PR #15")).not.toBeInTheDocument();
+  });
+
+  it("should limit issues to 3 items", () => {
+    const issues = Array.from({ length: 6 }, (_, i) => makeIssue(i + 1));
+    setupMock(makeDashboard({ assignedIssues: issues }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByText("Issue #3")).toBeInTheDocument();
+    expect(screen.queryByText("Issue #4")).not.toBeInTheDocument();
+  });
+
+  it("should limit activity to 5 items", () => {
+    const activities = Array.from({ length: 8 }, (_, i) => makeActivity(i + 1));
+    setupMock(makeDashboard({ recentActivity: activities }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByText("Comment on PR #5")).toBeInTheDocument();
+    expect(screen.queryByText("Comment on PR #6")).not.toBeInTheDocument();
+  });
+
+  it("should show loading state when dashboard is absent", () => {
+    mockedUseGitHubData.mockReturnValue({
+      dashboard: null,
+      stats: null,
+      isLoading: true,
+      error: null,
+      forceSync: vi.fn(),
+      isSyncing: false,
+    });
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+  });
+
+  it("should show error state when dashboard is absent and error exists", () => {
+    mockedUseGitHubData.mockReturnValue({
+      dashboard: null,
+      stats: null,
+      isLoading: false,
+      error: new Error("Network error"),
+      forceSync: vi.fn(),
+      isSyncing: false,
+    });
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByText(/failed to load/i)).toBeInTheDocument();
+  });
+
+  it("should render dashboard even when error exists but dashboard is available", () => {
+    mockedUseGitHubData.mockReturnValue({
+      dashboard: makeDashboard({ reviewRequests: [makePr(1)] }),
+      stats: null,
+      isLoading: false,
+      error: new Error("Stats failed"),
+      forceSync: vi.fn(),
+      isSyncing: false,
+    });
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("overview")).toBeInTheDocument();
+    expect(screen.getByText("PR #1")).toBeInTheDocument();
+  });
+
+  it("should render all 4 sections when data is available", () => {
+    setupMock(
+      makeDashboard({
+        reviewRequests: [makePr(1)],
+        myPullRequests: [makePr(10)],
+        assignedIssues: [makeIssue(1)],
+        recentActivity: [makeActivity(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("review-queue")).toBeInTheDocument();
+    expect(screen.getByTestId("my-prs")).toBeInTheDocument();
+    expect(screen.getByTestId("issues")).toBeInTheDocument();
+    expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
+  });
+
+  it("should call markAllActivityRead when mark all read is clicked", async () => {
+    const user = userEvent.setup();
+    setupMock(
+      makeDashboard({
+        recentActivity: [makeActivity(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    await user.click(screen.getByRole("button", { name: /mark all read/i }));
+
+    expect(mockedMarkAllActivityRead).toHaveBeenCalledOnce();
+  });
+
+  it("should open URL when a PR card is clicked", async () => {
+    const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const user = userEvent.setup();
+    setupMock(
+      makeDashboard({
+        reviewRequests: [makePr(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    await user.click(screen.getByRole("link"));
+
+    expect(windowOpenSpy).toHaveBeenCalledWith(
+      "https://github.com/org/repo/pull/1",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    windowOpenSpy.mockRestore();
+  });
+});
