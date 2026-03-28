@@ -19,7 +19,7 @@ function MainContent({ view }: MainContentProps): ReactElement {
     case "reviews":
       return <ReviewQueue reviews={[]} onOpen={() => {}} />;
     case "mine":
-      return <MyPRs />;
+      return <MyPRs prs={[]} onOpen={() => {}} />;
     case "issues":
       return <Issues />;
     case "feed":
