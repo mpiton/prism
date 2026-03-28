@@ -181,11 +181,21 @@ describe("MyPrCard", () => {
     expect(handleWs).toHaveBeenCalledWith("ws-1");
   });
 
+  it("should not show MERGEABLE when PR is closed", () => {
+    const data: PullRequestWithReview = {
+      ...basePr,
+      pullRequest: { ...basePr.pullRequest, state: "closed" },
+    };
+    render(<MyPrCard data={data} onOpen={vi.fn()} />);
+    expect(screen.queryByText("MERGEABLE")).not.toBeInTheDocument();
+  });
+
   it("should show time ago", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-26T14:00:00Z"));
     render(<MyPrCard data={basePr} onOpen={vi.fn()} />);
-    // updatedAt is in the past, so should display a time string
     const timeElement = screen.getByTestId("time-ago");
-    expect(timeElement).toBeInTheDocument();
-    expect(timeElement.textContent).not.toBe("");
+    expect(timeElement).toHaveTextContent("2h");
+    vi.useRealTimers();
   });
 });

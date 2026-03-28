@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { timeAgo } from "../../lib/timeAgo";
 import type { CiStatus, PullRequestWithReview } from "../../lib/types";
 import { CI } from "../atoms/CI";
 import { Diff } from "../atoms/Diff";
@@ -10,23 +11,10 @@ interface MyPrCardProps {
   readonly onWorkspaceAction?: (workspaceId: string) => void;
 }
 
-function timeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return "";
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 0) return "now";
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
-}
-
 function isMergeable(data: PullRequestWithReview): boolean {
   const { pullRequest: pr, reviewSummary } = data;
   return (
+    pr.state === "open" &&
     pr.ciStatus === "success" &&
     reviewSummary.approved > 0 &&
     reviewSummary.changesRequested === 0
@@ -107,7 +95,7 @@ export function MyPrCard({
           ))}
         </span>
 
-        {isMergeable(data) && !merged && (
+        {isMergeable(data) && (
           <span className="shrink-0 rounded bg-green/20 px-1.5 py-0.5 text-xs font-semibold text-green">
             MERGEABLE
           </span>
