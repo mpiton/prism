@@ -139,20 +139,38 @@ describe("ReviewQueue", () => {
     expect(screen.getByText(/no.*review/i)).toBeInTheDocument();
   });
 
-  it("should pass onOpen and onWorkspaceAction to ReviewCard", async () => {
+  it("should forward onOpen to ReviewCard", async () => {
     const handleOpen = vi.fn();
-    const handleWs = vi.fn();
-    render(
-      <ReviewQueue
-        reviews={[highPr]}
-        onOpen={handleOpen}
-        onWorkspaceAction={handleWs}
-      />,
-    );
+    render(<ReviewQueue reviews={[highPr]} onOpen={handleOpen} />);
 
     await userEvent.click(screen.getByRole("link"));
     expect(handleOpen).toHaveBeenCalledWith(
       "https://github.com/org/repo/pull/20",
     );
+  });
+
+  it("should forward onWorkspaceAction to ReviewCard", async () => {
+    const prWithWorkspace = makePr({
+      number: 99,
+      title: "WS PR",
+      priority: "high",
+      url: "https://github.com/org/repo/pull/99",
+    });
+    const withWs: PullRequestWithReview = {
+      ...prWithWorkspace,
+      workspace: { id: "ws-42", state: "active", lastNoteContent: null },
+    };
+
+    const handleWs = vi.fn();
+    render(
+      <ReviewQueue
+        reviews={[withWs]}
+        onOpen={vi.fn()}
+        onWorkspaceAction={handleWs}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /workspace/i }));
+    expect(handleWs).toHaveBeenCalledWith("ws-42");
   });
 });
