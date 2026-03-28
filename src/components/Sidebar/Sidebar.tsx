@@ -66,7 +66,9 @@ export function Sidebar(): ReactElement {
     toggleRepoMutation.mutate({ repoId, enabled });
   }
 
-  const workspaces = dashboard?.workspaces ?? [];
+  const workspaces = (dashboard?.workspaces ?? []).filter(
+    (ws) => ws.state !== "archived",
+  );
   const repos = reposQuery.data ?? [];
   const username = authQuery.data?.username ?? null;
 

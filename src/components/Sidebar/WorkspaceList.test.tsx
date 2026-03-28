@@ -26,17 +26,6 @@ const suspendedWs: Workspace = {
   updatedAt: "2026-03-28T09:00:00Z",
 };
 
-const archivedWs: Workspace = {
-  id: "ws-3",
-  repoId: "repo-1",
-  pullRequestNumber: 10,
-  state: "archived",
-  worktreePath: null,
-  sessionId: null,
-  createdAt: "2026-03-27T08:00:00Z",
-  updatedAt: "2026-03-27T08:00:00Z",
-};
-
 describe("WorkspaceList", () => {
   it("should render workspace entries", () => {
     render(
@@ -54,17 +43,6 @@ describe("WorkspaceList", () => {
     expect(dots).toHaveLength(2);
     expect(dots[0]).toHaveAttribute("data-state", "active");
     expect(dots[1]).toHaveAttribute("data-state", "suspended");
-  });
-
-  it("should not render archived workspaces", () => {
-    render(
-      <WorkspaceList
-        workspaces={[activeWs, archivedWs]}
-        onWorkspaceClick={vi.fn()}
-      />,
-    );
-    expect(screen.getByText(/PR #42/)).toBeInTheDocument();
-    expect(screen.queryByText(/PR #10/)).not.toBeInTheDocument();
   });
 
   it("should call onWorkspaceClick with workspace id on click", async () => {

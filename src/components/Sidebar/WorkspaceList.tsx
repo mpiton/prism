@@ -16,11 +16,9 @@ export function WorkspaceList({
   workspaces,
   onWorkspaceClick,
 }: WorkspaceListProps): ReactElement {
-  const visible = workspaces.filter((ws) => ws.state !== "archived");
-
   return (
     <div className="flex flex-col gap-0.5">
-      {visible.map((ws) => (
+      {workspaces.map((ws) => (
         <button
           key={ws.id}
           type="button"
