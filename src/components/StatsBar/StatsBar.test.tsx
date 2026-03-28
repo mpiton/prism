@@ -122,7 +122,7 @@ describe("StatsBar", () => {
     expect(screen.getByText(/synced 2h ago/i)).toBeInTheDocument();
   });
 
-  it("should show 'never' when syncedAt is null", () => {
+  it("should show 'never synced' when syncedAt is null", () => {
     (useGitHubData as Mock).mockReturnValue({
       stats: MOCK_STATS,
       dashboard: { syncedAt: null },
@@ -132,6 +132,19 @@ describe("StatsBar", () => {
 
     render(<StatsBar />, { wrapper: createWrapper() });
 
-    expect(screen.getByText(/never/i)).toBeInTheDocument();
+    expect(screen.getByText(/never synced/i)).toBeInTheDocument();
+  });
+
+  it("should show 'never synced' when syncedAt is an invalid date", () => {
+    (useGitHubData as Mock).mockReturnValue({
+      stats: MOCK_STATS,
+      dashboard: { syncedAt: "not-a-date" },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<StatsBar />, { wrapper: createWrapper() });
+
+    expect(screen.getByText(/never synced/i)).toBeInTheDocument();
   });
 });

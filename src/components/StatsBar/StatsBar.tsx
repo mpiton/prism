@@ -1,14 +1,17 @@
-import type { ReactElement } from "react";
+import { useState, useEffect, type ReactElement } from "react";
 import { useGitHubData } from "../../hooks/useGitHubData";
 
-function formatSyncedTime(syncedAt: string | null): string {
-  if (!syncedAt) return "never";
+const TICK_INTERVAL = 10_000;
 
-  const diffMs = Date.now() - new Date(syncedAt).getTime();
-  const diffSec = Math.floor(diffMs / 1000);
+function formatSyncedTime(syncedAt: string | null, now: number): string {
+  if (!syncedAt) return "never synced";
+
+  const syncedTime = new Date(syncedAt).getTime();
+  if (!Number.isFinite(syncedTime)) return "never synced";
+
+  const diffSec = Math.floor((now - syncedTime) / 1000);
 
   if (diffSec < 0) return "synced just now";
-
   if (diffSec < 60) return `synced ${diffSec}s ago`;
   const diffMin = Math.floor(diffSec / 60);
   if (diffMin < 60) return `synced ${diffMin}m ago`;
@@ -39,6 +42,12 @@ function StatItem({ label, value, testId, highlight }: StatItemProps): ReactElem
 
 export function StatsBar(): ReactElement {
   const { stats, dashboard } = useGitHubData();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), TICK_INTERVAL);
+    return () => clearInterval(id);
+  }, []);
 
   const syncedAt = dashboard?.syncedAt ?? null;
 
@@ -70,7 +79,7 @@ export function StatsBar(): ReactElement {
           testId="stat-workspaces"
         />
       </div>
-      <span className="text-xs text-dim">{formatSyncedTime(syncedAt)}</span>
+      <span className="text-xs text-dim">{formatSyncedTime(syncedAt, now)}</span>
     </div>
   );
 }
