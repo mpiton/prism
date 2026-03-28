@@ -1,5 +1,5 @@
 import { type ReactElement } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -87,7 +87,7 @@ function setupMocks(
 let Settings: () => ReactElement;
 
 beforeEach(async () => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
   const mod = await import("./Settings");
   Settings = mod.Settings;
 });
@@ -156,6 +156,16 @@ describe("Settings", () => {
     expect(await screen.findByText(/not connected/i)).toBeInTheDocument();
   });
 
+  it("should show checking state while auth is loading", async () => {
+    mockedGetConfig.mockResolvedValue(makeConfig());
+    mockedListRepos.mockResolvedValue([]);
+    mockedAuthGetStatus.mockReturnValue(new Promise(() => {}));
+
+    renderWithProviders(<Settings />);
+
+    expect(await screen.findByText(/checking/i)).toBeInTheDocument();
+  });
+
   it("should call config_set on poll interval change", async () => {
     const user = userEvent.setup();
     const updatedConfig = makeConfig({ pollIntervalSecs: 120 });
@@ -170,6 +180,21 @@ describe("Settings", () => {
     await user.tab();
 
     expect(mockedSetConfig).toHaveBeenCalledWith({ pollIntervalSecs: 120 });
+  });
+
+  it("should reject values below minimum", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+
+    renderWithProviders(<Settings />);
+
+    const input = await screen.findByLabelText(/poll interval/i);
+    await user.clear(input);
+    await user.type(input, "0");
+    await user.tab();
+
+    expect(mockedSetConfig).not.toHaveBeenCalled();
+    expect(input).toHaveValue(300);
   });
 
   it("should call config_set on max workspaces change", async () => {
@@ -228,5 +253,56 @@ describe("Settings", () => {
     renderWithProviders(<Settings />);
 
     expect(await screen.findByText(/failed to load/i)).toBeInTheDocument();
+  });
+
+  it("should show loading state for repos section while fetching", async () => {
+    mockedGetConfig.mockResolvedValue(makeConfig());
+    mockedListRepos.mockReturnValue(new Promise(() => {}));
+    mockedAuthGetStatus.mockResolvedValue(makeAuthStatus());
+
+    renderWithProviders(<Settings />);
+
+    expect(await screen.findByText(/loading repositories/i)).toBeInTheDocument();
+  });
+
+  it("should show error when repos fetch fails", async () => {
+    mockedGetConfig.mockResolvedValue(makeConfig());
+    mockedListRepos.mockRejectedValue(new Error("Network error"));
+    mockedAuthGetStatus.mockResolvedValue(makeAuthStatus());
+
+    renderWithProviders(<Settings />);
+
+    expect(await screen.findByText(/failed to load repositories/i)).toBeInTheDocument();
+  });
+
+  it("should show save error when config mutation fails", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    mockedSetConfig.mockRejectedValue(new Error("DB locked"));
+
+    renderWithProviders(<Settings />);
+
+    const input = await screen.findByLabelText(/poll interval/i);
+    await user.clear(input);
+    await user.type(input, "120");
+    await user.tab();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/failed to save/i);
+  });
+
+  it("should reset draft to original value when config mutation fails", async () => {
+    const user = userEvent.setup();
+    setupMocks(makeConfig({ pollIntervalSecs: 300 }));
+    mockedSetConfig.mockRejectedValue(new Error("DB locked"));
+
+    renderWithProviders(<Settings />);
+
+    const input = await screen.findByLabelText(/poll interval/i);
+    await user.clear(input);
+    await user.type(input, "120");
+    await user.tab();
+
+    await screen.findByRole("alert");
+    await waitFor(() => expect(input).toHaveValue(300));
   });
 });

@@ -25,19 +25,20 @@ interface NumberFieldProps {
   readonly label: string;
   readonly value: number;
   readonly min?: number;
+  readonly resetKey: number;
   readonly onCommit: (value: number) => void;
 }
 
-function NumberField({ label, value, min = 1, onCommit }: NumberFieldProps): ReactElement {
+function NumberField({ label, value, min = 1, resetKey, onCommit }: NumberFieldProps): ReactElement {
   const [draft, setDraft] = useState(String(value));
 
   useEffect(() => {
     setDraft(String(value));
-  }, [value]);
+  }, [value, resetKey]);
 
   function handleBlur(): void {
     const parsed = Number(draft);
-    if (!Number.isNaN(parsed) && parsed >= min && parsed !== value) {
+    if (Number.isInteger(parsed) && parsed >= min && parsed !== value) {
       onCommit(parsed);
     } else {
       setDraft(String(value));
@@ -50,6 +51,7 @@ function NumberField({ label, value, min = 1, onCommit }: NumberFieldProps): Rea
       <input
         type="number"
         min={min}
+        step={1}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={handleBlur}
@@ -61,16 +63,18 @@ function NumberField({ label, value, min = 1, onCommit }: NumberFieldProps): Rea
 
 interface RepoRowProps {
   readonly repo: Repo;
+  readonly disabled: boolean;
   readonly onToggle: (repoId: string, enabled: boolean) => void;
 }
 
-function RepoRow({ repo, onToggle }: RepoRowProps): ReactElement {
+function RepoRow({ repo, disabled, onToggle }: RepoRowProps): ReactElement {
   return (
     <label className="flex items-center justify-between gap-3 py-1">
       <span className="min-w-0 truncate font-mono text-sm text-white">{repo.name}</span>
       <input
         type="checkbox"
         checked={repo.enabled}
+        disabled={disabled}
         onChange={() => onToggle(repo.id, !repo.enabled)}
         className="accent-accent h-4 w-4"
       />
@@ -83,14 +87,21 @@ export function Settings(): ReactElement {
   const configQuery = useConfigQuery();
   const reposQuery = useReposQuery();
   const authQuery = useAuthQuery();
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [resetKey, setResetKey] = useState(0);
 
   const configMutation = useMutation({
     mutationFn: (partial: PartialAppConfig) => setConfig(partial),
+    onMutate: () => {
+      setSaveError(null);
+    },
     onSuccess: (updated) => {
       queryClient.setQueryData(["config"], updated);
     },
     onError: (err: unknown) => {
       console.error("[Settings] config update failed:", err);
+      setSaveError("Failed to save setting. Please retry.");
+      setResetKey((k) => k + 1);
     },
   });
 
@@ -102,6 +113,7 @@ export function Settings(): ReactElement {
     },
     onError: (err: unknown) => {
       console.error("[Settings] repo toggle failed:", err);
+      setSaveError("Failed to toggle repository. Please retry.");
     },
   });
 
@@ -122,24 +134,29 @@ export function Settings(): ReactElement {
   }
 
   const config = configQuery.data;
-  const repos = reposQuery.data ?? [];
-  const auth = authQuery.data;
 
   return (
     <section data-testid="settings" className="flex h-full flex-col gap-6 overflow-y-auto p-4">
       <h1 className="text-lg font-semibold text-white">Settings</h1>
+
+      {saveError ? (
+        <p role="alert" className="text-sm text-red-400">{saveError}</p>
+      ) : null}
 
       <div data-testid="settings-github" className="flex flex-col gap-3">
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">GitHub</h2>
         <NumberField
           label="Poll interval (seconds)"
           value={config.pollIntervalSecs}
+          resetKey={resetKey}
           onCommit={(v) => configMutation.mutate({ pollIntervalSecs: v })}
         />
         <div className="flex items-center justify-between text-sm">
           <span className="text-dim">Auth status</span>
-          {auth?.connected ? (
-            <span className="text-green-400">Connected — {auth.username}</span>
+          {authQuery.isLoading ? (
+            <span className="text-dim">Checking...</span>
+          ) : authQuery.data?.connected ? (
+            <span className="text-green-400">Connected — {authQuery.data.username}</span>
           ) : (
             <span className="text-red-400">Not connected</span>
           )}
@@ -151,20 +168,26 @@ export function Settings(): ReactElement {
         <NumberField
           label="Max active workspaces"
           value={config.maxActiveWorkspaces}
+          resetKey={resetKey}
           onCommit={(v) => configMutation.mutate({ maxActiveWorkspaces: v })}
         />
       </div>
 
       <div data-testid="settings-repos" className="flex flex-col gap-3">
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">Repositories</h2>
-        {repos.length === 0 ? (
+        {reposQuery.isLoading ? (
+          <span className="text-dim text-sm">Loading repositories...</span>
+        ) : reposQuery.error ? (
+          <span className="text-sm text-red-400">Failed to load repositories</span>
+        ) : (reposQuery.data ?? []).length === 0 ? (
           <span className="text-dim text-sm">No repositories synced</span>
         ) : (
           <div className="flex flex-col gap-1">
-            {repos.map((repo) => (
+            {(reposQuery.data ?? []).map((repo) => (
               <RepoRow
                 key={repo.id}
                 repo={repo}
+                disabled={repoToggleMutation.isPending}
                 onToggle={(repoId, enabled) =>
                   repoToggleMutation.mutate({ repoId, enabled })
                 }
