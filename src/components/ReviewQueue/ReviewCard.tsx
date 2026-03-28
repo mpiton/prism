@@ -73,7 +73,7 @@ export function ReviewCard({
               ? () => onWorkspaceAction(workspace.id)
               : undefined
           }
-          ariaLabel={`Workspace for PR #${pr.number}`}
+          ariaLabel={`${workspace.state === "active" ? "Resume" : workspace.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
         />
       )}
     </div>

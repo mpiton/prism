@@ -61,6 +61,9 @@ describe("ReviewCard", () => {
   it("should show workspace badge", () => {
     render(<ReviewCard data={mockData} onOpen={vi.fn()} />);
     expect(screen.getByText("resume")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Resume workspace for PR #42" }),
+    ).toBeInTheDocument();
   });
 
   it("should call onOpen on click", async () => {
