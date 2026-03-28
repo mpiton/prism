@@ -22,7 +22,7 @@ export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
   return (
     <div
       data-testid="issue-card"
-      className={`flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover${issue.state === "closed" ? " opacity-50" : ""}`}
+      className="flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover"
     >
       <a
         href={issue.url}
@@ -44,8 +44,8 @@ export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
 
         {issue.labels.length > 0 && (
           <span className="flex items-center gap-1">
-            {issue.labels.map((label) => (
-              <LabelTag key={label} name={label} />
+            {issue.labels.map((label, idx) => (
+              <LabelTag key={`${label}-${idx}`} name={label} />
             ))}
           </span>
         )}

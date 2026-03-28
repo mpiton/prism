@@ -66,8 +66,17 @@ describe("Issues", () => {
     expect(closedTab).toHaveTextContent("2");
   });
 
-  it("should show empty state", () => {
+  it("should show empty state when no open issues", () => {
     render(<Issues issues={[closedIssue1]} onOpen={onOpen} />);
+
+    expect(screen.getByText(/no issues/i)).toBeInTheDocument();
+  });
+
+  it("should show empty state on closed tab when no closed issues", async () => {
+    const user = userEvent.setup();
+    render(<Issues issues={[openIssue1]} onOpen={onOpen} />);
+
+    await user.click(screen.getByRole("button", { name: /closed/i }));
 
     expect(screen.getByText(/no issues/i)).toBeInTheDocument();
   });
