@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { Sidebar } from "./components/Sidebar";
+import { Overview } from "./components/Overview";
 import { ReviewQueue } from "./components/ReviewQueue";
 import { MyPRs } from "./components/MyPRs";
 import { Issues } from "./components/Issues";
@@ -16,6 +17,7 @@ interface MainContentProps {
 function MainContent({ view }: MainContentProps): ReactElement {
   switch (view) {
     case "overview":
+      return <Overview />;
     case "reviews":
       return <ReviewQueue reviews={[]} onOpen={() => {}} />;
     case "mine":
