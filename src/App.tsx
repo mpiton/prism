@@ -21,7 +21,7 @@ function MainContent({ view }: MainContentProps): ReactElement {
     case "mine":
       return <MyPRs prs={[]} onOpen={() => {}} />;
     case "issues":
-      return <Issues />;
+      return <Issues issues={[]} onOpen={() => {}} />;
     case "feed":
       return <ActivityFeed />;
     case "workspaces":

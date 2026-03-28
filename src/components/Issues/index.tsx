@@ -1,3 +1,2 @@
-export function Issues() {
-  return <section data-testid="issues">Issues</section>;
-}
+export { IssueCard } from "./IssueCard";
+export { Issues } from "./Issues";
