@@ -18,8 +18,6 @@ const mockData: PullRequestWithReview = {
     labels: ["bug"],
     additions: 10,
     deletions: 5,
-    changedFiles: 3,
-    commentsCount: 2,
     createdAt: "2026-03-26T10:00:00Z",
     updatedAt: "2026-03-26T12:00:00Z",
   },
@@ -72,5 +70,33 @@ describe("ReviewCard", () => {
     expect(handleOpen).toHaveBeenCalledWith(
       "https://github.com/org/repo/pull/42",
     );
+  });
+
+  it("should render without optional diff fields", () => {
+    const dataWithoutDiff: PullRequestWithReview = {
+      pullRequest: {
+        ...mockData.pullRequest,
+        additions: undefined,
+        deletions: undefined,
+      },
+      reviewSummary: mockData.reviewSummary,
+      workspace: null,
+    };
+    render(<ReviewCard data={dataWithoutDiff} onOpen={vi.fn()} />);
+    expect(screen.queryByText("+10")).not.toBeInTheDocument();
+    expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+  });
+
+  it("should call onWorkspaceAction when badge is clicked", async () => {
+    const handleWs = vi.fn();
+    render(
+      <ReviewCard
+        data={mockData}
+        onOpen={vi.fn()}
+        onWorkspaceAction={handleWs}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button"));
+    expect(handleWs).toHaveBeenCalledWith("ws-1");
   });
 });
