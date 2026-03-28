@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PullRequestWithReview } from "../../lib/types";
 import { MyPRs } from "./index";
 
@@ -32,6 +32,7 @@ function makePr(
       pending: 0,
       reviewers: ["alice"],
     },
+    workspace: null,
   };
 }
 
@@ -44,6 +45,10 @@ const mergedPr2 = makePr({ number: 5, title: "Merged PR two", state: "merged" })
 const allPrs = [openPr1, openPr2, draftPr, mergedPr1, mergedPr2];
 
 const onOpen = vi.fn();
+
+beforeEach(() => {
+  onOpen.mockClear();
+});
 
 describe("MyPRs", () => {
   it("should show open PRs by default", () => {
@@ -89,6 +94,15 @@ describe("MyPRs", () => {
 
     expect(screen.getByText("My PRs")).toBeInTheDocument();
     expect(screen.getByText("5")).toBeInTheDocument();
+  });
+
+  it("should exclude closed PRs from total count", () => {
+    const closedPr = makePr({ number: 6, title: "Closed PR", state: "closed" });
+    render(<MyPRs prs={[openPr1, closedPr, mergedPr1]} onOpen={onOpen} />);
+
+    expect(screen.getByText("My PRs")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.queryByText("Closed PR")).not.toBeInTheDocument();
   });
 
   it("should pass onOpen to MyPrCard", async () => {

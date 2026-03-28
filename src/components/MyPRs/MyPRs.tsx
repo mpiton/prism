@@ -34,7 +34,7 @@ export function MyPRs({
 
   return (
     <section data-testid="my-prs" className="flex flex-col gap-2">
-      <SectionHead title="My PRs" count={prs.length} />
+      <SectionHead title="My PRs" count={openPrs.length + mergedPrs.length} />
 
       <div className="flex gap-1" role="group" aria-label="Filter by state">
         <button
