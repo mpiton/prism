@@ -1,3 +1,2 @@
-export function ActivityFeed() {
-  return <section data-testid="activity-feed">ActivityFeed</section>;
-}
+export { ActivityItem } from "./ActivityItem";
+export { ActivityFeed } from "./ActivityFeed";

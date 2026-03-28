@@ -23,7 +23,7 @@ function MainContent({ view }: MainContentProps): ReactElement {
     case "issues":
       return <Issues issues={[]} onOpen={() => {}} />;
     case "feed":
-      return <ActivityFeed />;
+      return <ActivityFeed activities={[]} onMarkAllRead={() => {}} />;
     case "workspaces":
       return <Workspace />;
     case "settings":
