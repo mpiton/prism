@@ -48,6 +48,10 @@ export interface PullRequest {
   readonly repoId: string;
   readonly url: string;
   readonly labels: readonly string[];
+  readonly additions?: number;
+  readonly deletions?: number;
+  readonly changedFiles?: number;
+  readonly commentsCount?: number;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
