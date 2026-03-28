@@ -32,7 +32,8 @@ const MAX_BODY_LENGTH = 80;
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
+  if (max <= 1) return "…";
+  return `${text.slice(0, max - 1)}…`;
 }
 
 export function ActivityItem({ activity }: ActivityItemProps): ReactElement {
