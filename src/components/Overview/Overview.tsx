@@ -1,5 +1,5 @@
-import { useCallback, type ReactElement } from "react";
-import { useMutation } from "@tanstack/react-query";
+import type { ReactElement } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { markAllActivityRead } from "../../lib/tauri";
 import { ReviewQueue } from "../ReviewQueue";
@@ -17,15 +17,21 @@ function openUrl(url: string): void {
 }
 
 export function Overview(): ReactElement {
-  const { dashboard, isLoading, error } = useGitHubData();
+  const { dashboard, error } = useGitHubData();
+  const queryClient = useQueryClient();
 
-  const markAllRead = useMutation({ mutationFn: markAllActivityRead });
+  const markAllRead = useMutation({
+    mutationFn: markAllActivityRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["github", "stats"] });
+    },
+    onError: (err: unknown) => {
+      console.error("[Overview] markAllActivityRead failed:", err);
+    },
+  });
 
-  const handleMarkAllRead = useCallback(() => {
-    markAllRead.mutate();
-  }, [markAllRead]);
-
-  if (error) {
+  if (!dashboard && error) {
     return (
       <div className="flex h-full items-center justify-center text-dim">
         Failed to load dashboard
@@ -33,7 +39,7 @@ export function Overview(): ReactElement {
     );
   }
 
-  if (isLoading || !dashboard) {
+  if (!dashboard) {
     return (
       <div className="flex h-full items-center justify-center text-dim">
         Loading...
@@ -55,7 +61,7 @@ export function Overview(): ReactElement {
 
       <div className="flex w-[340px] shrink-0 flex-col gap-6">
         <Issues issues={issues} onOpen={openUrl} />
-        <ActivityFeed activities={activities} onMarkAllRead={handleMarkAllRead} />
+        <ActivityFeed activities={activities} onMarkAllRead={() => markAllRead.mutate()} />
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
+import { type ReactElement } from "react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import type {
   Activity,
   DashboardData,
@@ -14,14 +16,16 @@ vi.mock("../../hooks/useGitHubData", () => ({
 }));
 
 vi.mock("../../lib/tauri", () => ({
-  markAllActivityRead: vi.fn(),
+  markAllActivityRead: vi.fn().mockResolvedValue(0),
 }));
 
 import { useGitHubData } from "../../hooks/useGitHubData";
+import { markAllActivityRead } from "../../lib/tauri";
 
 const mockedUseGitHubData = vi.mocked(useGitHubData);
+const mockedMarkAllActivityRead = vi.mocked(markAllActivityRead);
 
-function renderWithProviders(ui: React.ReactElement) {
+function renderWithProviders(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -110,6 +114,11 @@ function setupMock(dashboard: DashboardData | null = makeDashboard()) {
     isSyncing: false,
   });
 }
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  mockedMarkAllActivityRead.mockResolvedValue(0);
+});
 
 describe("Overview", () => {
   it("should render review queue section", () => {
@@ -208,7 +217,7 @@ describe("Overview", () => {
     expect(screen.queryByText("Comment on PR #6")).not.toBeInTheDocument();
   });
 
-  it("should show loading state", () => {
+  it("should show loading state when dashboard is absent", () => {
     mockedUseGitHubData.mockReturnValue({
       dashboard: null,
       stats: null,
@@ -223,7 +232,7 @@ describe("Overview", () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  it("should show error state", () => {
+  it("should show error state when dashboard is absent and error exists", () => {
     mockedUseGitHubData.mockReturnValue({
       dashboard: null,
       stats: null,
@@ -236,6 +245,22 @@ describe("Overview", () => {
     renderWithProviders(<Overview />);
 
     expect(screen.getByText(/failed to load/i)).toBeInTheDocument();
+  });
+
+  it("should render dashboard even when error exists but dashboard is available", () => {
+    mockedUseGitHubData.mockReturnValue({
+      dashboard: makeDashboard({ reviewRequests: [makePr(1)] }),
+      stats: null,
+      isLoading: false,
+      error: new Error("Stats failed"),
+      forceSync: vi.fn(),
+      isSyncing: false,
+    });
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("overview")).toBeInTheDocument();
+    expect(screen.getByText("PR #1")).toBeInTheDocument();
   });
 
   it("should render all 4 sections when data is available", () => {
@@ -254,5 +279,42 @@ describe("Overview", () => {
     expect(screen.getByTestId("my-prs")).toBeInTheDocument();
     expect(screen.getByTestId("issues")).toBeInTheDocument();
     expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
+  });
+
+  it("should call markAllActivityRead when mark all read is clicked", async () => {
+    const user = userEvent.setup();
+    setupMock(
+      makeDashboard({
+        recentActivity: [makeActivity(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    await user.click(screen.getByRole("button", { name: /mark all read/i }));
+
+    expect(mockedMarkAllActivityRead).toHaveBeenCalledOnce();
+  });
+
+  it("should open URL when a PR card is clicked", async () => {
+    const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const user = userEvent.setup();
+    setupMock(
+      makeDashboard({
+        reviewRequests: [makePr(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    await user.click(screen.getByRole("link"));
+
+    expect(windowOpenSpy).toHaveBeenCalledWith(
+      "https://github.com/org/repo/pull/1",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    windowOpenSpy.mockRestore();
   });
 });
