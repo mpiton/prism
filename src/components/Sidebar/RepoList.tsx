@@ -21,6 +21,7 @@ export function RepoList({
             type="checkbox"
             checked={repo.enabled}
             onChange={() => onToggleRepo(repo.id, !repo.enabled)}
+            aria-label={`Enable ${repo.fullName} repository`}
             className="accent-accent"
           />
           <span>{repo.fullName}</span>

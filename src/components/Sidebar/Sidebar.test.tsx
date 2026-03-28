@@ -87,6 +87,7 @@ function renderSidebar() {
 
 describe("Sidebar", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     useDashboardStore.setState({ currentView: "overview", activeFilters: {} });
     useWorkspacesStore.setState({ activeWorkspaceId: null });
   });
@@ -118,25 +119,13 @@ describe("Sidebar", () => {
   });
 
   it("should toggle repos", async () => {
-    const { listRepos } = await import("../../lib/tauri");
-    vi.mocked(listRepos).mockResolvedValue([
-      {
-        id: "repo-1",
-        org: "acme",
-        name: "frontend",
-        fullName: "acme/frontend",
-        url: "https://github.com/acme/frontend",
-        defaultBranch: "main",
-        isArchived: false,
-        enabled: true,
-        localPath: "/home/user/frontend",
-        lastSyncAt: "2026-03-28T10:00:00Z",
-      },
-    ]);
+    const { setRepoEnabled } = await import("../../lib/tauri");
     renderSidebar();
-    // Wait for repos to load
     const checkbox = await screen.findByRole("checkbox");
     expect(checkbox).toBeChecked();
+
+    await userEvent.click(checkbox);
+    expect(vi.mocked(setRepoEnabled)).toHaveBeenCalledWith("repo-1", false);
   });
 
   it("should switch to workspace on click", async () => {

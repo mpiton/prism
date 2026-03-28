@@ -12,7 +12,7 @@ import { RepoList } from "./RepoList";
 interface NavEntry {
   readonly label: string;
   readonly view: DashboardView;
-  readonly countKey?: "pendingReviews" | "openPrs" | "openIssues" | "activeWorkspaces";
+  readonly countKey?: "pendingReviews" | "openPrs" | "openIssues" | "activeWorkspaces" | "unreadActivity";
 }
 
 const NAV_ITEMS: readonly NavEntry[] = [
@@ -20,7 +20,7 @@ const NAV_ITEMS: readonly NavEntry[] = [
   { label: "To Review", view: "reviews", countKey: "pendingReviews" },
   { label: "My PRs", view: "mine", countKey: "openPrs" },
   { label: "Issues", view: "issues", countKey: "openIssues" },
-  { label: "Activity", view: "feed" },
+  { label: "Activity", view: "feed", countKey: "unreadActivity" },
   { label: "Workspaces", view: "workspaces", countKey: "activeWorkspaces" },
   { label: "Settings", view: "settings" },
 ];
@@ -48,6 +48,9 @@ export function Sidebar(): ReactElement {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["repos"] });
     },
+    onError: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["repos"] });
+    },
   });
 
   function handleNavClick(view: DashboardView) {
@@ -63,9 +66,7 @@ export function Sidebar(): ReactElement {
     toggleRepoMutation.mutate({ repoId, enabled });
   }
 
-  const workspaces = (dashboard?.workspaces ?? []).filter(
-    (ws) => ws.state !== "archived",
-  );
+  const workspaces = dashboard?.workspaces ?? [];
   const repos = reposQuery.data ?? [];
   const username = authQuery.data?.username ?? null;
 
