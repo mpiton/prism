@@ -38,7 +38,7 @@ function truncate(text: string, max: number): string {
 export function ActivityItem({ activity }: ActivityItemProps): ReactElement {
   return (
     <div data-testid="activity-item" className="flex items-start gap-2 rounded border border-border px-3 py-2">
-      <span data-testid="activity-icon" className="shrink-0 text-sm text-dim">
+      <span data-testid="activity-icon" aria-hidden="true" className="shrink-0 text-sm text-dim">
         {ACTIVITY_ICON[activity.activityType]}
       </span>
 

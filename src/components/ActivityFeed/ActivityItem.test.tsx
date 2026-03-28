@@ -49,7 +49,8 @@ describe("ActivityItem", () => {
     render(<ActivityItem activity={makeActivity({ message: longMessage })} />);
 
     const body = screen.getByTestId("activity-body");
-    expect((body.textContent ?? "").length).toBeLessThan(200);
+    expect(body).toHaveTextContent(`${"A".repeat(80)}…`);
+    expect((body.textContent ?? "").length).toBe(81);
   });
 
   it("should show different icons when activity types differ", () => {

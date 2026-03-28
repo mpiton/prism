@@ -11,18 +11,22 @@ interface ActivityFeedProps {
 
 type FilterType = "all" | "comment" | "review" | "ci" | "mention" | "other";
 
-const FILTER_MATCH: Record<Exclude<FilterType, "all">, readonly ActivityType[]> = {
+const FILTER_MATCH: Record<Exclude<FilterType, "all" | "mention">, readonly ActivityType[]> = {
   comment: ["comment_added"],
   review: ["review_submitted"],
   ci: ["ci_completed"],
-  mention: [],
   other: ["pr_opened", "pr_merged", "pr_closed", "issue_opened", "issue_closed"],
 };
 
-const FILTER_LABELS: readonly FilterType[] = ["all", "comment", "review", "ci", "mention", "other"];
+const MENTION_PATTERN = /(^|\s)@\w+/;
+
+const FILTER_LABELS = ["all", "comment", "review", "ci", "mention", "other"] as const satisfies readonly FilterType[];
 
 function matchesFilter(activity: Activity, filter: FilterType): boolean {
   if (filter === "all") return true;
+  if (filter === "mention") {
+    return activity.activityType === "comment_added" && MENTION_PATTERN.test(activity.message);
+  }
   return FILTER_MATCH[filter].includes(activity.activityType);
 }
 
@@ -33,7 +37,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
 
   return (
     <section data-testid="activity-feed" className="flex flex-col gap-2">
-      <SectionHead title="Activity" count={activities.length} />
+      <SectionHead title="Activity" count={visible.length} />
 
       <div className="flex items-center gap-1">
         <div className="flex gap-1" role="group" aria-label="Filter by type">
