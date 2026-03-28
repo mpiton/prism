@@ -11,7 +11,7 @@ export function timeAgo(dateStr: string): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
   const weeks = Math.floor(days / 7);
-  if (weeks < 52) return `${weeks}w`;
   const years = Math.floor(days / 365);
+  if (years < 1) return `${weeks}w`;
   return `${years}y`;
 }
