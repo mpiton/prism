@@ -107,6 +107,33 @@ describe("Toast", () => {
     expect(mockClearNotification).toHaveBeenCalledWith("notif-1");
   });
 
+  it("should not dismiss after unmount", () => {
+    (useNotifications as Mock).mockReturnValue({
+      notifications: [makeNotification()],
+      clearNotification: mockClearNotification,
+    });
+
+    const { unmount } = render(<Toast />);
+    unmount();
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(mockClearNotification).not.toHaveBeenCalled();
+  });
+
+  it("should display payload summary in toast", () => {
+    (useNotifications as Mock).mockReturnValue({
+      notifications: [makeNotification()],
+      clearNotification: mockClearNotification,
+    });
+
+    render(<Toast />);
+
+    expect(screen.getByText("#42 Fix bug")).toBeInTheDocument();
+  });
+
   it("should navigate on click", async () => {
     vi.useRealTimers();
 

@@ -21,9 +21,23 @@ interface ToastItemProps {
   readonly onNavigate: (view: DashboardView) => void;
 }
 
+function extractPayloadSummary(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null) {
+    return undefined;
+  }
+  const obj = payload as Record<string, unknown>;
+  const title = typeof obj.title === "string" ? obj.title : undefined;
+  const prNumber = typeof obj.prNumber === "number" ? `#${obj.prNumber}` : undefined;
+  if (title && prNumber) {
+    return `${prNumber} ${title}`;
+  }
+  return title ?? prNumber;
+}
+
 function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): ReactElement {
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
   const meta = NOTIFICATION_META[notification.type];
+  const summary = extractPayloadSummary(notification.payload);
 
   useEffect(() => {
     timerRef.current = setTimeout(() => {
@@ -48,11 +62,17 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
   return (
     <button
       type="button"
+      aria-label={`${meta.label} — click to navigate`}
       onClick={handleClick}
       className="flex w-72 items-center gap-3 rounded-lg border border-border bg-bg-secondary p-3 shadow-lg transition-opacity hover:opacity-80"
     >
       <span className="text-lg" aria-hidden="true">{meta.icon}</span>
-      <span className="text-sm font-medium text-fg">{meta.label}</span>
+      <div className="flex flex-col items-start">
+        <span className="text-sm font-medium text-fg">{meta.label}</span>
+        {summary !== undefined && (
+          <span className="text-xs text-fg-muted">{summary}</span>
+        )}
+      </div>
     </button>
   );
 }
