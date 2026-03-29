@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -10,21 +11,24 @@ use crate::error::AppError;
 
 /// Handle for a single PTY session.
 ///
-/// Holds the writer (per-PTY lock), the master (for resize), the child process,
-/// and the background reader task handle.
+/// Holds the writer and master (per-PTY locks), the child process,
+/// a background reader task handle, and a `killed` flag that prevents
+/// `Drop` from issuing a redundant kill after an explicit `kill()`.
 #[allow(dead_code)]
 struct PtyHandle {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    master: Box<dyn MasterPty + Send>,
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
     reader_task: tokio::task::JoinHandle<()>,
+    killed: Arc<AtomicBool>,
 }
 
 impl Drop for PtyHandle {
     fn drop(&mut self) {
         self.reader_task.abort();
-        if let Err(e) = self.child.kill() {
-            log::warn!("failed to kill pty child on drop: {e}");
+        if !self.killed.load(Ordering::Acquire) {
+            // Best-effort cleanup — only kill if not already killed explicitly.
+            let _ = self.child.kill();
         }
     }
 }
@@ -51,10 +55,17 @@ impl PtyManager {
     /// Spawns a new PTY running the user's default shell.
     ///
     /// Returns the PTY id (UUID v4). A background `spawn_blocking` task reads
-    /// stdout and forwards each chunk to `on_output(pty_id, data)`.
+    /// stdout and forwards each chunk to `on_output(pty_id, data)`. When the
+    /// child exits (reader EOF), the session is automatically removed from the
+    /// manager.
     ///
     /// The `on_output` callback must be `Send + 'static` because it is moved
     /// into the blocking reader task.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called outside a Tokio runtime context (uses
+    /// `tokio::task::spawn_blocking` internally).
     #[allow(dead_code)]
     pub fn spawn(
         &self,
@@ -74,7 +85,11 @@ impl PtyManager {
             })
             .map_err(|e| AppError::Pty(format!("failed to open pty: {e}")))?;
 
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+        let shell = if cfg!(windows) {
+            std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into())
+        } else {
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+        };
         let mut cmd = CommandBuilder::new(&shell);
         cmd.cwd(cwd);
 
@@ -95,6 +110,8 @@ impl PtyManager {
 
         let pty_id = Uuid::new_v4().to_string();
 
+        // Clone ptys Arc so the reader task can remove stale entries on EOF.
+        let ptys_for_task = Arc::clone(&self.ptys);
         let id_for_task = pty_id.clone();
         let reader_task = tokio::task::spawn_blocking(move || {
             let mut reader = reader;
@@ -109,13 +126,18 @@ impl PtyManager {
                     }
                 }
             }
+            // Child exited — remove stale entry from the map.
+            if let Ok(mut ptys) = ptys_for_task.lock() {
+                ptys.remove(&id_for_task);
+            }
         });
 
         let handle = PtyHandle {
             writer: Arc::new(Mutex::new(writer)),
-            master: pair.master,
+            master: Arc::new(Mutex::new(pair.master)),
             child,
             reader_task,
+            killed: Arc::new(AtomicBool::new(false)),
         };
 
         self.ptys
@@ -159,19 +181,29 @@ impl PtyManager {
     }
 
     /// Resizes a PTY to new dimensions.
+    ///
+    /// Acquires only the per-PTY master lock, not the global map lock during
+    /// the `ioctl` syscall.
     #[allow(dead_code)]
     pub fn resize(&self, pty_id: &str, cols: u16, rows: u16) -> Result<(), AppError> {
-        let ptys = self
-            .ptys
+        let master = {
+            let ptys = self
+                .ptys
+                .lock()
+                .map_err(|e| AppError::Pty(format!("lock poisoned: {e}")))?;
+
+            let handle = ptys
+                .get(pty_id)
+                .ok_or_else(|| AppError::NotFound(format!("pty {pty_id}")))?;
+
+            Arc::clone(&handle.master)
+        }; // map lock released here
+
+        let master = master
             .lock()
-            .map_err(|e| AppError::Pty(format!("lock poisoned: {e}")))?;
+            .map_err(|e| AppError::Pty(format!("master lock poisoned: {e}")))?;
 
-        let handle = ptys
-            .get(pty_id)
-            .ok_or_else(|| AppError::NotFound(format!("pty {pty_id}")))?;
-
-        handle
-            .master
+        master
             .resize(PtySize {
                 rows,
                 cols,
@@ -186,8 +218,7 @@ impl PtyManager {
     /// Kills a PTY process and removes it from the manager.
     ///
     /// The map lock is released before performing the kill syscall.
-    /// The `Drop` impl on `PtyHandle` aborts the reader task and kills
-    /// the child if this method's explicit `kill()` fails.
+    /// Sets the `killed` flag so `Drop` does not issue a redundant kill.
     #[allow(dead_code)]
     pub fn kill(&self, pty_id: &str) -> Result<(), AppError> {
         let mut handle = {
@@ -206,6 +237,9 @@ impl PtyManager {
             .child
             .kill()
             .map_err(|e| AppError::Pty(format!("kill failed: {e}")))?;
+
+        // Mark as killed so Drop does not call kill() again.
+        handle.killed.store(true, Ordering::Release);
 
         Ok(())
     }
@@ -264,12 +298,16 @@ mod tests {
         let result = manager.write_pty(&pty_id, b"echo hello_pty_test\n");
         assert!(result.is_ok(), "write_pty should succeed: {result:?}");
 
+        // Accumulate output chunks and look for our marker string.
+        // PTY output may include prompts and ANSI escapes, so exact line
+        // matching is too fragile — `contains` is appropriate here.
         let mut found = false;
+        let mut output = String::new();
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while std::time::Instant::now() < deadline {
             if let Ok(data) = rx.recv_timeout(Duration::from_millis(100)) {
-                let text = String::from_utf8_lossy(&data);
-                if text.contains("hello_pty_test") {
+                output.push_str(&String::from_utf8_lossy(&data));
+                if output.contains("hello_pty_test") {
                     found = true;
                     break;
                 }
@@ -348,5 +386,30 @@ mod tests {
 
         manager.kill(&id1).unwrap();
         manager.kill(&id3).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_exit_removes_stale_entry() {
+        let manager = PtyManager::new();
+        let (pty_id, _rx) = spawn_test_pty(&manager);
+
+        // Give the shell time to start
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Tell the shell to exit
+        manager.write_pty(&pty_id, b"exit\n").unwrap();
+
+        // Wait for the reader task to clean up the stale entry
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut removed = false;
+        while std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let ptys = manager.ptys.lock().unwrap();
+            if !ptys.contains_key(&pty_id) {
+                removed = true;
+                break;
+            }
+        }
+        assert!(removed, "pty entry should be removed after shell exits");
     }
 }
