@@ -253,30 +253,33 @@ pub(crate) async fn run_force_sync(
 ) -> Result<DashboardStats, String> {
     use std::sync::atomic::Ordering;
 
-    let guard = app_handle.state::<crate::SyncInFlight>();
-    if guard
+    /// RAII guard that resets the in-flight flag on drop (cancellation-safe).
+    struct ResetOnDrop<'a>(&'a std::sync::atomic::AtomicBool);
+    impl Drop for ResetOnDrop<'_> {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::Release);
+        }
+    }
+
+    let sync_guard = app_handle.state::<crate::SyncInFlight>();
+    if sync_guard
         .0
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
     {
         return Err("sync already in progress".to_string());
     }
+    let _reset = ResetOnDrop(&sync_guard.0);
 
-    let result = async {
-        let (username, token) = resolve_credentials(cached).await?;
-        let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
-        let stats = sync_dashboard(&client, pool, &username)
-            .await
-            .map_err(|e| e.to_string())?;
-        if let Err(e) = app_handle.emit("github:updated", &stats) {
-            warn!("failed to emit github:updated after force sync: {e}");
-        }
-        Ok(stats)
+    let (username, token) = resolve_credentials(cached).await?;
+    let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
+    let stats = sync_dashboard(&client, pool, &username)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Err(e) = app_handle.emit("github:updated", &stats) {
+        warn!("failed to emit github:updated after force sync: {e}");
     }
-    .await;
-
-    guard.0.store(false, Ordering::Release);
-    result
+    Ok(stats)
 }
 
 /// Triggers an immediate GitHub data sync, bypassing the polling timer.
@@ -292,6 +295,7 @@ pub async fn github_force_sync(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let stats = run_force_sync(&app_handle, &pool, &cached).await?;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if let Err(e) = crate::tray::update_tray_badge(&app_handle, stats.pending_reviews) {
         warn!("failed to update tray badge after force sync: {e}");
     }

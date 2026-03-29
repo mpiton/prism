@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod github;
 mod notifications;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod tray;
 pub mod types;
 mod workspace;
@@ -142,7 +143,8 @@ pub fn run() {
             // Force-sync guard — prevents concurrent sync invocations
             app.manage(SyncInFlight::default());
 
-            // System tray icon with context menu
+            // System tray icon with context menu (desktop only)
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             tray::setup_tray(app).map_err(|e| e.to_string())?;
 
             // Attempt to start background polling (non-blocking)
