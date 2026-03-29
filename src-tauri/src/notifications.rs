@@ -1,15 +1,18 @@
-use log::info;
+#![allow(dead_code)] // Call-site integration deferred to polling loop wiring task
+
+use log::{info, warn};
 use serde::Serialize;
 use sqlx::SqlitePool;
+use tauri::Emitter;
 
 use crate::cache::notifications::{has_been_notified, mark_notified};
 use crate::error::AppError;
-use crate::types::{CiStatus, DashboardData, DashboardStats, PullRequest};
+use crate::types::{CiStatus, DashboardData, PullRequest};
 
 /// Payload emitted with each notification Tauri event.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NotificationPayload {
+pub(crate) struct NotificationPayload {
     pub pr_number: u32,
     pub pr_title: String,
     pub repo_id: String,
@@ -47,47 +50,44 @@ impl TauriNotificationSender {
         Self { app_handle }
     }
 
-    fn send_native(&self, title: &str, body: &str) {
+    fn send_native(title: &str, body: &str) {
         if let Err(e) = notify_rust::Notification::new()
             .appname("PRism")
             .summary(title)
             .body(body)
             .show()
         {
-            log::warn!("failed to show native notification: {e}");
+            warn!("failed to show native notification: {e}");
         }
     }
 }
 
 impl NotificationSender for TauriNotificationSender {
     fn emit_review_request(&self, payload: &NotificationPayload) {
-        use tauri::Emitter;
         if let Err(e) = self.app_handle.emit("notification:review_request", payload) {
-            log::warn!("failed to emit notification:review_request: {e}");
+            warn!("failed to emit notification:review_request: {e}");
         }
-        self.send_native(
+        Self::send_native(
             "New Review Request",
             &format!("PR #{}: {}", payload.pr_number, payload.pr_title),
         );
     }
 
     fn emit_ci_failure(&self, payload: &NotificationPayload) {
-        use tauri::Emitter;
         if let Err(e) = self.app_handle.emit("notification:ci_failure", payload) {
-            log::warn!("failed to emit notification:ci_failure: {e}");
+            warn!("failed to emit notification:ci_failure: {e}");
         }
-        self.send_native(
+        Self::send_native(
             "CI Failed",
             &format!("PR #{}: {}", payload.pr_number, payload.pr_title),
         );
     }
 
     fn emit_pr_approved(&self, payload: &NotificationPayload) {
-        use tauri::Emitter;
         if let Err(e) = self.app_handle.emit("notification:pr_approved", payload) {
-            log::warn!("failed to emit notification:pr_approved: {e}");
+            warn!("failed to emit notification:pr_approved: {e}");
         }
-        self.send_native(
+        Self::send_native(
             "PR Approved",
             &format!("PR #{}: {}", payload.pr_number, payload.pr_title),
         );
@@ -96,17 +96,14 @@ impl NotificationSender for TauriNotificationSender {
 
 /// Check new dashboard data for notification-worthy events.
 ///
-/// Compares `old_stats` vs `new_stats` and scans `new_data` for events
-/// not yet recorded in `notification_log`. For each new event, emits a
-/// Tauri event + native notification and marks it as notified to prevent
-/// duplicates on subsequent syncs.
+/// Scans `new_data` for events not yet recorded in `notification_log`.
+/// For each new event, emits a Tauri event + native notification and
+/// marks it as notified to prevent duplicates on subsequent syncs.
 ///
 /// Returns the number of notifications emitted.
-pub async fn check_and_notify(
+pub(crate) async fn check_and_notify(
     pool: &SqlitePool,
     sender: &(impl NotificationSender + ?Sized),
-    _old_stats: &DashboardStats,
-    _new_stats: &DashboardStats,
     new_data: &DashboardData,
 ) -> Result<u32, AppError> {
     let mut count = 0u32;
@@ -121,9 +118,10 @@ pub async fn check_and_notify(
         }
     }
 
-    // 2. CI failures on authored PRs
+    // 2. CI failures and PR approvals on authored PRs
     for pr_with_review in &new_data.my_pull_requests {
         let pr = &pr_with_review.pull_request;
+
         if pr.ci_status == CiStatus::Failure
             && !has_been_notified(pool, "ci_failure", &pr.id).await?
         {
@@ -131,11 +129,7 @@ pub async fn check_and_notify(
             sender.emit_ci_failure(&NotificationPayload::from_pr(pr));
             count += 1;
         }
-    }
 
-    // 3. PR approvals on authored PRs
-    for pr_with_review in &new_data.my_pull_requests {
-        let pr = &pr_with_review.pull_request;
         if pr_with_review.review_summary.approved > 0
             && !has_been_notified(pool, "pr_approved", &pr.id).await?
         {
@@ -171,15 +165,24 @@ mod tests {
 
     impl NotificationSender for MockSender {
         fn emit_review_request(&self, payload: &NotificationPayload) {
-            self.review_requests.lock().unwrap().push(payload.clone());
+            self.review_requests
+                .lock()
+                .expect("MockSender lock poisoned")
+                .push(payload.clone());
         }
 
         fn emit_ci_failure(&self, payload: &NotificationPayload) {
-            self.ci_failures.lock().unwrap().push(payload.clone());
+            self.ci_failures
+                .lock()
+                .expect("MockSender lock poisoned")
+                .push(payload.clone());
         }
 
         fn emit_pr_approved(&self, payload: &NotificationPayload) {
-            self.pr_approvals.lock().unwrap().push(payload.clone());
+            self.pr_approvals
+                .lock()
+                .expect("MockSender lock poisoned")
+                .push(payload.clone());
         }
     }
 
@@ -227,38 +230,21 @@ mod tests {
         }
     }
 
-    fn zero_stats() -> DashboardStats {
-        DashboardStats {
-            pending_reviews: 0,
-            open_prs: 0,
-            open_issues: 0,
-            active_workspaces: 0,
-            unread_activity: 0,
-        }
-    }
-
     #[tokio::test]
     async fn test_notify_new_review_request() {
         let (pool, _tmp) = test_pool().await;
         let sender = MockSender::default();
 
-        let old_stats = zero_stats();
-        let new_stats = DashboardStats {
-            pending_reviews: 1,
-            ..zero_stats()
-        };
         let pr = make_pr("pr-1", 42, CiStatus::Success);
         let data = DashboardData {
             review_requests: vec![make_pr_with_review(pr, 0)],
             ..empty_data()
         };
 
-        let count = check_and_notify(&pool, &sender, &old_stats, &new_stats, &data)
-            .await
-            .unwrap();
+        let count = check_and_notify(&pool, &sender, &data).await.unwrap();
 
         assert_eq!(count, 1);
-        let notifs = sender.review_requests.lock().unwrap();
+        let notifs = sender.review_requests.lock().expect("lock poisoned");
         assert_eq!(notifs.len(), 1);
         assert_eq!(notifs[0].pr_number, 42);
 
@@ -270,11 +256,6 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         let sender = MockSender::default();
 
-        let old_stats = zero_stats();
-        let new_stats = DashboardStats {
-            pending_reviews: 1,
-            ..zero_stats()
-        };
         let pr = make_pr("pr-1", 42, CiStatus::Success);
         let data = DashboardData {
             review_requests: vec![make_pr_with_review(pr, 0)],
@@ -282,19 +263,18 @@ mod tests {
         };
 
         // First call — should notify
-        let count1 = check_and_notify(&pool, &sender, &old_stats, &new_stats, &data)
-            .await
-            .unwrap();
+        let count1 = check_and_notify(&pool, &sender, &data).await.unwrap();
         assert_eq!(count1, 1);
 
         // Second call with same data — should NOT re-notify (dedup)
-        let count2 = check_and_notify(&pool, &sender, &old_stats, &new_stats, &data)
-            .await
-            .unwrap();
+        let count2 = check_and_notify(&pool, &sender, &data).await.unwrap();
         assert_eq!(count2, 0);
 
         // Verify only one notification total
-        assert_eq!(sender.review_requests.lock().unwrap().len(), 1);
+        assert_eq!(
+            sender.review_requests.lock().expect("lock poisoned").len(),
+            1
+        );
 
         pool.close().await;
     }
@@ -304,23 +284,16 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         let sender = MockSender::default();
 
-        let old_stats = zero_stats();
-        let new_stats = DashboardStats {
-            open_prs: 1,
-            ..zero_stats()
-        };
         let pr = make_pr("pr-2", 99, CiStatus::Failure);
         let data = DashboardData {
             my_pull_requests: vec![make_pr_with_review(pr, 0)],
             ..empty_data()
         };
 
-        let count = check_and_notify(&pool, &sender, &old_stats, &new_stats, &data)
-            .await
-            .unwrap();
+        let count = check_and_notify(&pool, &sender, &data).await.unwrap();
 
         assert_eq!(count, 1);
-        let notifs = sender.ci_failures.lock().unwrap();
+        let notifs = sender.ci_failures.lock().expect("lock poisoned");
         assert_eq!(notifs.len(), 1);
         assert_eq!(notifs[0].pr_number, 99);
 
@@ -332,23 +305,16 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         let sender = MockSender::default();
 
-        let old_stats = zero_stats();
-        let new_stats = DashboardStats {
-            open_prs: 1,
-            ..zero_stats()
-        };
         let pr = make_pr("pr-3", 10, CiStatus::Success);
         let data = DashboardData {
             my_pull_requests: vec![make_pr_with_review(pr, 1)],
             ..empty_data()
         };
 
-        let count = check_and_notify(&pool, &sender, &old_stats, &new_stats, &data)
-            .await
-            .unwrap();
+        let count = check_and_notify(&pool, &sender, &data).await.unwrap();
 
         assert_eq!(count, 1);
-        let notifs = sender.pr_approvals.lock().unwrap();
+        let notifs = sender.pr_approvals.lock().expect("lock poisoned");
         assert_eq!(notifs.len(), 1);
         assert_eq!(notifs[0].pr_number, 10);
 
@@ -365,24 +331,21 @@ mod tests {
             .await
             .unwrap();
 
-        let old_stats = zero_stats();
-        let new_stats = DashboardStats {
-            pending_reviews: 1,
-            ..zero_stats()
-        };
         let pr = make_pr("pr-1", 42, CiStatus::Success);
         let data = DashboardData {
             review_requests: vec![make_pr_with_review(pr, 0)],
             ..empty_data()
         };
 
-        let count = check_and_notify(&pool, &sender, &old_stats, &new_stats, &data)
-            .await
-            .unwrap();
+        let count = check_and_notify(&pool, &sender, &data).await.unwrap();
 
         assert_eq!(count, 0, "should not notify for already-notified event");
         assert!(
-            sender.review_requests.lock().unwrap().is_empty(),
+            sender
+                .review_requests
+                .lock()
+                .expect("lock poisoned")
+                .is_empty(),
             "no notification should be emitted"
         );
 

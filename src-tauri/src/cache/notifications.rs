@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 
 /// Check whether a notification has already been sent for the given event.
+#[allow(dead_code)] // Called from notifications module; call-site integration deferred
 pub async fn has_been_notified(
     pool: &SqlitePool,
     event_type: &str,
@@ -25,6 +26,7 @@ pub async fn has_been_notified(
 /// Deduplication is enforced by the `UNIQUE(event_type, event_id)`
 /// constraint via `ON CONFLICT ... DO NOTHING`. The PK is a random
 /// UUID to avoid any separator-collision risk with composite keys.
+#[allow(dead_code)] // Called from notifications module; call-site integration deferred
 pub async fn mark_notified(
     pool: &SqlitePool,
     event_type: &str,
