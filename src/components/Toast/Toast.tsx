@@ -62,7 +62,7 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
   return (
     <button
       type="button"
-      aria-label={`${meta.label} — click to navigate`}
+      aria-label={`${meta.label}${summary ? ` ${summary}` : ""} — click to navigate`}
       onClick={handleClick}
       className="flex w-72 items-center gap-3 rounded-lg border border-border bg-bg-secondary p-3 shadow-lg transition-opacity hover:opacity-80"
     >
