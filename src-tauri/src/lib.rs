@@ -9,9 +9,19 @@ pub mod types;
 mod workspace;
 
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 
 use log::info;
 use tauri::Manager;
+
+/// Guards against concurrent force-sync invocations from the tray or IPC.
+pub(crate) struct SyncInFlight(pub(crate) AtomicBool);
+
+impl Default for SyncInFlight {
+    fn default() -> Self {
+        Self(AtomicBool::new(false))
+    }
+}
 
 /// Holds the background polling task handle for cancellation on logout/shutdown.
 ///
@@ -128,6 +138,9 @@ pub fn run() {
 
             // Polling handle — empty until credentials are verified
             app.manage(PollingHandle::default());
+
+            // Force-sync guard — prevents concurrent sync invocations
+            app.manage(SyncInFlight::default());
 
             // System tray icon with context menu
             tray::setup_tray(app).map_err(|e| e.to_string())?;

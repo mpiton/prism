@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use log::warn;
 use serde::Serialize;
 use sqlx::SqlitePool;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 use crate::cache::activity::{mark_all_read, mark_read};
 use crate::cache::config::{get_config, set_config};
@@ -243,26 +243,40 @@ async fn resolve_credentials(cached: &GithubUsername) -> Result<(String, String)
 }
 
 /// Core force-sync logic shared by the IPC command and the tray handler.
+///
+/// Returns the fresh stats so callers can update the tray badge or
+/// perform other post-sync work without introducing bidirectional coupling.
 pub(crate) async fn run_force_sync(
     app_handle: &tauri::AppHandle,
     pool: &SqlitePool,
     cached: &GithubUsername,
-) -> Result<(), String> {
-    let (username, token) = resolve_credentials(cached).await?;
-    let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
+) -> Result<DashboardStats, String> {
+    use std::sync::atomic::Ordering;
 
-    let stats = sync_dashboard(&client, pool, &username)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if let Err(e) = app_handle.emit("github:updated", &stats) {
-        warn!("failed to emit github:updated after force sync: {e}");
-    }
-    if let Err(e) = crate::tray::update_tray_badge(app_handle, stats.pending_reviews) {
-        warn!("failed to update tray badge after force sync: {e}");
+    let guard = app_handle.state::<crate::SyncInFlight>();
+    if guard
+        .0
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err("sync already in progress".to_string());
     }
 
-    Ok(())
+    let result = async {
+        let (username, token) = resolve_credentials(cached).await?;
+        let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
+        let stats = sync_dashboard(&client, pool, &username)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Err(e) = app_handle.emit("github:updated", &stats) {
+            warn!("failed to emit github:updated after force sync: {e}");
+        }
+        Ok(stats)
+    }
+    .await;
+
+    guard.0.store(false, Ordering::Release);
+    result
 }
 
 /// Triggers an immediate GitHub data sync, bypassing the polling timer.
@@ -277,7 +291,11 @@ pub async fn github_force_sync(
     cached: tauri::State<'_, GithubUsername>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    run_force_sync(&app_handle, &pool, &cached).await
+    let stats = run_force_sync(&app_handle, &pool, &cached).await?;
+    if let Err(e) = crate::tray::update_tray_badge(&app_handle, stats.pending_reviews) {
+        warn!("failed to update tray badge after force sync: {e}");
+    }
+    Ok(())
 }
 
 /// Returns the full application configuration (query).

@@ -71,8 +71,8 @@ pub fn update_tray_badge(app_handle: &tauri::AppHandle, pending_count: u32) -> R
 #[allow(clippy::needless_pass_by_value)] // Signature imposed by Tauri on_menu_event callback
 fn handle_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
-        MENU_SHOW => {
-            if let Some(window) = app.get_webview_window("main") {
+        MENU_SHOW => match app.get_webview_window("main") {
+            Some(window) => {
                 if let Err(e) = window.show() {
                     warn!("tray: failed to show window: {e}");
                 }
@@ -80,14 +80,20 @@ fn handle_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                     warn!("tray: failed to focus window: {e}");
                 }
             }
-        }
+            None => warn!("tray: main window not found for MENU_SHOW"),
+        },
         MENU_FORCE_SYNC => {
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
                 let pool = handle.state::<sqlx::SqlitePool>();
                 let cached = handle.state::<crate::commands::GithubUsername>();
-                if let Err(e) = crate::commands::run_force_sync(&handle, &pool, &cached).await {
-                    warn!("tray force sync failed: {e}");
+                match crate::commands::run_force_sync(&handle, &pool, &cached).await {
+                    Ok(stats) => {
+                        if let Err(e) = update_tray_badge(&handle, stats.pending_reviews) {
+                            warn!("tray: failed to update badge after sync: {e}");
+                        }
+                    }
+                    Err(e) => warn!("tray force sync failed: {e}"),
                 }
             });
         }
@@ -109,20 +115,23 @@ fn handle_tray_icon_event(tray: &tauri::tray::TrayIcon, event: TrayIconEvent) {
     } = event
     {
         let app = tray.app_handle();
-        if let Some(window) = app.get_webview_window("main") {
-            let visible = window.is_visible().unwrap_or(false);
-            if visible {
-                if let Err(e) = window.hide() {
-                    warn!("tray: failed to hide window: {e}");
-                }
-            } else {
-                if let Err(e) = window.show() {
-                    warn!("tray: failed to show window: {e}");
-                }
-                if let Err(e) = window.set_focus() {
-                    warn!("tray: failed to focus window: {e}");
+        match app.get_webview_window("main") {
+            Some(window) => {
+                let visible = window.is_visible().unwrap_or(false);
+                if visible {
+                    if let Err(e) = window.hide() {
+                        warn!("tray: failed to hide window: {e}");
+                    }
+                } else {
+                    if let Err(e) = window.show() {
+                        warn!("tray: failed to show window: {e}");
+                    }
+                    if let Err(e) = window.set_focus() {
+                        warn!("tray: failed to focus window: {e}");
+                    }
                 }
             }
+            None => warn!("tray: main window not found for tray icon click"),
         }
     }
 }
