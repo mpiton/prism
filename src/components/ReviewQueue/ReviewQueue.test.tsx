@@ -213,6 +213,25 @@ describe("ReviewQueue", () => {
     expect(screen.getByText("4")).toBeInTheDocument();
   });
 
+  it("should clear stale repo filter when selected repo disappears from reviews", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ReviewQueue reviews={multiRepoReviews} onOpen={vi.fn()} />,
+    );
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-2",
+    );
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+
+    // Re-render with only repo-1 PRs — repo-2 no longer exists
+    rerender(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
+
+    // Should show all repo-1 PRs, not an empty list
+    expect(screen.getAllByRole("link")).toHaveLength(4);
+  });
+
   it("should forward onWorkspaceAction to ReviewCard", async () => {
     const prWithWorkspace = makePr({
       number: 99,

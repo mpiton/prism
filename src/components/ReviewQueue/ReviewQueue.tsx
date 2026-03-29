@@ -52,16 +52,21 @@ export function ReviewQueue({
 }: ReviewQueueProps): ReactElement {
   const activeFilters = useDashboardStore((s) => s.activeFilters);
   const setFilter = useDashboardStore((s) => s.setFilter);
-  const clearFilters = useDashboardStore((s) => s.clearFilters);
 
   useEffect(() => {
-    return () => clearFilters();
-  }, [clearFilters]);
+    return () => setFilter({ priority: undefined, repo: undefined });
+  }, [setFilter]);
 
   const priorityFilter: PriorityFilter = activeFilters.priority ?? "all";
   const repoFilter = activeFilters.repo ?? "";
 
   const repos = useMemo(() => getUniqueRepos(reviews), [reviews]);
+
+  useEffect(() => {
+    if (repoFilter && !repos.includes(repoFilter)) {
+      setFilter({ repo: undefined });
+    }
+  }, [repos, repoFilter, setFilter]);
 
   const filtered = reviews.filter((r) => {
     if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter) {
