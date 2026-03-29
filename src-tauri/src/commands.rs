@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use log::warn;
@@ -8,16 +10,20 @@ use tauri::{Emitter, Manager};
 use crate::cache::activity::{mark_all_read, mark_read};
 use crate::cache::config::{get_config, set_config};
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
-use crate::cache::repos::{list_repos, set_local_path, set_repo_enabled};
+use crate::cache::repos::{get_repo, list_repos, set_local_path, set_repo_enabled};
 use crate::cache::sync::sync_dashboard;
-use crate::cache::workspaces::{get_notes, list_workspaces};
+use crate::cache::workspaces::{
+    create_workspace, get_notes, list_workspaces, update_workspace_state,
+};
 use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
 use crate::types::{
-    AppConfig, DashboardData, DashboardStats, PartialAppConfig, Repo, Workspace, WorkspaceNote,
-    merge_partial_config,
+    AppConfig, DashboardData, DashboardStats, OpenWorkspaceRequest, OpenWorkspaceResponse,
+    PartialAppConfig, Repo, Workspace, WorkspaceNote, WorkspaceState, merge_partial_config,
 };
+use crate::workspace::pty::PtyManager;
+use crate::workspace::worktree;
 
 /// Authentication status returned by [`auth_get_status`].
 #[derive(Debug, Serialize)]
@@ -422,6 +428,192 @@ pub async fn workspace_get_notes(
     get_notes(&pool, &workspace_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+// ── PTY state management (T-069) ────────────────────────────────
+
+/// Managed state wrapping the [`PtyManager`] and a workspace→pty mapping.
+///
+/// The workspace→pty map tracks which PTY belongs to which workspace so
+/// that LRU eviction can kill the correct PTY when suspending a workspace.
+pub struct PtyManagerState {
+    pub manager: PtyManager,
+    workspace_ptys: Mutex<HashMap<String, String>>,
+}
+
+impl PtyManagerState {
+    pub fn new() -> Self {
+        Self {
+            manager: PtyManager::new(),
+            workspace_ptys: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Records a `workspace_id` → `pty_id` mapping.
+    pub fn register(&self, workspace_id: &str, pty_id: &str) {
+        if let Ok(mut map) = self.workspace_ptys.lock() {
+            map.insert(workspace_id.to_string(), pty_id.to_string());
+        }
+    }
+
+    /// Removes the mapping and returns the `pty_id` if present.
+    pub fn unregister(&self, workspace_id: &str) -> Option<String> {
+        self.workspace_ptys.lock().ok()?.remove(workspace_id)
+    }
+}
+
+impl Default for PtyManagerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── Workspace open inner logic (T-069) ──────────────────────────
+
+/// Core logic for `workspace_open`, testable without Tauri state.
+///
+/// The `on_pty_output` callback is invoked on a background thread whenever
+/// the PTY produces output.
+pub(crate) async fn workspace_open_inner(
+    pool: &SqlitePool,
+    pty_state: &PtyManagerState,
+    req: &OpenWorkspaceRequest,
+    on_pty_output: impl Fn(&str, &[u8]) + Send + 'static,
+) -> Result<OpenWorkspaceResponse, AppError> {
+    // 1. Get repo and validate local_path
+    let repo = get_repo(pool, &req.repo_id).await?;
+    let local_path = repo.local_path.as_deref().ok_or_else(|| {
+        AppError::Workspace(format!(
+            "repo '{}' has no local_path configured",
+            req.repo_id
+        ))
+    })?;
+    let local_path = PathBuf::from(local_path);
+
+    // 2. Check active workspace limit (LRU suspend if > max)
+    let config = get_config(pool).await?;
+    let active = list_workspaces(pool, Some(&WorkspaceState::Active)).await?;
+    if active.len() >= config.max_active_workspaces as usize {
+        // LRU: suspend the oldest active workspace (last in updated_at DESC list)
+        if let Some(oldest) = active.last() {
+            // Kill its PTY if tracked
+            if let Some(pty_id) = pty_state.unregister(&oldest.id) {
+                let _ = pty_state.manager.kill(&pty_id);
+            }
+            update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended).await?;
+        }
+    }
+
+    // 3. Create worktree
+    let base_dir = config
+        .workspaces_dir
+        .map(PathBuf::from)
+        .or_else(|| worktree::default_base_dir().ok())
+        .ok_or_else(|| AppError::Workspace("cannot determine workspaces base directory".into()))?;
+    let wt_path = worktree::create_worktree(
+        &local_path,
+        &req.branch,
+        req.pull_request_number,
+        &repo.name,
+        &base_dir,
+    )
+    .await?;
+
+    // 4. Spawn PTY in the worktree
+    let pty_id = pty_state.manager.spawn(&wt_path, 80, 24, on_pty_output)?;
+
+    // 5. Create workspace in DB
+    let now = chrono::Utc::now().to_rfc3339();
+    let workspace_id = uuid::Uuid::new_v4().to_string();
+    let ws = Workspace {
+        id: workspace_id.clone(),
+        repo_id: req.repo_id.clone(),
+        pull_request_number: req.pull_request_number,
+        state: WorkspaceState::Active,
+        worktree_path: Some(wt_path.to_string_lossy().to_string()),
+        session_id: None,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    create_workspace(pool, &ws).await?;
+
+    // 6. Track workspace → pty mapping
+    pty_state.register(&workspace_id, &pty_id);
+
+    Ok(OpenWorkspaceResponse {
+        workspace_id,
+        worktree_path: wt_path.to_string_lossy().to_string(),
+        pty_id,
+        session_id: None,
+    })
+}
+
+/// Opens a workspace for a PR: creates worktree, spawns PTY, persists in DB.
+///
+/// Emits `workspace:stdout` events when the PTY produces output.
+#[tauri::command]
+pub async fn workspace_open(
+    pool: tauri::State<'_, SqlitePool>,
+    pty_state: tauri::State<'_, PtyManagerState>,
+    app_handle: tauri::AppHandle,
+    req: OpenWorkspaceRequest,
+) -> Result<OpenWorkspaceResponse, String> {
+    let handle = app_handle.clone();
+    let on_output = move |pty_id: &str, data: &[u8]| {
+        let payload = crate::types::PtyOutput {
+            workspace_id: pty_id.to_string(),
+            data: String::from_utf8_lossy(data).to_string(),
+        };
+        if let Err(e) = handle.emit("workspace:stdout", &payload) {
+            log::warn!("failed to emit workspace:stdout: {e}");
+        }
+    };
+
+    workspace_open_inner(&pool, &pty_state, &req, on_output)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Writes data to a PTY's stdin.
+///
+/// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
+#[tauri::command]
+pub async fn pty_write(
+    pty_state: tauri::State<'_, PtyManagerState>,
+    pty_id: String,
+    data: String,
+) -> Result<(), String> {
+    pty_state
+        .manager
+        .write_pty(&pty_id, data.as_bytes())
+        .map_err(|e| e.to_string())
+}
+
+/// Resizes a PTY to new dimensions.
+///
+/// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
+#[tauri::command]
+pub async fn pty_resize(
+    pty_state: tauri::State<'_, PtyManagerState>,
+    pty_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    pty_state
+        .manager
+        .resize(&pty_id, cols, rows)
+        .map_err(|e| e.to_string())
+}
+
+/// Kills a PTY process and removes it from the manager.
+///
+/// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
+#[tauri::command]
+pub async fn pty_kill(
+    pty_state: tauri::State<'_, PtyManagerState>,
+    pty_id: String,
+) -> Result<(), String> {
+    pty_state.manager.kill(&pty_id).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -1107,5 +1299,282 @@ mod tests {
         assert_eq!(count, 0);
 
         pool.close().await;
+    }
+
+    // -- Workspace open + PTY command tests (T-069) --
+
+    /// Helper: creates a test DB pool + temp dir.
+    async fn test_pool() -> (SqlitePool, tempfile::TempDir) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = crate::cache::db::init_db(&tmp.path().join("test.db"))
+            .await
+            .unwrap();
+        (pool, tmp)
+    }
+
+    /// Helper: inserts a sample repo, optionally setting local_path.
+    async fn insert_test_repo(pool: &SqlitePool, local_path: Option<&str>) {
+        let repo = crate::types::Repo {
+            id: "repo-1".into(),
+            org: "mpiton".into(),
+            name: "prism".into(),
+            full_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism".into(),
+            default_branch: "main".into(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        crate::cache::repos::upsert_repo(pool, &repo).await.unwrap();
+        if let Some(path) = local_path {
+            crate::cache::repos::set_local_path(pool, "repo-1", Some(path))
+                .await
+                .unwrap();
+        }
+    }
+
+    /// Helper: creates a bare remote + local clone with a feature branch.
+    /// Returns `(tempdir_guard, local_repo_path)`.
+    async fn setup_git_repo() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let remote = tmp.path().join("remote.git");
+        let local = tmp.path().join("local");
+
+        async fn sh(program: &str, args: &[&str], cwd: &std::path::Path) {
+            let output = tokio::process::Command::new(program)
+                .args(args)
+                .current_dir(cwd)
+                .output()
+                .await
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{program} {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        sh(
+            "git",
+            &["init", "--bare", &remote.to_string_lossy()],
+            tmp.path(),
+        )
+        .await;
+        sh(
+            "git",
+            &["clone", &remote.to_string_lossy(), &local.to_string_lossy()],
+            tmp.path(),
+        )
+        .await;
+        sh("git", &["config", "user.email", "test@test.com"], &local).await;
+        sh("git", &["config", "user.name", "Test"], &local).await;
+        sh("git", &["commit", "--allow-empty", "-m", "initial"], &local).await;
+        sh("git", &["push", "origin", "HEAD"], &local).await;
+        sh("git", &["checkout", "-b", "feature-42"], &local).await;
+        sh(
+            "git",
+            &["commit", "--allow-empty", "-m", "feature work"],
+            &local,
+        )
+        .await;
+        sh("git", &["push", "origin", "feature-42"], &local).await;
+        sh("git", &["checkout", "-"], &local).await;
+
+        (tmp, local)
+    }
+
+    #[tokio::test]
+    async fn test_workspace_open_no_local_path() {
+        let (pool, _tmp) = test_pool().await;
+        insert_test_repo(&pool, None).await;
+
+        let pty_state = PtyManagerState::new();
+        let req = crate::types::OpenWorkspaceRequest {
+            repo_id: "repo-1".into(),
+            pull_request_number: 42,
+            branch: "feature-42".into(),
+        };
+
+        let result = workspace_open_inner(&pool, &pty_state, &req, |_, _| {}).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, AppError::Workspace(_)),
+            "expected Workspace error, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("no local_path"),
+            "error should mention local_path: {err}"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_workspace_open_success() {
+        let (pool, _db_tmp) = test_pool().await;
+        let (_git_tmp, local_repo) = setup_git_repo().await;
+        let ws_base = tempfile::TempDir::new().unwrap();
+
+        insert_test_repo(&pool, Some(&local_repo.to_string_lossy())).await;
+
+        // Set workspaces_dir in config so the worktree goes to our temp dir
+        crate::cache::config::set_config(
+            &pool,
+            &crate::types::AppConfig {
+                poll_interval_secs: 300,
+                max_active_workspaces: 3,
+                github_token: None,
+                data_dir: None,
+                workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+            },
+        )
+        .await
+        .unwrap();
+
+        let pty_state = PtyManagerState::new();
+        let req = crate::types::OpenWorkspaceRequest {
+            repo_id: "repo-1".into(),
+            pull_request_number: 42,
+            branch: "feature-42".into(),
+        };
+
+        let resp = workspace_open_inner(&pool, &pty_state, &req, |_, _| {}).await;
+        assert!(resp.is_ok(), "workspace_open failed: {resp:?}");
+
+        let resp = resp.unwrap();
+        assert!(!resp.workspace_id.is_empty());
+        assert!(!resp.pty_id.is_empty());
+        assert!(resp.worktree_path.contains("pr-42"));
+        assert!(resp.session_id.is_none());
+
+        // Verify workspace was created in DB
+        let workspaces = crate::cache::workspaces::list_workspaces(&pool, None)
+            .await
+            .unwrap();
+        assert_eq!(workspaces.len(), 1);
+        assert_eq!(workspaces[0].id, resp.workspace_id);
+        assert_eq!(workspaces[0].state, WorkspaceState::Active);
+
+        // Cleanup
+        pty_state.manager.kill(&resp.pty_id).unwrap();
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_workspace_open_lru_eviction() {
+        let (pool, _db_tmp) = test_pool().await;
+
+        insert_test_repo(&pool, Some("/tmp/fake-repo")).await;
+
+        // Set max_active_workspaces = 1
+        crate::cache::config::set_config(
+            &pool,
+            &crate::types::AppConfig {
+                poll_interval_secs: 300,
+                max_active_workspaces: 1,
+                github_token: None,
+                data_dir: None,
+                workspaces_dir: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Pre-insert an active workspace (simulates existing session)
+        let existing_ws = crate::types::Workspace {
+            id: "ws-existing".into(),
+            repo_id: "repo-1".into(),
+            pull_request_number: 1,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/tmp/ws/pr-1".into()),
+            session_id: None,
+            created_at: "2026-03-28T10:00:00Z".into(),
+            updated_at: "2026-03-28T10:00:00Z".into(),
+        };
+        crate::cache::workspaces::create_workspace(&pool, &existing_ws)
+            .await
+            .unwrap();
+
+        // Register a fake PTY mapping for the existing workspace
+        let pty_state = PtyManagerState::new();
+        pty_state.register("ws-existing", "fake-pty-id");
+
+        // workspace_open will fail at worktree creation (fake repo), but
+        // the LRU eviction should have already suspended the existing workspace.
+        let req = crate::types::OpenWorkspaceRequest {
+            repo_id: "repo-1".into(),
+            pull_request_number: 99,
+            branch: "some-branch".into(),
+        };
+        let _result = workspace_open_inner(&pool, &pty_state, &req, |_, _| {}).await;
+        // We don't care if it succeeded — the eviction is what we test.
+
+        // Verify the existing workspace was suspended
+        let all = crate::cache::workspaces::list_workspaces(&pool, None)
+            .await
+            .unwrap();
+        let existing = all.iter().find(|w| w.id == "ws-existing").unwrap();
+        assert_eq!(
+            existing.state,
+            WorkspaceState::Suspended,
+            "existing workspace should be suspended via LRU eviction"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_pty_write_forwards() {
+        let pty_state = PtyManagerState::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let tmp = std::env::temp_dir();
+
+        let pty_id = pty_state
+            .manager
+            .spawn(&tmp, 80, 24, move |_id, data| {
+                let _ = tx.send(data.to_vec());
+            })
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Write via the same path as the Tauri command
+        let result = pty_state
+            .manager
+            .write_pty(&pty_id, b"echo pty_write_test\n");
+        assert!(result.is_ok());
+
+        // Verify output contains our marker
+        let mut found = false;
+        let mut output = String::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while std::time::Instant::now() < deadline {
+            if let Ok(data) = rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                output.push_str(&String::from_utf8_lossy(&data));
+                if output.contains("pty_write_test") {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        assert!(found, "should see 'pty_write_test' in PTY output");
+
+        pty_state.manager.kill(&pty_id).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pty_resize_forwards() {
+        let pty_state = PtyManagerState::new();
+        let tmp = std::env::temp_dir();
+
+        let pty_id = pty_state.manager.spawn(&tmp, 80, 24, |_, _| {}).unwrap();
+
+        let result = pty_state.manager.resize(&pty_id, 120, 40);
+        assert!(result.is_ok(), "resize should succeed: {result:?}");
+
+        pty_state.manager.kill(&pty_id).unwrap();
     }
 }
