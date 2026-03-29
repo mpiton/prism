@@ -30,17 +30,22 @@ export function useKeyboard(actions: KeyboardActions): void {
       const anyModifier = actionModifier || event.altKey;
 
       // Cmd+K must work regardless of focus (e.g. inside cmdk input)
-      if (actionModifier && key === "k") {
+      if (actionModifier && key === "k" && actionsRef.current.onCommandPalette) {
         event.preventDefault();
-        actionsRef.current.onCommandPalette?.();
+        actionsRef.current.onCommandPalette();
         return;
       }
 
       if (isInputTarget(event)) return;
 
-      if (actionModifier && key >= "1" && key <= "3") {
+      if (
+        actionModifier &&
+        key >= "1" &&
+        key <= "3" &&
+        actionsRef.current.onSwitchWorkspace
+      ) {
         event.preventDefault();
-        actionsRef.current.onSwitchWorkspace?.(Number(key) - 1);
+        actionsRef.current.onSwitchWorkspace(Number(key) - 1);
         return;
       }
 
