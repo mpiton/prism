@@ -137,6 +137,9 @@ pub fn run() {
             // Cached GitHub username — populated on first dashboard access
             app.manage(commands::GithubUsername::default());
 
+            // PTY manager — tracks spawned terminal sessions
+            app.manage(commands::PtyManagerState::new());
+
             // Polling handle — empty until credentials are verified
             app.manage(PollingHandle::default());
 
@@ -171,6 +174,10 @@ pub fn run() {
             commands::activity_mark_all_read,
             commands::workspace_list,
             commands::workspace_get_notes,
+            commands::workspace_open,
+            commands::pty_write,
+            commands::pty_resize,
+            commands::pty_kill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

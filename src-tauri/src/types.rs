@@ -256,6 +256,8 @@ pub struct DashboardStats {
 pub struct OpenWorkspaceRequest {
     pub repo_id: String,
     pub pull_request_number: u32,
+    /// Git branch name for the PR (e.g. `fix/bug-42`).
+    pub branch: String,
 }
 
 /// Response payload from the `workspace_open` IPC command.
@@ -265,6 +267,8 @@ pub struct OpenWorkspaceResponse {
     pub workspace_id: String,
     /// Absolute path to the git worktree directory.
     pub worktree_path: String,
+    /// PTY identifier (UUID) for terminal I/O commands.
+    pub pty_id: String,
     /// `None` until a Claude Code session is started.
     pub session_id: Option<String>,
 }
@@ -905,10 +909,12 @@ mod tests {
         let req = OpenWorkspaceRequest {
             repo_id: "r-1".to_string(),
             pull_request_number: 42,
+            branch: "fix/bug-42".to_string(),
         };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"repoId\""));
         assert!(json.contains("\"pullRequestNumber\""));
+        assert!(json.contains("\"branch\""));
         let deserialized: OpenWorkspaceRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req, deserialized);
     }
@@ -918,11 +924,13 @@ mod tests {
         let resp = OpenWorkspaceResponse {
             workspace_id: "ws-1".to_string(),
             worktree_path: "/home/user/.prism/workspaces/prism/worktrees/pr-42".to_string(),
+            pty_id: "pty-uuid-123".to_string(),
             session_id: Some("session-abc".to_string()),
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"workspaceId\""));
         assert!(json.contains("\"worktreePath\""));
+        assert!(json.contains("\"ptyId\""));
         assert!(json.contains("\"sessionId\""));
         let deserialized: OpenWorkspaceResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(resp, deserialized);
@@ -931,6 +939,7 @@ mod tests {
         let resp_no_session = OpenWorkspaceResponse {
             workspace_id: "ws-2".to_string(),
             worktree_path: "/tmp/worktree".to_string(),
+            pty_id: "pty-uuid-456".to_string(),
             session_id: None,
         };
         let json2 = serde_json::to_string(&resp_no_session).unwrap();
