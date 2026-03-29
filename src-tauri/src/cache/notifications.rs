@@ -101,6 +101,43 @@ pub async fn clear_notification(
     Ok(())
 }
 
+/// Remove all notification entries of a given type whose `event_id` is NOT
+/// in the provided set of current IDs.
+///
+/// Used to clear stale `review_request` entries when PRs leave the
+/// review queue, so re-requests naturally re-trigger notifications.
+#[allow(dead_code)] // Called from notifications module; call-site integration deferred
+pub async fn clear_stale_notifications(
+    pool: &SqlitePool,
+    event_type: &str,
+    current_ids: &[&str],
+) -> Result<(), AppError> {
+    if current_ids.is_empty() {
+        // No active items — clear all entries of this type.
+        sqlx::query("DELETE FROM notification_log WHERE event_type = $1")
+            .bind(event_type)
+            .execute(pool)
+            .await?;
+    } else {
+        // Build a parameterised IN-clause. SQLite supports up to 999
+        // parameters; review_request lists are far smaller.
+        let placeholders: Vec<String> = (0..current_ids.len())
+            .map(|i| format!("${}", i + 2)) // $1 is event_type
+            .collect();
+        let sql = format!(
+            "DELETE FROM notification_log WHERE event_type = $1 AND event_id NOT IN ({})",
+            placeholders.join(", ")
+        );
+        let mut query = sqlx::query(&sql).bind(event_type);
+        for id in current_ids {
+            query = query.bind(*id);
+        }
+        query.execute(pool).await?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +250,81 @@ mod tests {
             .await
             .unwrap();
         assert!(reclaimed, "should be able to reclaim after clearing");
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_clear_stale_notifications() {
+        let (pool, _tmp) = test_pool().await;
+
+        // Claim three review_request entries
+        try_claim_notification(&pool, "review_request", "pr-1")
+            .await
+            .unwrap();
+        try_claim_notification(&pool, "review_request", "pr-2")
+            .await
+            .unwrap();
+        try_claim_notification(&pool, "review_request", "pr-3")
+            .await
+            .unwrap();
+
+        // Only pr-1 and pr-3 are still in the queue
+        clear_stale_notifications(&pool, "review_request", &["pr-1", "pr-3"])
+            .await
+            .unwrap();
+
+        // pr-2 should be cleared (can reclaim)
+        assert!(
+            !has_been_notified(&pool, "review_request", "pr-2")
+                .await
+                .unwrap(),
+            "stale entry should be cleared"
+        );
+
+        // pr-1 and pr-3 should still be claimed
+        assert!(
+            has_been_notified(&pool, "review_request", "pr-1")
+                .await
+                .unwrap(),
+            "active entry should remain"
+        );
+        assert!(
+            has_been_notified(&pool, "review_request", "pr-3")
+                .await
+                .unwrap(),
+            "active entry should remain"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_clear_stale_notifications_empty_list_clears_all() {
+        let (pool, _tmp) = test_pool().await;
+
+        try_claim_notification(&pool, "review_request", "pr-1")
+            .await
+            .unwrap();
+        try_claim_notification(&pool, "review_request", "pr-2")
+            .await
+            .unwrap();
+
+        // Empty current list → clear all review_request entries
+        clear_stale_notifications(&pool, "review_request", &[])
+            .await
+            .unwrap();
+
+        assert!(
+            !has_been_notified(&pool, "review_request", "pr-1")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !has_been_notified(&pool, "review_request", "pr-2")
+                .await
+                .unwrap()
+        );
 
         pool.close().await;
     }

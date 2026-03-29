@@ -5,7 +5,9 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::Emitter;
 
-use crate::cache::notifications::{clear_notification, try_claim_notification};
+use crate::cache::notifications::{
+    clear_notification, clear_stale_notifications, try_claim_notification,
+};
 use crate::error::AppError;
 use crate::types::{CiStatus, DashboardData, PullRequest};
 
@@ -117,12 +119,19 @@ pub(crate) async fn check_and_notify(
 ) -> Result<u32, AppError> {
     let mut count = 0u32;
 
-    // 1. New review requests — keyed on (pr.id, updated_at) so that
-    //    re-requests after a review submission get their own claim.
+    // 1. New review requests — keyed on pr.id. Stale entries are
+    //    cleared for PRs that left the review queue, so re-requests
+    //    naturally re-trigger.
+    let review_pr_ids: Vec<&str> = new_data
+        .review_requests
+        .iter()
+        .map(|prwr| prwr.pull_request.id.as_str())
+        .collect();
+    clear_stale_notifications(pool, "review_request", &review_pr_ids).await?;
+
     for pr_with_review in &new_data.review_requests {
         let pr = &pr_with_review.pull_request;
-        let event_id = format!("{}:{}", pr.id, pr.updated_at);
-        if try_claim_notification(pool, "review_request", &event_id).await? {
+        if try_claim_notification(pool, "review_request", &pr.id).await? {
             sender.emit_review_request(&NotificationPayload::from_pr(pr));
             count += 1;
         }
@@ -343,8 +352,8 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         let sender = MockSender::default();
 
-        // Pre-claim using the composite key (pr.id:updated_at)
-        try_claim_notification(&pool, "review_request", "pr-1:2026-03-29T10:00:00Z")
+        // Pre-claim using pr.id
+        try_claim_notification(&pool, "review_request", "pr-1")
             .await
             .unwrap();
 
