@@ -26,8 +26,12 @@ function extractPayloadSummary(payload: unknown): string | undefined {
     return undefined;
   }
   const obj = payload as Record<string, unknown>;
-  const title = typeof obj.title === "string" ? obj.title : undefined;
-  const prNumber = typeof obj.prNumber === "number" ? `#${obj.prNumber}` : undefined;
+  const rawTitle = typeof obj.title === "string" ? obj.title.trim() : "";
+  const title = rawTitle.length > 0 ? rawTitle : undefined;
+  const prNumber =
+    typeof obj.prNumber === "number" && Number.isFinite(obj.prNumber)
+      ? `#${obj.prNumber}`
+      : undefined;
   if (title && prNumber) {
     return `${prNumber} ${title}`;
   }
