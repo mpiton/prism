@@ -117,10 +117,12 @@ pub(crate) async fn check_and_notify(
 ) -> Result<u32, AppError> {
     let mut count = 0u32;
 
-    // 1. New review requests
+    // 1. New review requests — keyed on (pr.id, updated_at) so that
+    //    re-requests after a review submission get their own claim.
     for pr_with_review in &new_data.review_requests {
         let pr = &pr_with_review.pull_request;
-        if try_claim_notification(pool, "review_request", &pr.id).await? {
+        let event_id = format!("{}:{}", pr.id, pr.updated_at);
+        if try_claim_notification(pool, "review_request", &event_id).await? {
             sender.emit_review_request(&NotificationPayload::from_pr(pr));
             count += 1;
         }
@@ -141,12 +143,15 @@ pub(crate) async fn check_and_notify(
             clear_notification(pool, "ci_failure", &pr.id).await?;
         }
 
-        // PR approval (monotone — no clearing needed)
-        if pr_with_review.review_summary.approved > 0
-            && try_claim_notification(pool, "pr_approved", &pr.id).await?
-        {
-            sender.emit_pr_approved(&NotificationPayload::from_pr(pr));
-            count += 1;
+        // PR approval: clear when no longer approved so a re-approval
+        // after changes_requested can re-trigger a notification.
+        if pr_with_review.review_summary.approved > 0 {
+            if try_claim_notification(pool, "pr_approved", &pr.id).await? {
+                sender.emit_pr_approved(&NotificationPayload::from_pr(pr));
+                count += 1;
+            }
+        } else {
+            clear_notification(pool, "pr_approved", &pr.id).await?;
         }
     }
 
@@ -338,8 +343,8 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         let sender = MockSender::default();
 
-        // Pre-claim the notification slot
-        try_claim_notification(&pool, "review_request", "pr-1")
+        // Pre-claim using the composite key (pr.id:updated_at)
+        try_claim_notification(&pool, "review_request", "pr-1:2026-03-29T10:00:00Z")
             .await
             .unwrap();
 
@@ -407,6 +412,57 @@ mod tests {
         assert_eq!(count2, 1, "should re-notify after CI recovery + re-failure");
 
         assert_eq!(sender.ci_failures.lock().expect("lock poisoned").len(), 2);
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_pr_approved_renotifies_after_changes_requested() {
+        let (pool, _tmp) = test_pool().await;
+        let sender = MockSender::default();
+
+        // 1. PR approved → notify
+        let pr_approved = make_pr("pr-5", 60, CiStatus::Success);
+        let data_approved = DashboardData {
+            my_pull_requests: vec![make_pr_with_review(pr_approved, 1)],
+            ..empty_data()
+        };
+        let count = check_and_notify(&pool, &sender, &data_approved)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // 2. Changes requested → approved drops to 0, clears dedup entry
+        let pr_changes = make_pr("pr-5", 60, CiStatus::Success);
+        let data_changes = DashboardData {
+            my_pull_requests: vec![make_pr_with_review(pr_changes, 0)],
+            ..empty_data()
+        };
+        check_and_notify(&pool, &sender, &data_changes)
+            .await
+            .unwrap();
+
+        // Verify entry was cleared
+        let still_notified = has_been_notified(&pool, "pr_approved", "pr-5")
+            .await
+            .unwrap();
+        assert!(
+            !still_notified,
+            "pr_approved entry should be cleared when no longer approved"
+        );
+
+        // 3. Re-approved → should re-notify
+        let pr_reapproved = make_pr("pr-5", 60, CiStatus::Success);
+        let data_reapproved = DashboardData {
+            my_pull_requests: vec![make_pr_with_review(pr_reapproved, 1)],
+            ..empty_data()
+        };
+        let count2 = check_and_notify(&pool, &sender, &data_reapproved)
+            .await
+            .unwrap();
+        assert_eq!(count2, 1, "should re-notify after re-approval");
+
+        assert_eq!(sender.pr_approvals.lock().expect("lock poisoned").len(), 2);
 
         pool.close().await;
     }
