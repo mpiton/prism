@@ -47,11 +47,6 @@ function App(): ReactElement {
 
   useKeyboard({
     onCommandPalette: () => setCommandPaletteOpen((prev) => !prev),
-    onNavigate: () => {},
-    onOpen: () => {},
-    onOpenWorkspace: () => {},
-    onSwitchWorkspace: () => {},
-    onEscape: () => {},
   });
 
   return (

@@ -136,6 +136,16 @@ describe("useKeyboard", () => {
     document.body.removeChild(div);
   });
 
+  it("should fire Cmd+K even when focused on an input element", () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+    );
+    expect(actions.onCommandPalette).toHaveBeenCalledOnce();
+    document.body.removeChild(input);
+  });
+
   it("should clean up listener on unmount", () => {
     hook.unmount();
     fireKey("j");

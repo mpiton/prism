@@ -88,21 +88,15 @@ describe("CommandPalette", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("should open on Cmd+K", async () => {
-    const onOpenChange = vi.fn();
-    render(<CommandPalette open={false} onOpenChange={onOpenChange} />);
-
-    // CommandPalette itself doesn't handle Cmd+K — that's useKeyboard's job.
-    // But when open=true, it should render the dialog.
+  it("should render dialog and search input when open", () => {
     const { rerender } = render(
-      <CommandPalette open={true} onOpenChange={onOpenChange} />,
+      <CommandPalette open={false} onOpenChange={() => {}} />,
     );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    // Verify search input is present and focused
-    const input = screen.getByPlaceholderText(/search/i);
-    expect(input).toBeInTheDocument();
-    rerender(<CommandPalette open={true} onOpenChange={onOpenChange} />);
+    rerender(<CommandPalette open={true} onOpenChange={() => {}} />);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
   });
 
   it("should close on Esc", async () => {
