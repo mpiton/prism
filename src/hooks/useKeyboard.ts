@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
 
 export interface KeyboardActions {
-  readonly onNavigate: (direction: "up" | "down") => void;
-  readonly onOpen: () => void;
-  readonly onOpenWorkspace: () => void;
-  readonly onSwitchWorkspace: (index: number) => void;
-  readonly onEscape: () => void;
-  readonly onCommandPalette: () => void;
+  readonly onNavigate?: (direction: "up" | "down") => void;
+  readonly onOpen?: () => void;
+  readonly onOpenWorkspace?: () => void;
+  readonly onSwitchWorkspace?: (index: number) => void;
+  readonly onEscape?: () => void;
+  readonly onCommandPalette?: () => void;
 }
 
 const INPUT_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -25,19 +25,25 @@ export function useKeyboard(actions: KeyboardActions): void {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (isInputTarget(event)) return;
-
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
       const actionModifier = event.metaKey || event.ctrlKey;
       const anyModifier = actionModifier || event.altKey;
 
-      if (actionModifier && key === "k") {
+      // Cmd+K must work regardless of focus (e.g. inside cmdk input)
+      if (actionModifier && key === "k" && actionsRef.current.onCommandPalette) {
         event.preventDefault();
         actionsRef.current.onCommandPalette();
         return;
       }
 
-      if (actionModifier && key >= "1" && key <= "3") {
+      if (isInputTarget(event)) return;
+
+      if (
+        actionModifier &&
+        key >= "1" &&
+        key <= "3" &&
+        actionsRef.current.onSwitchWorkspace
+      ) {
         event.preventDefault();
         actionsRef.current.onSwitchWorkspace(Number(key) - 1);
         return;
@@ -47,20 +53,19 @@ export function useKeyboard(actions: KeyboardActions): void {
 
       switch (key) {
         case "j":
-          actionsRef.current.onNavigate("down");
+          actionsRef.current.onNavigate?.("down");
           break;
         case "k":
-          actionsRef.current.onNavigate("up");
+          actionsRef.current.onNavigate?.("up");
           break;
         case "Enter":
-          actionsRef.current.onOpen();
+          actionsRef.current.onOpen?.();
           break;
         case "w":
-          actionsRef.current.onOpenWorkspace();
+          actionsRef.current.onOpenWorkspace?.();
           break;
         case "Escape":
-          event.preventDefault();
-          actionsRef.current.onEscape();
+          actionsRef.current.onEscape?.();
           break;
       }
     }
