@@ -72,29 +72,19 @@ export function ReviewQueue({
     }
   }, [repos, storeRepo, setFilter]);
 
-  const filtered = reviews.filter((r) => {
-    if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter) {
-      return false;
-    }
-    if (repoFilter && r.pullRequest.repoId !== repoFilter) {
-      return false;
-    }
-    return true;
-  });
-
-  const sorted = sortByPriority(filtered);
+  const sorted = useMemo(() => {
+    const filtered = reviews.filter((r) => {
+      if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter)
+        return false;
+      if (repoFilter && r.pullRequest.repoId !== repoFilter) return false;
+      return true;
+    });
+    return sortByPriority(filtered);
+  }, [reviews, priorityFilter, repoFilter]);
 
   const navItems = useMemo(
-    () =>
-      sortByPriority(
-        reviews.filter((r) => {
-          if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter)
-            return false;
-          if (repoFilter && r.pullRequest.repoId !== repoFilter) return false;
-          return true;
-        }),
-      ).map((r) => ({ url: r.pullRequest.url })),
-    [reviews, priorityFilter, repoFilter],
+    () => sorted.map((r) => ({ url: r.pullRequest.url })),
+    [sorted],
   );
   useRegisterNavigableItems(navItems);
 
