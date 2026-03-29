@@ -1,7 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PullRequestWithReview } from "../../lib/types";
+import { useDashboardStore } from "../../stores/dashboard";
 import { ReviewQueue } from "./ReviewQueue";
 
 function makePr(
@@ -64,9 +65,29 @@ const lowPr = makePr({
   url: "https://github.com/org/repo/pull/40",
 });
 
+const repo2HighPr = makePr({
+  number: 50,
+  title: "Repo2 high task",
+  priority: "high",
+  repoId: "repo-2",
+  url: "https://github.com/org/repo2/pull/50",
+});
+
+const repo2LowPr = makePr({
+  number: 60,
+  title: "Repo2 low task",
+  priority: "low",
+  repoId: "repo-2",
+  url: "https://github.com/org/repo2/pull/60",
+});
+
 const allReviews = [lowPr, criticalPr, mediumPr, highPr];
+const multiRepoReviews = [...allReviews, repo2HighPr, repo2LowPr];
 
 describe("ReviewQueue", () => {
+  beforeEach(() => {
+    useDashboardStore.setState({ activeFilters: {} });
+  });
   it("should render PRs sorted by priority", () => {
     render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
 
@@ -147,6 +168,49 @@ describe("ReviewQueue", () => {
     expect(handleOpen).toHaveBeenCalledWith(
       "https://github.com/org/repo/pull/20",
     );
+  });
+
+  it("should filter by repo", async () => {
+    const user = userEvent.setup();
+    render(<ReviewQueue reviews={multiRepoReviews} onOpen={vi.fn()} />);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-2",
+    );
+
+    const cards = screen.getAllByRole("link");
+    expect(cards).toHaveLength(2);
+    expect(screen.getByText("Repo2 high task")).toBeInTheDocument();
+    expect(screen.getByText("Repo2 low task")).toBeInTheDocument();
+    expect(screen.queryByText("Critical fix")).not.toBeInTheDocument();
+  });
+
+  it("should combine filters", async () => {
+    const user = userEvent.setup();
+    render(<ReviewQueue reviews={multiRepoReviews} onOpen={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /^high$/i }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-2",
+    );
+
+    const cards = screen.getAllByRole("link");
+    expect(cards).toHaveLength(1);
+    expect(screen.getByText("Repo2 high task")).toBeInTheDocument();
+  });
+
+  it("should show count after filtering by repo", async () => {
+    const user = userEvent.setup();
+    render(<ReviewQueue reviews={multiRepoReviews} onOpen={vi.fn()} />);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-1",
+    );
+
+    expect(screen.getByText("4")).toBeInTheDocument();
   });
 
   it("should forward onWorkspaceAction to ReviewCard", async () => {
