@@ -113,6 +113,8 @@ impl PtyManager {
         // Clone ptys Arc so the reader task can remove stale entries on EOF.
         let ptys_for_task = Arc::clone(&self.ptys);
         let id_for_task = pty_id.clone();
+        let reader_closed = Arc::new(AtomicBool::new(false));
+        let reader_closed_for_task = Arc::clone(&reader_closed);
         let reader_task = tokio::task::spawn_blocking(move || {
             let mut reader = reader;
             let mut buf = [0u8; 4096];
@@ -126,9 +128,15 @@ impl PtyManager {
                     }
                 }
             }
+            // Signal that the reader has exited (for race detection on insert).
+            reader_closed_for_task.store(true, Ordering::Release);
             // Child exited — remove stale entry from the map.
+            // Release the map lock before dropping the PtyHandle so that
+            // Drop::drop() (which may call child.kill()) runs outside the lock.
             if let Ok(mut ptys) = ptys_for_task.lock() {
-                ptys.remove(&id_for_task);
+                let removed = ptys.remove(&id_for_task);
+                drop(ptys);
+                drop(removed);
             }
         });
 
@@ -140,10 +148,18 @@ impl PtyManager {
             killed: Arc::new(AtomicBool::new(false)),
         };
 
-        self.ptys
+        // Insert the handle, then check if the reader already exited before
+        // the insert completed (immediate EOF race). If so, clean up now.
+        let mut ptys = self
+            .ptys
             .lock()
-            .map_err(|e| AppError::Pty(format!("lock poisoned: {e}")))?
-            .insert(pty_id.clone(), handle);
+            .map_err(|e| AppError::Pty(format!("lock poisoned: {e}")))?;
+        ptys.insert(pty_id.clone(), handle);
+        if reader_closed.load(Ordering::Acquire) {
+            let removed = ptys.remove(&pty_id);
+            drop(ptys);
+            drop(removed);
+        }
 
         Ok(pty_id)
     }
