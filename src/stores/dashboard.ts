@@ -35,9 +35,14 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   setView: (view) => set({ currentView: view }),
   setFilter: (filter) =>
     set((state) => {
-      const merged = { ...state.activeFilters, ...filter };
+      const prev = state.activeFilters;
+      const next: DashboardFilters = {
+        repo: "repo" in filter ? filter.repo : prev.repo,
+        priority: "priority" in filter ? filter.priority : prev.priority,
+        ciStatus: "ciStatus" in filter ? filter.ciStatus : prev.ciStatus,
+      };
       const cleaned = Object.fromEntries(
-        Object.entries(merged).filter(([, v]) => v !== undefined),
+        Object.entries(next).filter(([, v]) => v !== undefined),
       ) as DashboardFilters;
       return { activeFilters: cleaned };
     }),
