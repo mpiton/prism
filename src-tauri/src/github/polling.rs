@@ -65,6 +65,9 @@ impl PollingContext for RealPollingContext {
         if let Err(e) = self.app_handle.emit("github:updated", stats) {
             warn!("failed to emit github:updated: {e}");
         }
+        if let Err(e) = crate::tray::update_tray_badge(&self.app_handle, stats.pending_reviews) {
+            warn!("failed to update tray badge: {e}");
+        }
     }
 
     fn emit_sync_error(&self, error: &str) {

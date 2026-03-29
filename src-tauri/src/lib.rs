@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod github;
 mod notifications;
+mod tray;
 pub mod types;
 mod workspace;
 
@@ -127,6 +128,9 @@ pub fn run() {
 
             // Polling handle — empty until credentials are verified
             app.manage(PollingHandle::default());
+
+            // System tray icon with context menu
+            tray::setup_tray(app).map_err(|e| e.to_string())?;
 
             // Attempt to start background polling (non-blocking)
             let handle = app.handle().clone();

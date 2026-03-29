@@ -242,6 +242,29 @@ async fn resolve_credentials(cached: &GithubUsername) -> Result<(String, String)
     Ok((username, token))
 }
 
+/// Core force-sync logic shared by the IPC command and the tray handler.
+pub(crate) async fn run_force_sync(
+    app_handle: &tauri::AppHandle,
+    pool: &SqlitePool,
+    cached: &GithubUsername,
+) -> Result<(), String> {
+    let (username, token) = resolve_credentials(cached).await?;
+    let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
+
+    let stats = sync_dashboard(&client, pool, &username)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Err(e) = app_handle.emit("github:updated", &stats) {
+        warn!("failed to emit github:updated after force sync: {e}");
+    }
+    if let Err(e) = crate::tray::update_tray_badge(app_handle, stats.pending_reviews) {
+        warn!("failed to update tray badge after force sync: {e}");
+    }
+
+    Ok(())
+}
+
 /// Triggers an immediate GitHub data sync, bypassing the polling timer.
 ///
 /// Reads the stored token and cached username in a single pass, creates
@@ -254,18 +277,7 @@ pub async fn github_force_sync(
     cached: tauri::State<'_, GithubUsername>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let (username, token) = resolve_credentials(&cached).await?;
-    let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
-
-    let stats = sync_dashboard(&client, &pool, &username)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if let Err(e) = app_handle.emit("github:updated", &stats) {
-        warn!("failed to emit github:updated after force sync: {e}");
-    }
-
-    Ok(())
+    run_force_sync(&app_handle, &pool, &cached).await
 }
 
 /// Returns the full application configuration (query).
