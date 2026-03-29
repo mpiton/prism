@@ -35,9 +35,8 @@ pub fn build_worktree_path(
     pr_number: u32,
 ) -> Result<PathBuf, AppError> {
     let mut components = Path::new(repo_name).components();
-    let is_single_normal =
-        matches!(components.next(), Some(std::path::Component::Normal(_)))
-            && components.next().is_none();
+    let is_single_normal = matches!(components.next(), Some(std::path::Component::Normal(_)))
+        && components.next().is_none();
 
     // Also reject backslashes explicitly: on Unix they are valid filename chars
     // but would produce incorrect paths on Windows.
@@ -132,12 +131,7 @@ pub async fn create_worktree(
     // Fetch the branch from origin. The `--` separator prevents branch names
     // that start with `-` from being misinterpreted as git flags.
     run_git(
-        &[
-            "fetch".into(),
-            "origin".into(),
-            "--".into(),
-            branch.into(),
-        ],
+        &["fetch".into(), "origin".into(), "--".into(), branch.into()],
         repo_local_path,
     )
     .await?;
