@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -25,20 +26,24 @@ pub fn default_base_dir() -> Result<PathBuf, AppError> {
 ///
 /// Format: `{base_dir}/{repo_name}/worktrees/pr-{pr_number}`
 ///
-/// Rejects `repo_name` values containing path separators or traversal sequences.
+/// Rejects `repo_name` values that are not a single normal path component
+/// (blocks `..`, `.`, `/`, `\`, absolute paths, and Windows drive prefixes).
 #[allow(dead_code)]
 pub fn build_worktree_path(
     base_dir: &Path,
     repo_name: &str,
     pr_number: u32,
 ) -> Result<PathBuf, AppError> {
-    if repo_name.is_empty()
-        || repo_name.contains('/')
-        || repo_name.contains('\\')
-        || repo_name.contains("..")
-    {
+    let mut components = Path::new(repo_name).components();
+    let is_single_normal =
+        matches!(components.next(), Some(std::path::Component::Normal(_)))
+            && components.next().is_none();
+
+    // Also reject backslashes explicitly: on Unix they are valid filename chars
+    // but would produce incorrect paths on Windows.
+    if !is_single_normal || repo_name.contains('\\') {
         return Err(AppError::Workspace(format!(
-            "invalid repo_name: {repo_name:?} (must not contain path separators or '..')"
+            "invalid repo_name: {repo_name:?} (must be a single normal path component)"
         )));
     }
 
@@ -51,27 +56,37 @@ pub fn build_worktree_path(
 /// Runs a git command in the given directory and returns stdout on success.
 ///
 /// Times out after [`GIT_TIMEOUT`] to prevent indefinite hangs on network operations.
-async fn run_git(args: &[&str], cwd: &Path) -> Result<String, AppError> {
-    let cmd_label = args.first().unwrap_or(&"");
+/// The spawned child process is killed when the timeout fires (`kill_on_drop`).
+/// Accepts [`OsString`] args so paths with non-UTF-8 bytes are passed verbatim to git.
+async fn run_git(args: &[OsString], cwd: &Path) -> Result<String, AppError> {
+    let cmd_label = args
+        .first()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
 
-    let output = timeout(
-        GIT_TIMEOUT,
-        Command::new("git").args(args).current_dir(cwd).output(),
-    )
-    .await
-    .map_err(|_| {
-        AppError::Git(format!(
-            "git {cmd_label} timed out after {}s",
-            GIT_TIMEOUT.as_secs()
-        ))
-    })?
-    .map_err(|e| AppError::Git(format!("failed to run git {cmd_label}: {e}")))?;
+    let mut cmd = Command::new("git");
+    cmd.kill_on_drop(true).args(args).current_dir(cwd);
+
+    let output = timeout(GIT_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| {
+            AppError::Git(format!(
+                "git {cmd_label} timed out after {}s",
+                GIT_TIMEOUT.as_secs()
+            ))
+        })?
+        .map_err(|e| AppError::Git(format!("failed to run git {cmd_label}: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let args_display = args
+            .iter()
+            .map(|s| s.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
         return Err(AppError::Git(format!(
             "git {} failed: {}",
-            args.join(" "),
+            args_display,
             stderr.trim()
         )));
     }
@@ -85,6 +100,11 @@ async fn run_git(args: &[&str], cwd: &Path) -> Result<String, AppError> {
 /// 2. Creates a worktree at `{base_dir}/{repo_name}/worktrees/pr-{pr_number}/`
 ///
 /// Returns the path to the created worktree directory.
+///
+/// Note: parent directories created before the git commands are not removed on
+/// failure. Retries are not blocked (the existence check only tests the final
+/// worktree path), but stale intermediate directories may accumulate on repeated
+/// failures.
 #[allow(dead_code)]
 pub async fn create_worktree(
     repo_local_path: &Path,
@@ -102,20 +122,34 @@ pub async fn create_worktree(
         )));
     }
 
-    // Ensure parent directories exist
+    // Ensure parent directories exist before running git commands.
     if let Some(parent) = wt_path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(|e| {
             AppError::Workspace(format!("failed to create worktree directory: {e}"))
         })?;
     }
 
-    // Fetch the branch from origin
-    run_git(&["fetch", "origin", branch], repo_local_path).await?;
-
-    // Create the worktree at the computed path (detached HEAD on the remote branch)
-    let wt_str = wt_path.to_string_lossy();
+    // Fetch the branch from origin. The `--` separator prevents branch names
+    // that start with `-` from being misinterpreted as git flags.
     run_git(
-        &["worktree", "add", &wt_str, &format!("origin/{branch}")],
+        &[
+            "fetch".into(),
+            "origin".into(),
+            "--".into(),
+            branch.into(),
+        ],
+        repo_local_path,
+    )
+    .await?;
+
+    // Create the worktree at the computed path (detached HEAD on the remote branch).
+    run_git(
+        &[
+            "worktree".into(),
+            "add".into(),
+            wt_path.as_os_str().into(),
+            format!("origin/{branch}").into(),
+        ],
         repo_local_path,
     )
     .await?;
@@ -128,8 +162,16 @@ pub async fn create_worktree(
 /// Uses `git worktree remove --force` to handle dirty worktrees.
 #[allow(dead_code)]
 pub async fn remove_worktree(repo_local_path: &Path, worktree_path: &Path) -> Result<(), AppError> {
-    let wt_str = worktree_path.to_string_lossy();
-    run_git(&["worktree", "remove", "--force", &wt_str], repo_local_path).await?;
+    run_git(
+        &[
+            "worktree".into(),
+            "remove".into(),
+            "--force".into(),
+            worktree_path.as_os_str().into(),
+        ],
+        repo_local_path,
+    )
+    .await?;
     Ok(())
 }
 
@@ -138,7 +180,11 @@ pub async fn remove_worktree(repo_local_path: &Path, worktree_path: &Path) -> Re
 /// Parses the output of `git worktree list --porcelain`.
 #[allow(dead_code)]
 pub async fn list_worktrees(repo_local_path: &Path) -> Result<Vec<PathBuf>, AppError> {
-    let output = run_git(&["worktree", "list", "--porcelain"], repo_local_path).await?;
+    let output = run_git(
+        &["worktree".into(), "list".into(), "--porcelain".into()],
+        repo_local_path,
+    )
+    .await?;
 
     let mut paths = Vec::new();
     let mut is_first = true;
@@ -256,6 +302,8 @@ mod tests {
         assert!(build_worktree_path(&base, "owner/repo", 1).is_err());
         assert!(build_worktree_path(&base, "a\\b", 1).is_err());
         assert!(build_worktree_path(&base, "", 1).is_err());
+        // Single dot rejected (would resolve to current directory)
+        assert!(build_worktree_path(&base, ".", 1).is_err());
     }
 
     #[test]
