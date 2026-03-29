@@ -16,15 +16,24 @@ export interface DashboardFilters {
   readonly ciStatus?: CiStatus;
 }
 
+export interface NavigableItem {
+  readonly url: string;
+  readonly workspaceId?: string;
+}
+
 interface DashboardUiState {
   readonly currentView: DashboardView;
   readonly activeFilters: DashboardFilters;
+  readonly selectedIndex: number;
+  readonly navigableItems: readonly NavigableItem[];
 }
 
 interface DashboardActions {
   setView: (view: DashboardView) => void;
   setFilter: (filter: Partial<DashboardFilters>) => void;
   clearFilters: () => void;
+  navigateList: (direction: "up" | "down") => void;
+  setNavigableItems: (items: readonly NavigableItem[]) => void;
 }
 
 type DashboardState = DashboardUiState & DashboardActions;
@@ -32,7 +41,10 @@ type DashboardState = DashboardUiState & DashboardActions;
 export const useDashboardStore = create<DashboardState>((set) => ({
   currentView: "overview",
   activeFilters: {},
-  setView: (view) => set({ currentView: view }),
+  selectedIndex: -1,
+  navigableItems: [],
+  setView: (view) =>
+    set({ currentView: view, selectedIndex: -1, navigableItems: [] }),
   setFilter: (filter) =>
     set((state) => {
       const prev = state.activeFilters;
@@ -47,4 +59,24 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       return { activeFilters: cleaned };
     }),
   clearFilters: () => set({ activeFilters: {} }),
+  navigateList: (direction) =>
+    set((state) => {
+      const len = state.navigableItems.length;
+      if (len === 0) return state;
+      if (state.selectedIndex < 0) return { selectedIndex: 0 };
+      const next =
+        direction === "down"
+          ? Math.min(state.selectedIndex + 1, len - 1)
+          : Math.max(state.selectedIndex - 1, 0);
+      return { selectedIndex: next };
+    }),
+  setNavigableItems: (items) =>
+    set((state) => {
+      if (items.length === 0) return { navigableItems: items, selectedIndex: -1 };
+      const clamped =
+        state.selectedIndex >= items.length
+          ? items.length - 1
+          : state.selectedIndex;
+      return { navigableItems: items, selectedIndex: clamped };
+    }),
 }));

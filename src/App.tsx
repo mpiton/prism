@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from "react";
+import { useCallback, useState, type ReactElement } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
 import { ReviewQueue } from "./components/ReviewQueue";
@@ -11,7 +11,12 @@ import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { useDashboardStore } from "./stores/dashboard";
+import { useWorkspacesStore } from "./stores/workspaces";
 import type { DashboardView } from "./stores/dashboard";
+
+function openUrl(url: string): void {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 
 interface MainContentProps {
   readonly view: DashboardView;
@@ -22,11 +27,11 @@ function MainContent({ view }: MainContentProps): ReactElement {
     case "overview":
       return <Overview />;
     case "reviews":
-      return <ReviewQueue reviews={[]} onOpen={() => {}} />;
+      return <ReviewQueue reviews={[]} onOpen={openUrl} />;
     case "mine":
-      return <MyPRs prs={[]} onOpen={() => {}} />;
+      return <MyPRs prs={[]} onOpen={openUrl} />;
     case "issues":
-      return <Issues issues={[]} onOpen={() => {}} />;
+      return <Issues issues={[]} onOpen={openUrl} />;
     case "feed":
       return <ActivityFeed activities={[]} onMarkAllRead={() => {}} />;
     case "workspaces":
@@ -45,8 +50,40 @@ function App(): ReactElement {
   const isWorkspace = currentView === "workspaces";
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
+  const handleNavigate = useCallback((direction: "up" | "down") => {
+    useDashboardStore.getState().navigateList(direction);
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    const { selectedIndex, navigableItems } = useDashboardStore.getState();
+    const item = navigableItems[selectedIndex];
+    if (item?.url) openUrl(item.url);
+  }, []);
+
+  const handleOpenWorkspace = useCallback(() => {
+    const { selectedIndex, navigableItems, setView } =
+      useDashboardStore.getState();
+    const item = navigableItems[selectedIndex];
+    if (item?.workspaceId) {
+      useWorkspacesStore.getState().setActiveWorkspace(item.workspaceId);
+      setView("workspaces");
+    }
+  }, []);
+
+  const handleEscape = useCallback(() => {
+    useDashboardStore.getState().setView("overview");
+  }, []);
+
+  const handleCommandPalette = useCallback(() => {
+    setCommandPaletteOpen((prev) => !prev);
+  }, []);
+
   useKeyboard({
-    onCommandPalette: () => setCommandPaletteOpen((prev) => !prev),
+    onNavigate: handleNavigate,
+    onOpen: handleOpen,
+    onOpenWorkspace: handleOpenWorkspace,
+    onEscape: handleEscape,
+    onCommandPalette: handleCommandPalette,
   });
 
   return (

@@ -1,5 +1,6 @@
 import { type ReactElement, useEffect, useMemo } from "react";
 import type { Priority, PullRequestWithReview } from "../../lib/types";
+import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { useDashboardStore } from "../../stores/dashboard";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
@@ -71,17 +72,21 @@ export function ReviewQueue({
     }
   }, [repos, storeRepo, setFilter]);
 
-  const filtered = reviews.filter((r) => {
-    if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter) {
-      return false;
-    }
-    if (repoFilter && r.pullRequest.repoId !== repoFilter) {
-      return false;
-    }
-    return true;
-  });
+  const sorted = useMemo(() => {
+    const filtered = reviews.filter((r) => {
+      if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter)
+        return false;
+      if (repoFilter && r.pullRequest.repoId !== repoFilter) return false;
+      return true;
+    });
+    return sortByPriority(filtered);
+  }, [reviews, priorityFilter, repoFilter]);
 
-  const sorted = sortByPriority(filtered);
+  const navItems = useMemo(
+    () => sorted.map((r) => ({ url: r.pullRequest.url })),
+    [sorted],
+  );
+  useRegisterNavigableItems(navItems);
 
   return (
     <section data-testid="review-queue" className="flex flex-col gap-2">
