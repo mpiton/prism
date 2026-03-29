@@ -40,7 +40,7 @@ pub fn build_worktree_path(
 
     // Also reject backslashes explicitly: on Unix they are valid filename chars
     // but would produce incorrect paths on Windows.
-    if !is_single_normal || repo_name.contains('\\') {
+    if !is_single_normal || repo_name.contains('/') || repo_name.contains('\\') {
         return Err(AppError::Workspace(format!(
             "invalid repo_name: {repo_name:?} (must be a single normal path component)"
         )));
@@ -175,7 +175,12 @@ pub async fn remove_worktree(repo_local_path: &Path, worktree_path: &Path) -> Re
 #[allow(dead_code)]
 pub async fn list_worktrees(repo_local_path: &Path) -> Result<Vec<PathBuf>, AppError> {
     let output = run_git(
-        &["worktree".into(), "list".into(), "--porcelain".into()],
+        &[
+            "worktree".into(),
+            "list".into(),
+            "--porcelain".into(),
+            "-z".into(),
+        ],
         repo_local_path,
     )
     .await?;
@@ -183,8 +188,8 @@ pub async fn list_worktrees(repo_local_path: &Path) -> Result<Vec<PathBuf>, AppE
     let mut paths = Vec::new();
     let mut is_first = true;
 
-    for line in output.lines() {
-        if let Some(path) = line.strip_prefix("worktree ") {
+    for field in output.split('\0') {
+        if let Some(path) = field.strip_prefix("worktree ") {
             if is_first {
                 // Skip the main working tree (always the first entry)
                 is_first = false;
@@ -298,6 +303,8 @@ mod tests {
         assert!(build_worktree_path(&base, "", 1).is_err());
         // Single dot rejected (would resolve to current directory)
         assert!(build_worktree_path(&base, ".", 1).is_err());
+        // Trailing slash rejected (Path normalizes it away but raw string has '/')
+        assert!(build_worktree_path(&base, "repo/", 1).is_err());
     }
 
     #[test]
