@@ -170,11 +170,14 @@ describe("App keyboard shortcuts", () => {
 
     const textarea = document.createElement("textarea");
     document.body.appendChild(textarea);
-    textarea.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "j", bubbles: true }),
-    );
-    expect(useDashboardStore.getState().selectedIndex).toBe(-1);
-    document.body.removeChild(textarea);
+    try {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true }),
+      );
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+    } finally {
+      document.body.removeChild(textarea);
+    }
   });
 
   it("should reset selection when navigating to a different view", () => {

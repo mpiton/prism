@@ -11,6 +11,7 @@ import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { useDashboardStore } from "./stores/dashboard";
+import { useWorkspacesStore } from "./stores/workspaces";
 import type { DashboardView } from "./stores/dashboard";
 
 function openUrl(url: string): void {
@@ -63,7 +64,10 @@ function App(): ReactElement {
     const { selectedIndex, navigableItems, setView } =
       useDashboardStore.getState();
     const item = navigableItems[selectedIndex];
-    if (item?.workspaceId) setView("workspaces");
+    if (item?.workspaceId) {
+      useWorkspacesStore.getState().setActiveWorkspace(item.workspaceId);
+      setView("workspaces");
+    }
   }, []);
 
   const handleEscape = useCallback(() => {

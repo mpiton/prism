@@ -72,12 +72,11 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     }),
   setNavigableItems: (items) =>
     set((state) => {
+      if (items.length === 0) return { navigableItems: items, selectedIndex: -1 };
       const clamped =
-        state.selectedIndex >= items.length && items.length > 0
+        state.selectedIndex >= items.length
           ? items.length - 1
-          : state.selectedIndex < 0 && items.length > 0
-            ? state.selectedIndex
-            : state.selectedIndex;
+          : state.selectedIndex;
       return { navigableItems: items, selectedIndex: clamped };
     }),
 }));

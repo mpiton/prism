@@ -186,5 +186,11 @@ describe("useDashboardStore", () => {
       ]);
       expect(useDashboardStore.getState().selectedIndex).toBe(1);
     });
+
+    it("should reset selectedIndex to -1 when items become empty", () => {
+      useDashboardStore.setState({ selectedIndex: 2 });
+      useDashboardStore.getState().setNavigableItems([]);
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+    });
   });
 });
