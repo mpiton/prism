@@ -109,6 +109,7 @@ export function Settings(): ReactElement {
     mutationFn: ({ repoId, enabled }: { repoId: string; enabled: boolean }) =>
       setRepoEnabled(repoId, enabled),
     onSuccess: () => {
+      setSaveError(null);
       queryClient.invalidateQueries({ queryKey: ["repos"] });
     },
     onError: (err: unknown) => {
