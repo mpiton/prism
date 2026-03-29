@@ -98,4 +98,93 @@ describe("useDashboardStore", () => {
     expect(filtersBefore).not.toBe(filtersAfter);
     expect(filtersBefore).toEqual({ repo: "prism" });
   });
+
+  describe("keyboard navigation", () => {
+    const items = [
+      { url: "https://github.com/org/repo/pull/1" },
+      { url: "https://github.com/org/repo/pull/2" },
+      { url: "https://github.com/org/repo/pull/3" },
+    ] as const;
+
+    beforeEach(() => {
+      useDashboardStore.setState({
+        selectedIndex: -1,
+        navigableItems: items,
+      });
+    });
+
+    it("should have default selectedIndex of -1", () => {
+      useDashboardStore.setState({ selectedIndex: -1, navigableItems: [] });
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+    });
+
+    it("should navigate down from -1 to 0", () => {
+      useDashboardStore.getState().navigateList("down");
+      expect(useDashboardStore.getState().selectedIndex).toBe(0);
+    });
+
+    it("should navigate up from -1 to 0", () => {
+      useDashboardStore.getState().navigateList("up");
+      expect(useDashboardStore.getState().selectedIndex).toBe(0);
+    });
+
+    it("should navigate down incrementally", () => {
+      useDashboardStore.setState({ selectedIndex: 0 });
+      useDashboardStore.getState().navigateList("down");
+      expect(useDashboardStore.getState().selectedIndex).toBe(1);
+    });
+
+    it("should navigate up decrementally", () => {
+      useDashboardStore.setState({ selectedIndex: 2 });
+      useDashboardStore.getState().navigateList("up");
+      expect(useDashboardStore.getState().selectedIndex).toBe(1);
+    });
+
+    it("should clamp at last item when navigating down", () => {
+      useDashboardStore.setState({ selectedIndex: 2 });
+      useDashboardStore.getState().navigateList("down");
+      expect(useDashboardStore.getState().selectedIndex).toBe(2);
+    });
+
+    it("should clamp at first item when navigating up", () => {
+      useDashboardStore.setState({ selectedIndex: 0 });
+      useDashboardStore.getState().navigateList("up");
+      expect(useDashboardStore.getState().selectedIndex).toBe(0);
+    });
+
+    it("should do nothing when list is empty", () => {
+      useDashboardStore.setState({ navigableItems: [], selectedIndex: -1 });
+      useDashboardStore.getState().navigateList("down");
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+    });
+
+    it("should reset selection when view changes", () => {
+      useDashboardStore.setState({ selectedIndex: 2 });
+      useDashboardStore.getState().setView("mine");
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+      expect(useDashboardStore.getState().navigableItems).toEqual([]);
+    });
+
+    it("should set navigable items", () => {
+      const newItems = [{ url: "https://example.com" }];
+      useDashboardStore.getState().setNavigableItems(newItems);
+      expect(useDashboardStore.getState().navigableItems).toEqual(newItems);
+    });
+
+    it("should reset selectedIndex when navigable items change and index is out of bounds", () => {
+      useDashboardStore.setState({ selectedIndex: 2 });
+      useDashboardStore.getState().setNavigableItems([{ url: "https://example.com" }]);
+      expect(useDashboardStore.getState().selectedIndex).toBe(0);
+    });
+
+    it("should keep selectedIndex when navigable items change but index is in bounds", () => {
+      useDashboardStore.setState({ selectedIndex: 1 });
+      useDashboardStore.getState().setNavigableItems([
+        { url: "https://a.com" },
+        { url: "https://b.com" },
+        { url: "https://c.com" },
+      ]);
+      expect(useDashboardStore.getState().selectedIndex).toBe(1);
+    });
+  });
 });
