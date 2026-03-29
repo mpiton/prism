@@ -5,7 +5,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::Emitter;
 
-use crate::cache::notifications::{has_been_notified, mark_notified};
+use crate::cache::notifications::{clear_notification, try_claim_notification};
 use crate::error::AppError;
 use crate::types::{CiStatus, DashboardData, PullRequest};
 
@@ -96,9 +96,18 @@ impl NotificationSender for TauriNotificationSender {
 
 /// Check new dashboard data for notification-worthy events.
 ///
-/// Scans `new_data` for events not yet recorded in `notification_log`.
-/// For each new event, emits a Tauri event + native notification and
-/// marks it as notified to prevent duplicates on subsequent syncs.
+/// Uses [`try_claim_notification`] for atomic deduplication — a single
+/// `INSERT ... ON CONFLICT DO NOTHING` that returns whether the caller
+/// won the claim, eliminating TOCTOU races between check and mark.
+///
+/// Delivery guarantee: **at-most-once** per `(event_type, event_id)`.
+/// The claim is persisted before emission. If the Tauri event or native
+/// notification fails after claiming, the notification will not be
+/// retried. This avoids duplicate spam at the cost of rare silent drops.
+///
+/// CI failure notifications are transient: when a PR's CI status moves
+/// away from `Failure`, the dedup entry is cleared so a future failure
+/// on the same PR can re-trigger a notification.
 ///
 /// Returns the number of notifications emitted.
 pub(crate) async fn check_and_notify(
@@ -111,8 +120,7 @@ pub(crate) async fn check_and_notify(
     // 1. New review requests
     for pr_with_review in &new_data.review_requests {
         let pr = &pr_with_review.pull_request;
-        if !has_been_notified(pool, "review_request", &pr.id).await? {
-            mark_notified(pool, "review_request", &pr.id).await?;
+        if try_claim_notification(pool, "review_request", &pr.id).await? {
             sender.emit_review_request(&NotificationPayload::from_pr(pr));
             count += 1;
         }
@@ -122,18 +130,21 @@ pub(crate) async fn check_and_notify(
     for pr_with_review in &new_data.my_pull_requests {
         let pr = &pr_with_review.pull_request;
 
-        if pr.ci_status == CiStatus::Failure
-            && !has_been_notified(pool, "ci_failure", &pr.id).await?
-        {
-            mark_notified(pool, "ci_failure", &pr.id).await?;
-            sender.emit_ci_failure(&NotificationPayload::from_pr(pr));
-            count += 1;
+        // CI failure: claim + emit. When CI is no longer failing, clear
+        // the entry so a future failure can re-notify.
+        if pr.ci_status == CiStatus::Failure {
+            if try_claim_notification(pool, "ci_failure", &pr.id).await? {
+                sender.emit_ci_failure(&NotificationPayload::from_pr(pr));
+                count += 1;
+            }
+        } else {
+            clear_notification(pool, "ci_failure", &pr.id).await?;
         }
 
+        // PR approval (monotone — no clearing needed)
         if pr_with_review.review_summary.approved > 0
-            && !has_been_notified(pool, "pr_approved", &pr.id).await?
+            && try_claim_notification(pool, "pr_approved", &pr.id).await?
         {
-            mark_notified(pool, "pr_approved", &pr.id).await?;
             sender.emit_pr_approved(&NotificationPayload::from_pr(pr));
             count += 1;
         }
@@ -147,6 +158,7 @@ pub(crate) async fn check_and_notify(
 mod tests {
     use super::*;
     use crate::cache::db::init_db;
+    use crate::cache::notifications::has_been_notified;
     use crate::types::*;
     use std::sync::{Arc, Mutex};
 
@@ -266,7 +278,7 @@ mod tests {
         let count1 = check_and_notify(&pool, &sender, &data).await.unwrap();
         assert_eq!(count1, 1);
 
-        // Second call with same data — should NOT re-notify (dedup)
+        // Second call with same data — should NOT re-notify (atomic dedup)
         let count2 = check_and_notify(&pool, &sender, &data).await.unwrap();
         assert_eq!(count2, 0);
 
@@ -326,8 +338,8 @@ mod tests {
         let (pool, _tmp) = test_pool().await;
         let sender = MockSender::default();
 
-        // Pre-mark the event as already notified
-        mark_notified(&pool, "review_request", "pr-1")
+        // Pre-claim the notification slot
+        try_claim_notification(&pool, "review_request", "pr-1")
             .await
             .unwrap();
 
@@ -339,7 +351,7 @@ mod tests {
 
         let count = check_and_notify(&pool, &sender, &data).await.unwrap();
 
-        assert_eq!(count, 0, "should not notify for already-notified event");
+        assert_eq!(count, 0, "should not notify for already-claimed event");
         assert!(
             sender
                 .review_requests
@@ -348,6 +360,53 @@ mod tests {
                 .is_empty(),
             "no notification should be emitted"
         );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_ci_failure_renotifies_after_recovery() {
+        let (pool, _tmp) = test_pool().await;
+        let sender = MockSender::default();
+
+        // 1. CI fails → notify
+        let pr_fail = make_pr("pr-4", 50, CiStatus::Failure);
+        let data_fail = DashboardData {
+            my_pull_requests: vec![make_pr_with_review(pr_fail, 0)],
+            ..empty_data()
+        };
+        let count = check_and_notify(&pool, &sender, &data_fail).await.unwrap();
+        assert_eq!(count, 1);
+
+        // 2. CI passes → clears the dedup entry
+        let pr_pass = make_pr("pr-4", 50, CiStatus::Success);
+        let data_pass = DashboardData {
+            my_pull_requests: vec![make_pr_with_review(pr_pass, 0)],
+            ..empty_data()
+        };
+        check_and_notify(&pool, &sender, &data_pass).await.unwrap();
+
+        // Verify entry was cleared
+        let still_notified = has_been_notified(&pool, "ci_failure", "pr-4")
+            .await
+            .unwrap();
+        assert!(
+            !still_notified,
+            "ci_failure entry should be cleared on recovery"
+        );
+
+        // 3. CI fails again → should re-notify
+        let pr_fail_again = make_pr("pr-4", 50, CiStatus::Failure);
+        let data_fail_again = DashboardData {
+            my_pull_requests: vec![make_pr_with_review(pr_fail_again, 0)],
+            ..empty_data()
+        };
+        let count2 = check_and_notify(&pool, &sender, &data_fail_again)
+            .await
+            .unwrap();
+        assert_eq!(count2, 1, "should re-notify after CI recovery + re-failure");
+
+        assert_eq!(sender.ci_failures.lock().expect("lock poisoned").len(), 2);
 
         pool.close().await;
     }

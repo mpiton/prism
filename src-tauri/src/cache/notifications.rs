@@ -50,6 +50,57 @@ pub async fn mark_notified(
     Ok(())
 }
 
+/// Atomically claim a notification slot.
+///
+/// Inserts into `notification_log` with `ON CONFLICT DO NOTHING` and
+/// returns `true` if the row was newly inserted (i.e. the caller "won"
+/// the claim). Returns `false` if the event was already recorded.
+///
+/// This eliminates the TOCTOU race between `has_been_notified` and
+/// `mark_notified` — a single INSERT is atomic at the `SQLite` level.
+#[allow(dead_code)] // Called from notifications module; call-site integration deferred
+pub async fn try_claim_notification(
+    pool: &SqlitePool,
+    event_type: &str,
+    event_id: &str,
+) -> Result<bool, AppError> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let result = sqlx::query(
+        "INSERT INTO notification_log (id, event_type, event_id, notified_at) \
+         VALUES ($1, $2, $3, $4) \
+         ON CONFLICT(event_type, event_id) DO NOTHING",
+    )
+    .bind(&id)
+    .bind(event_type)
+    .bind(event_id)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Remove a notification entry, allowing the event to re-trigger.
+///
+/// Used for transient events like CI failures that can recur after
+/// the underlying condition is resolved and then re-appears.
+#[allow(dead_code)] // Called from notifications module; call-site integration deferred
+pub async fn clear_notification(
+    pool: &SqlitePool,
+    event_type: &str,
+    event_id: &str,
+) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM notification_log WHERE event_type = $1 AND event_id = $2")
+        .bind(event_type)
+        .bind(event_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +172,47 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(count.0, 1, "dedup should prevent duplicate rows");
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_try_claim_notification_returns_true_on_first_insert() {
+        let (pool, _tmp) = test_pool().await;
+
+        let claimed = try_claim_notification(&pool, "review_request", "pr-1")
+            .await
+            .unwrap();
+        assert!(claimed, "first claim should succeed");
+
+        let claimed_again = try_claim_notification(&pool, "review_request", "pr-1")
+            .await
+            .unwrap();
+        assert!(!claimed_again, "second claim should return false");
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_clear_notification_allows_reclaim() {
+        let (pool, _tmp) = test_pool().await;
+
+        // Claim
+        let claimed = try_claim_notification(&pool, "ci_failure", "pr-1")
+            .await
+            .unwrap();
+        assert!(claimed);
+
+        // Clear
+        clear_notification(&pool, "ci_failure", "pr-1")
+            .await
+            .unwrap();
+
+        // Re-claim should succeed
+        let reclaimed = try_claim_notification(&pool, "ci_failure", "pr-1")
+            .await
+            .unwrap();
+        assert!(reclaimed, "should be able to reclaim after clearing");
 
         pool.close().await;
     }
