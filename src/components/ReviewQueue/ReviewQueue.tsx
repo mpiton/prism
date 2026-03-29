@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { type ReactElement, useEffect, useMemo } from "react";
 import type { Priority, PullRequestWithReview } from "../../lib/types";
 import { useDashboardStore } from "../../stores/dashboard";
 import { EmptyState } from "../atoms/EmptyState";
@@ -50,12 +50,18 @@ export function ReviewQueue({
   onOpen,
   onWorkspaceAction,
 }: ReviewQueueProps): ReactElement {
-  const { activeFilters, setFilter } = useDashboardStore();
+  const activeFilters = useDashboardStore((s) => s.activeFilters);
+  const setFilter = useDashboardStore((s) => s.setFilter);
+  const clearFilters = useDashboardStore((s) => s.clearFilters);
+
+  useEffect(() => {
+    return () => clearFilters();
+  }, [clearFilters]);
 
   const priorityFilter: PriorityFilter = activeFilters.priority ?? "all";
   const repoFilter = activeFilters.repo ?? "";
 
-  const repos = getUniqueRepos(reviews);
+  const repos = useMemo(() => getUniqueRepos(reviews), [reviews]);
 
   const filtered = reviews.filter((r) => {
     if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter) {
