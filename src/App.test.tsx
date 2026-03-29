@@ -104,8 +104,10 @@ describe("App keyboard shortcuts", () => {
   let openSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    // Use "feed" view — it has no useRegisterNavigableItems hook,
+    // so pre-seeded navigableItems are preserved for keyboard tests.
     useDashboardStore.setState({
-      currentView: "reviews",
+      currentView: "feed",
       activeFilters: {},
       selectedIndex: -1,
       navigableItems: items,

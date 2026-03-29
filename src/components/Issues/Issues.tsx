@@ -1,5 +1,6 @@
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 import type { Issue } from "../../lib/types";
+import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { IssueCard } from "./IssueCard";
@@ -25,6 +26,12 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
   const openIssues = issues.filter(isOpen);
   const closedIssues = issues.filter(isClosed);
   const visible = tab === "open" ? openIssues : closedIssues;
+
+  const navItems = useMemo(
+    () => visible.map((issue) => ({ url: issue.url })),
+    [visible],
+  );
+  useRegisterNavigableItems(navItems);
 
   return (
     <section data-testid="issues" className="flex flex-col gap-2">

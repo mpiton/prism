@@ -1,5 +1,6 @@
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 import type { PullRequestWithReview } from "../../lib/types";
+import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { MyPrCard } from "./MyPrCard";
@@ -31,6 +32,12 @@ export function MyPRs({
   const openPrs = prs.filter(isOpen);
   const mergedPrs = prs.filter(isMerged);
   const visible = tab === "open" ? openPrs : mergedPrs;
+
+  const navItems = useMemo(
+    () => visible.map((pr) => ({ url: pr.pullRequest.url })),
+    [visible],
+  );
+  useRegisterNavigableItems(navItems);
 
   return (
     <section data-testid="my-prs" className="flex flex-col gap-2">

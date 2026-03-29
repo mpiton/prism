@@ -70,6 +70,10 @@ function App(): ReactElement {
     }
   }, []);
 
+  const handleSwitchWorkspace = useCallback((_index: number) => {
+    // Workspace switching by index requires workspace list data (T-067+)
+  }, []);
+
   const handleEscape = useCallback(() => {
     useDashboardStore.getState().setView("overview");
   }, []);
@@ -82,6 +86,7 @@ function App(): ReactElement {
     onNavigate: handleNavigate,
     onOpen: handleOpen,
     onOpenWorkspace: handleOpenWorkspace,
+    onSwitchWorkspace: handleSwitchWorkspace,
     onEscape: handleEscape,
     onCommandPalette: handleCommandPalette,
   });
