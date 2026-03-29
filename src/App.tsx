@@ -7,6 +7,7 @@ import { Issues } from "./components/Issues";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { Workspace } from "./components/Workspace";
 import { Settings } from "./components/Settings";
+import { Toast } from "./components/Toast";
 import { useDashboardStore } from "./stores/dashboard";
 import type { DashboardView } from "./stores/dashboard";
 
@@ -37,7 +38,7 @@ function MainContent({ view }: MainContentProps): ReactElement {
   }
 }
 
-function App() {
+function App(): ReactElement {
   const currentView = useDashboardStore((s) => s.currentView);
   const isWorkspace = currentView === "workspaces";
 
@@ -50,6 +51,8 @@ function App() {
       <main className={isWorkspace ? "flex-1" : "min-w-0 flex-1"}>
         <MainContent view={currentView} />
       </main>
+
+      <Toast />
     </div>
   );
 }
