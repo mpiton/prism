@@ -127,16 +127,9 @@ pub async fn create_worktree(
 ///
 /// Uses `git worktree remove --force` to handle dirty worktrees.
 #[allow(dead_code)]
-pub async fn remove_worktree(
-    repo_local_path: &Path,
-    worktree_path: &Path,
-) -> Result<(), AppError> {
+pub async fn remove_worktree(repo_local_path: &Path, worktree_path: &Path) -> Result<(), AppError> {
     let wt_str = worktree_path.to_string_lossy();
-    run_git(
-        &["worktree", "remove", "--force", &wt_str],
-        repo_local_path,
-    )
-    .await?;
+    run_git(&["worktree", "remove", "--force", &wt_str], repo_local_path).await?;
     Ok(())
 }
 
@@ -216,12 +209,7 @@ mod tests {
         sh("git", &["config", "user.name", "Test"], &local).await;
 
         // Create initial commit and push
-        sh(
-            "git",
-            &["commit", "--allow-empty", "-m", "initial"],
-            &local,
-        )
-        .await;
+        sh("git", &["commit", "--allow-empty", "-m", "initial"], &local).await;
         sh("git", &["push", "origin", "HEAD"], &local).await;
 
         // Create feature branch with a commit and push
