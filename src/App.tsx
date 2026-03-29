@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
 import { ReviewQueue } from "./components/ReviewQueue";
@@ -8,6 +8,8 @@ import { ActivityFeed } from "./components/ActivityFeed";
 import { Workspace } from "./components/Workspace";
 import { Settings } from "./components/Settings";
 import { Toast } from "./components/Toast";
+import { CommandPalette } from "./components/CommandPalette";
+import { useKeyboard } from "./hooks/useKeyboard";
 import { useDashboardStore } from "./stores/dashboard";
 import type { DashboardView } from "./stores/dashboard";
 
@@ -41,6 +43,16 @@ function MainContent({ view }: MainContentProps): ReactElement {
 function App(): ReactElement {
   const currentView = useDashboardStore((s) => s.currentView);
   const isWorkspace = currentView === "workspaces";
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  useKeyboard({
+    onCommandPalette: () => setCommandPaletteOpen((prev) => !prev),
+    onNavigate: () => {},
+    onOpen: () => {},
+    onOpenWorkspace: () => {},
+    onSwitchWorkspace: () => {},
+    onEscape: () => {},
+  });
 
   return (
     <div className="flex h-screen bg-bg text-fg">
@@ -53,6 +65,10 @@ function App(): ReactElement {
       </main>
 
       <Toast />
+      <CommandPalette
+        open={commandPaletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+      />
     </div>
   );
 }
