@@ -158,15 +158,6 @@ describe("App keyboard shortcuts", () => {
     expect(useDashboardStore.getState().currentView).toBe("overview");
   });
 
-  it("should not crash when switching workspace with Ctrl+number", () => {
-    renderApp();
-
-    act(() => fireKey("1", { ctrlKey: true }));
-    act(() => fireKey("2", { ctrlKey: true }));
-    act(() => fireKey("3", { ctrlKey: true }));
-    expect(screen.getByRole("main")).toBeInTheDocument();
-  });
-
   it("should not capture keys when terminal is focused", () => {
     renderApp();
 

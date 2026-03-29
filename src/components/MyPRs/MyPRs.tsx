@@ -34,8 +34,11 @@ export function MyPRs({
   const visible = tab === "open" ? openPrs : mergedPrs;
 
   const navItems = useMemo(
-    () => visible.map((pr) => ({ url: pr.pullRequest.url })),
-    [visible],
+    () =>
+      prs
+        .filter(tab === "open" ? isOpen : isMerged)
+        .map((pr) => ({ url: pr.pullRequest.url })),
+    [prs, tab],
   );
   useRegisterNavigableItems(navItems);
 

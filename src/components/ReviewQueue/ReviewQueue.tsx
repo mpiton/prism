@@ -85,8 +85,16 @@ export function ReviewQueue({
   const sorted = sortByPriority(filtered);
 
   const navItems = useMemo(
-    () => sorted.map((r) => ({ url: r.pullRequest.url })),
-    [sorted],
+    () =>
+      sortByPriority(
+        reviews.filter((r) => {
+          if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter)
+            return false;
+          if (repoFilter && r.pullRequest.repoId !== repoFilter) return false;
+          return true;
+        }),
+      ).map((r) => ({ url: r.pullRequest.url })),
+    [reviews, priorityFilter, repoFilter],
   );
   useRegisterNavigableItems(navItems);
 

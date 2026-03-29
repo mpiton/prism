@@ -28,8 +28,11 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
   const visible = tab === "open" ? openIssues : closedIssues;
 
   const navItems = useMemo(
-    () => visible.map((issue) => ({ url: issue.url })),
-    [visible],
+    () =>
+      issues
+        .filter(tab === "open" ? isOpen : isClosed)
+        .map((issue) => ({ url: issue.url })),
+    [issues, tab],
   );
   useRegisterNavigableItems(navItems);
 

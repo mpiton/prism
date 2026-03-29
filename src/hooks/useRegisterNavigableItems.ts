@@ -6,8 +6,12 @@ export function useRegisterNavigableItems(
   items: readonly NavigableItem[],
 ): void {
   const setNavigableItems = useDashboardStore((s) => s.setNavigableItems);
+
   useEffect(() => {
     setNavigableItems(items);
-    return () => setNavigableItems([]);
   }, [items, setNavigableItems]);
+
+  useEffect(() => {
+    return () => setNavigableItems([]);
+  }, [setNavigableItems]);
 }
