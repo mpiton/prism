@@ -1,43 +1,71 @@
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use tokio::process::Command;
+use tokio::time::timeout;
 
 use crate::error::AppError;
 
+/// Git operations timeout (covers slow fetches on large repos).
+const GIT_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// Returns the default base directory for `PRism` workspaces: `~/.prism/workspaces`.
 #[allow(dead_code)]
-pub fn default_base_dir() -> PathBuf {
+pub fn default_base_dir() -> Result<PathBuf, AppError> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
-        .expect("HOME or USERPROFILE must be set");
-    home.join(".prism").join("workspaces")
+        .ok_or_else(|| {
+            AppError::Workspace("HOME or USERPROFILE environment variable must be set".into())
+        })?;
+    Ok(home.join(".prism").join("workspaces"))
 }
 
 /// Constructs the worktree directory path for a specific PR.
 ///
 /// Format: `{base_dir}/{repo_name}/worktrees/pr-{pr_number}`
+///
+/// Rejects `repo_name` values containing path separators or traversal sequences.
 #[allow(dead_code)]
-pub fn build_worktree_path(base_dir: &Path, repo_name: &str, pr_number: u32) -> PathBuf {
-    base_dir
+pub fn build_worktree_path(
+    base_dir: &Path,
+    repo_name: &str,
+    pr_number: u32,
+) -> Result<PathBuf, AppError> {
+    if repo_name.is_empty()
+        || repo_name.contains('/')
+        || repo_name.contains('\\')
+        || repo_name.contains("..")
+    {
+        return Err(AppError::Workspace(format!(
+            "invalid repo_name: {repo_name:?} (must not contain path separators or '..')"
+        )));
+    }
+
+    Ok(base_dir
         .join(repo_name)
         .join("worktrees")
-        .join(format!("pr-{pr_number}"))
+        .join(format!("pr-{pr_number}")))
 }
 
 /// Runs a git command in the given directory and returns stdout on success.
+///
+/// Times out after [`GIT_TIMEOUT`] to prevent indefinite hangs on network operations.
 async fn run_git(args: &[&str], cwd: &Path) -> Result<String, AppError> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .await
-        .map_err(|e| {
-            AppError::Git(format!(
-                "failed to run git {}: {e}",
-                args.first().unwrap_or(&"")
-            ))
-        })?;
+    let cmd_label = args.first().unwrap_or(&"");
+
+    let output = timeout(
+        GIT_TIMEOUT,
+        Command::new("git").args(args).current_dir(cwd).output(),
+    )
+    .await
+    .map_err(|_| {
+        AppError::Git(format!(
+            "git {cmd_label} timed out after {}s",
+            GIT_TIMEOUT.as_secs()
+        ))
+    })?
+    .map_err(|e| AppError::Git(format!("failed to run git {cmd_label}: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -65,7 +93,7 @@ pub async fn create_worktree(
     repo_name: &str,
     base_dir: &Path,
 ) -> Result<PathBuf, AppError> {
-    let wt_path = build_worktree_path(base_dir, repo_name, pr_number);
+    let wt_path = build_worktree_path(base_dir, repo_name, pr_number)?;
 
     if wt_path.exists() {
         return Err(AppError::Workspace(format!(
@@ -76,7 +104,7 @@ pub async fn create_worktree(
 
     // Ensure parent directories exist
     if let Some(parent) = wt_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| {
             AppError::Workspace(format!("failed to create worktree directory: {e}"))
         })?;
     }
@@ -99,9 +127,16 @@ pub async fn create_worktree(
 ///
 /// Uses `git worktree remove --force` to handle dirty worktrees.
 #[allow(dead_code)]
-pub async fn remove_worktree(repo_local_path: &Path, worktree_path: &Path) -> Result<(), AppError> {
+pub async fn remove_worktree(
+    repo_local_path: &Path,
+    worktree_path: &Path,
+) -> Result<(), AppError> {
     let wt_str = worktree_path.to_string_lossy();
-    run_git(&["worktree", "remove", "--force", &wt_str], repo_local_path).await?;
+    run_git(
+        &["worktree", "remove", "--force", &wt_str],
+        repo_local_path,
+    )
+    .await?;
     Ok(())
 }
 
@@ -109,7 +144,7 @@ pub async fn remove_worktree(repo_local_path: &Path, worktree_path: &Path) -> Re
 ///
 /// Parses the output of `git worktree list --porcelain`.
 #[allow(dead_code)]
-pub async fn list_worktrees(repo_local_path: &Path) -> Result<Vec<String>, AppError> {
+pub async fn list_worktrees(repo_local_path: &Path) -> Result<Vec<PathBuf>, AppError> {
     let output = run_git(&["worktree", "list", "--porcelain"], repo_local_path).await?;
 
     let mut paths = Vec::new();
@@ -122,7 +157,7 @@ pub async fn list_worktrees(repo_local_path: &Path) -> Result<Vec<String>, AppEr
                 is_first = false;
                 continue;
             }
-            paths.push(path.to_string());
+            paths.push(PathBuf::from(path));
         }
     }
 
@@ -181,7 +216,12 @@ mod tests {
         sh("git", &["config", "user.name", "Test"], &local).await;
 
         // Create initial commit and push
-        sh("git", &["commit", "--allow-empty", "-m", "initial"], &local).await;
+        sh(
+            "git",
+            &["commit", "--allow-empty", "-m", "initial"],
+            &local,
+        )
+        .await;
         sh("git", &["push", "origin", "HEAD"], &local).await;
 
         // Create feature branch with a commit and push
@@ -204,23 +244,41 @@ mod tests {
     fn test_worktree_path_construction() {
         let base = PathBuf::from("/home/user/.prism/workspaces");
 
-        let path = build_worktree_path(&base, "prism", 42);
+        let path = build_worktree_path(&base, "prism", 42).unwrap();
         assert_eq!(
             path,
             PathBuf::from("/home/user/.prism/workspaces/prism/worktrees/pr-42")
         );
 
-        let path2 = build_worktree_path(&base, "other-repo", 123);
+        let path2 = build_worktree_path(&base, "other-repo", 123).unwrap();
         assert_eq!(
             path2,
             PathBuf::from("/home/user/.prism/workspaces/other-repo/worktrees/pr-123")
         );
 
         // Edge case: PR number 0
-        let path3 = build_worktree_path(&base, "repo", 0);
+        let path3 = build_worktree_path(&base, "repo", 0).unwrap();
         assert_eq!(
             path3,
             PathBuf::from("/home/user/.prism/workspaces/repo/worktrees/pr-0")
+        );
+
+        // Path traversal rejected
+        assert!(build_worktree_path(&base, "../escape", 1).is_err());
+        assert!(build_worktree_path(&base, "owner/repo", 1).is_err());
+        assert!(build_worktree_path(&base, "a\\b", 1).is_err());
+        assert!(build_worktree_path(&base, "", 1).is_err());
+    }
+
+    #[test]
+    fn test_default_base_dir_returns_result() {
+        // HOME is always set in test environments
+        let result = default_base_dir();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(
+            path.to_string_lossy().ends_with(".prism/workspaces"),
+            "expected path ending with .prism/workspaces, got: {path:?}"
         );
     }
 
@@ -331,8 +389,7 @@ mod tests {
         let worktrees = list_worktrees(&local).await.unwrap();
         assert_eq!(worktrees.len(), 1, "should list one worktree");
         assert_eq!(
-            worktrees[0],
-            wt_path.to_string_lossy(),
+            worktrees[0], wt_path,
             "listed path should match created worktree"
         );
     }
