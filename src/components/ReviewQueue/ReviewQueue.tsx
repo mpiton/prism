@@ -50,23 +50,26 @@ export function ReviewQueue({
   onOpen,
   onWorkspaceAction,
 }: ReviewQueueProps): ReactElement {
-  const activeFilters = useDashboardStore((s) => s.activeFilters);
+  const storePriority = useDashboardStore((s) => s.activeFilters.priority);
+  const storeRepo = useDashboardStore((s) => s.activeFilters.repo);
   const setFilter = useDashboardStore((s) => s.setFilter);
 
   useEffect(() => {
     return () => setFilter({ priority: undefined, repo: undefined });
   }, [setFilter]);
 
-  const priorityFilter: PriorityFilter = activeFilters.priority ?? "all";
-  const repoFilter = activeFilters.repo ?? "";
-
+  const priorityFilter: PriorityFilter = storePriority ?? "all";
   const repos = useMemo(() => getUniqueRepos(reviews), [reviews]);
 
+  // Derive effective repo filter synchronously — avoids flash when stale repo disappears
+  const repoFilter = storeRepo && repos.includes(storeRepo) ? storeRepo : "";
+
+  // Sync store when the derived value diverges (stale repo removed from reviews)
   useEffect(() => {
-    if (repoFilter && !repos.includes(repoFilter)) {
+    if (storeRepo && !repos.includes(storeRepo)) {
       setFilter({ repo: undefined });
     }
-  }, [repos, repoFilter, setFilter]);
+  }, [repos, storeRepo, setFilter]);
 
   const filtered = reviews.filter((r) => {
     if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter) {
