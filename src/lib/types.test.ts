@@ -20,6 +20,7 @@ import type {
   PullRequestWithReview,
   DashboardData,
   DashboardStats,
+  PersonalStats,
   OpenWorkspaceRequest,
   OpenWorkspaceResponse,
   PtyInput,
@@ -313,6 +314,18 @@ describe("Composite struct shapes", () => {
     const stats = coerceFixture<DashboardStats>(json);
     expect(stats.pendingReviews).toBe(5);
     expect(stats.openPrs).toBe(12);
+  });
+
+  it("should match PersonalStats shape", () => {
+    const json = {
+      prsMergedThisWeek: 3,
+      avgReviewResponseHours: 2.5,
+      reviewsGivenThisWeek: 7,
+      activeWorkspaceCount: 1,
+    };
+    const stats = coerceFixture<PersonalStats>(json);
+    expect(stats.prsMergedThisWeek).toBe(3);
+    expect(stats.avgReviewResponseHours).toBe(2.5);
   });
 });
 

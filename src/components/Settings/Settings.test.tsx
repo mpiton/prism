@@ -344,4 +344,26 @@ describe("Settings", () => {
     expect(within(statsSection).getByText("12")).toBeInTheDocument();
     expect(within(statsSection).getByText("2")).toBeInTheDocument();
   });
+
+  it("should show stats unavailable when stats fetch fails", async () => {
+    setupMocks();
+    mockedGetPersonalStats.mockRejectedValue(new Error("DB error"));
+
+    renderWithProviders(<Settings />);
+
+    expect(await screen.findByText(/stats unavailable/i)).toBeInTheDocument();
+  });
+
+  it("should show N/A for non-finite avg review response hours", async () => {
+    setupMocks(
+      makeConfig(),
+      [],
+      makeAuthStatus(),
+      makePersonalStats({ avgReviewResponseHours: Infinity }),
+    );
+
+    renderWithProviders(<Settings />);
+
+    expect(await screen.findByText("N/A")).toBeInTheDocument();
+  });
 });

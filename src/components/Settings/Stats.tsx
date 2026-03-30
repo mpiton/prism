@@ -20,6 +20,7 @@ export function Stats(): ReactElement {
   const statsQuery = useQuery({
     queryKey: ["stats", "personal"],
     queryFn: getPersonalStats,
+    staleTime: 60_000,
   });
 
   if (statsQuery.isLoading) {
