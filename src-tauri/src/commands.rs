@@ -865,6 +865,110 @@ pub async fn workspace_archive(
     Ok(())
 }
 
+// ── Workspace cleanup (T-071) ────────────────────────────────────
+
+/// Archives workspaces whose PR is merged (> `archive_delay_hours`) or
+/// closed (> `archive_delay_closed_hours`). Returns the IDs of archived
+/// workspaces so the caller can emit per-workspace events.
+///
+/// Accepts delay values as parameters so tests can control timing.
+/// Delay values are capped at ~100 years to avoid `Duration` overflow.
+pub(crate) async fn workspace_cleanup_inner(
+    pool: &SqlitePool,
+    pty_state: &PtyManagerState,
+    archive_delay_hours: u64,
+    archive_delay_closed_hours: u64,
+) -> Result<Vec<String>, AppError> {
+    use chrono::{Duration, SecondsFormat, Utc};
+
+    // Cap at ~100 years to avoid Duration::hours overflow (i64 * 3_600_000_000_000 ns).
+    const MAX_DELAY_HOURS: i64 = 365 * 24 * 100;
+
+    let now = Utc::now();
+    let delay_merged = i64::try_from(archive_delay_hours)
+        .unwrap_or(MAX_DELAY_HOURS)
+        .min(MAX_DELAY_HOURS);
+    let delay_closed = i64::try_from(archive_delay_closed_hours)
+        .unwrap_or(MAX_DELAY_HOURS)
+        .min(MAX_DELAY_HOURS);
+    let merged_cutoff =
+        (now - Duration::hours(delay_merged)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let closed_cutoff =
+        (now - Duration::hours(delay_closed)).to_rfc3339_opts(SecondsFormat::Millis, true);
+
+    // Find workspace IDs eligible for cleanup via a single JOIN query.
+    let ids: Vec<(String,)> = sqlx::query_as(
+        "SELECT w.id FROM workspaces w \
+         JOIN pull_requests p ON w.repo_id = p.repo_id AND w.pull_request_number = p.number \
+         WHERE w.state != 'archived' \
+         AND ( \
+             (p.state = 'merged' AND p.updated_at < $1) \
+             OR (p.state = 'closed' AND p.updated_at < $2) \
+         )",
+    )
+    .bind(&merged_cutoff)
+    .bind(&closed_cutoff)
+    .fetch_all(pool)
+    .await?;
+
+    let mut archived_ids = Vec::new();
+    for (ws_id,) in &ids {
+        let Some(ws) = crate::cache::workspaces::get_workspace(pool, ws_id).await? else {
+            continue;
+        };
+
+        let local_path: Option<PathBuf> =
+            match crate::cache::repos::get_repo(pool, &ws.repo_id).await {
+                Ok(repo) => repo.local_path.as_deref().map(PathBuf::from),
+                Err(e) => {
+                    log::warn!("cleanup: could not fetch repo '{}': {e}", ws.repo_id);
+                    None
+                }
+            };
+
+        match workspace_archive_inner(pool, pty_state, &ws, local_path.as_deref()).await {
+            Ok(_) => archived_ids.push(ws.id.clone()),
+            Err(e) => log::warn!("cleanup: failed to archive workspace '{}': {e}", ws.id),
+        }
+    }
+
+    Ok(archived_ids)
+}
+
+/// Auto-archives workspaces whose PR has been merged or closed past the
+/// configured delay. Returns the number of workspaces archived.
+///
+/// Emits `workspace:state_changed` for each archived workspace so the
+/// frontend stays in sync.
+#[tauri::command]
+pub async fn workspace_cleanup(
+    pool: tauri::State<'_, SqlitePool>,
+    pty_state: tauri::State<'_, PtyManagerState>,
+    app_handle: tauri::AppHandle,
+) -> Result<u32, String> {
+    let config = get_config(&pool).await.map_err(|e| e.to_string())?;
+    let archived_ids = workspace_cleanup_inner(
+        &pool,
+        &pty_state,
+        config.archive_delay_hours,
+        config.archive_delay_closed_hours,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    for ws_id in &archived_ids {
+        let payload = crate::types::WorkspaceStateChanged {
+            workspace_id: ws_id.clone(),
+            new_state: WorkspaceState::Archived,
+        };
+        if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
+            log::warn!("cleanup: failed to emit workspace:state_changed for '{ws_id}': {e}");
+        }
+    }
+
+    Ok(u32::try_from(archived_ids.len()).unwrap_or(u32::MAX))
+}
+
 /// Writes data to a PTY's stdin.
 ///
 /// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
@@ -1148,6 +1252,8 @@ mod tests {
         let config = AppConfig {
             poll_interval_secs: 120,
             max_active_workspaces: 5,
+            archive_delay_hours: 12,
+            archive_delay_closed_hours: 72,
             github_token: Some("ghp_test".into()),
             data_dir: None,
             workspaces_dir: Some("/ws".into()),
@@ -1155,6 +1261,8 @@ mod tests {
         let json = serde_json::to_value(&config).unwrap();
         assert_eq!(json["pollIntervalSecs"], 120);
         assert_eq!(json["maxActiveWorkspaces"], 5);
+        assert_eq!(json["archiveDelayHours"], 12);
+        assert_eq!(json["archiveDelayClosedHours"], 72);
         assert_eq!(json["githubToken"], "ghp_test");
         assert!(json["dataDir"].is_null());
         assert_eq!(json["workspacesDir"], "/ws");
@@ -1202,6 +1310,8 @@ mod tests {
         let base = AppConfig {
             poll_interval_secs: 300,
             max_active_workspaces: 3,
+            archive_delay_hours: 24,
+            archive_delay_closed_hours: 48,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -1209,6 +1319,8 @@ mod tests {
         let partial = PartialAppConfig {
             poll_interval_secs: Some(60),
             max_active_workspaces: None,
+            archive_delay_hours: None,
+            archive_delay_closed_hours: None,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -1223,6 +1335,8 @@ mod tests {
         let base = AppConfig {
             poll_interval_secs: 300,
             max_active_workspaces: 3,
+            archive_delay_hours: 24,
+            archive_delay_closed_hours: 48,
             github_token: Some("ghp_old".into()),
             data_dir: Some("/data".into()),
             workspaces_dir: None,
@@ -1231,6 +1345,8 @@ mod tests {
         let partial = PartialAppConfig {
             poll_interval_secs: None,
             max_active_workspaces: None,
+            archive_delay_hours: None,
+            archive_delay_closed_hours: None,
             github_token: Some(None), // clear it
             data_dir: None,           // leave as-is
             workspaces_dir: None,
@@ -1720,6 +1836,8 @@ mod tests {
             &crate::types::AppConfig {
                 poll_interval_secs: 300,
                 max_active_workspaces: 3,
+                archive_delay_hours: 24,
+                archive_delay_closed_hours: 48,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1772,6 +1890,8 @@ mod tests {
             &crate::types::AppConfig {
                 poll_interval_secs: 300,
                 max_active_workspaces: 1,
+                archive_delay_hours: 24,
+                archive_delay_closed_hours: 48,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1845,6 +1965,8 @@ mod tests {
             &crate::types::AppConfig {
                 poll_interval_secs: 300,
                 max_active_workspaces: 3,
+                archive_delay_hours: 24,
+                archive_delay_closed_hours: 48,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1896,6 +2018,8 @@ mod tests {
             &crate::types::AppConfig {
                 poll_interval_secs: 300,
                 max_active_workspaces: 3,
+                archive_delay_hours: 24,
+                archive_delay_closed_hours: 48,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1963,6 +2087,8 @@ mod tests {
             &crate::types::AppConfig {
                 poll_interval_secs: 300,
                 max_active_workspaces: 3,
+                archive_delay_hours: 24,
+                archive_delay_closed_hours: 48,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2031,6 +2157,8 @@ mod tests {
             &crate::types::AppConfig {
                 poll_interval_secs: 300,
                 max_active_workspaces: 3,
+                archive_delay_hours: 24,
+                archive_delay_closed_hours: 48,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2097,6 +2225,8 @@ mod tests {
             &crate::types::AppConfig {
                 poll_interval_secs: 300,
                 max_active_workspaces: 3,
+                archive_delay_hours: 24,
+                archive_delay_closed_hours: 48,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2191,5 +2321,211 @@ mod tests {
         assert!(result.is_ok(), "resize should succeed: {result:?}");
 
         pty_state.manager.kill(&pty_id).unwrap();
+    }
+
+    // -- Workspace cleanup (T-071) --
+
+    /// Helper: inserts a PR into the DB for cleanup tests.
+    async fn insert_test_pr(
+        pool: &SqlitePool,
+        id: &str,
+        number: u32,
+        state: crate::types::PrState,
+        updated_at: &str,
+    ) {
+        use crate::types::{CiStatus, Priority, PullRequest};
+        let pr = PullRequest {
+            id: id.to_string(),
+            number,
+            title: format!("PR #{number}"),
+            author: "alice".to_string(),
+            state,
+            ci_status: CiStatus::Success,
+            priority: Priority::Medium,
+            repo_id: "repo-1".to_string(),
+            url: format!("https://github.com/mpiton/prism/pull/{number}"),
+            labels: vec![],
+            additions: 10,
+            deletions: 5,
+            created_at: "2026-03-01T00:00:00Z".to_string(),
+            updated_at: updated_at.to_string(),
+        };
+        crate::cache::pull_requests::upsert_pull_request(pool, &pr)
+            .await
+            .unwrap();
+    }
+
+    /// Helper: inserts a workspace for cleanup tests (no real worktree).
+    fn sample_cleanup_workspace(
+        id: &str,
+        pr_number: u32,
+        state: WorkspaceState,
+    ) -> crate::types::Workspace {
+        crate::types::Workspace {
+            id: id.to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: pr_number,
+            state,
+            worktree_path: None,
+            session_id: None,
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_merged_pr() {
+        let (pool, _tmp) = test_pool().await;
+        insert_test_repo(&pool, None).await;
+        let pty_state = PtyManagerState::new();
+
+        // Merged PR with old updated_at (well past 24h delay)
+        insert_test_pr(
+            &pool,
+            "pr-1",
+            42,
+            crate::types::PrState::Merged,
+            "2026-03-01T00:00:00Z",
+        )
+        .await;
+
+        // Workspace linked to this PR
+        let ws = sample_cleanup_workspace("ws-1", 42, WorkspaceState::Active);
+        crate::cache::workspaces::create_workspace(&pool, &ws)
+            .await
+            .unwrap();
+
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+            .await
+            .unwrap();
+        assert_eq!(archived.len(), 1, "should archive 1 workspace");
+        assert_eq!(archived[0], "ws-1");
+
+        let ws = crate::cache::workspaces::get_workspace(&pool, "ws-1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(ws.state, WorkspaceState::Archived);
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_closed_pr() {
+        let (pool, _tmp) = test_pool().await;
+        insert_test_repo(&pool, None).await;
+        let pty_state = PtyManagerState::new();
+
+        // Closed PR with old updated_at (well past 48h delay)
+        insert_test_pr(
+            &pool,
+            "pr-2",
+            99,
+            crate::types::PrState::Closed,
+            "2026-03-01T00:00:00Z",
+        )
+        .await;
+
+        let ws = sample_cleanup_workspace("ws-2", 99, WorkspaceState::Suspended);
+        crate::cache::workspaces::create_workspace(&pool, &ws)
+            .await
+            .unwrap();
+
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+            .await
+            .unwrap();
+        assert_eq!(
+            archived.len(),
+            1,
+            "should archive 1 workspace for closed PR"
+        );
+        assert_eq!(archived[0], "ws-2");
+
+        let ws = crate::cache::workspaces::get_workspace(&pool, "ws-2")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(ws.state, WorkspaceState::Archived);
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_respects_delay() {
+        let (pool, _tmp) = test_pool().await;
+        insert_test_repo(&pool, None).await;
+        let pty_state = PtyManagerState::new();
+
+        // Merged PR with very recent updated_at (within delay)
+        let recent = chrono::Utc::now().to_rfc3339();
+        insert_test_pr(&pool, "pr-3", 10, crate::types::PrState::Merged, &recent).await;
+
+        let ws = sample_cleanup_workspace("ws-3", 10, WorkspaceState::Active);
+        crate::cache::workspaces::create_workspace(&pool, &ws)
+            .await
+            .unwrap();
+
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+            .await
+            .unwrap();
+        assert!(
+            archived.is_empty(),
+            "should not archive workspace within delay"
+        );
+
+        let ws = crate::cache::workspaces::get_workspace(&pool, "ws-3")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            ws.state,
+            WorkspaceState::Active,
+            "workspace should remain active"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_nothing_to_clean() {
+        let (pool, _tmp) = test_pool().await;
+        insert_test_repo(&pool, None).await;
+        let pty_state = PtyManagerState::new();
+
+        // Open PR — should never be cleaned up
+        insert_test_pr(
+            &pool,
+            "pr-4",
+            50,
+            crate::types::PrState::Open,
+            "2026-03-01T00:00:00Z",
+        )
+        .await;
+
+        let ws = sample_cleanup_workspace("ws-4", 50, WorkspaceState::Active);
+        crate::cache::workspaces::create_workspace(&pool, &ws)
+            .await
+            .unwrap();
+
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+            .await
+            .unwrap();
+        assert!(
+            archived.is_empty(),
+            "should not archive workspace for open PR"
+        );
+
+        // No workspaces at all
+        let (pool2, _tmp2) = test_pool().await;
+        let archived = workspace_cleanup_inner(&pool2, &pty_state, 24, 48)
+            .await
+            .unwrap();
+        assert!(
+            archived.is_empty(),
+            "should return empty with no workspaces"
+        );
+
+        pool.close().await;
+        pool2.close().await;
     }
 }

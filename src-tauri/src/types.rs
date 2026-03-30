@@ -317,6 +317,10 @@ pub struct AppConfig {
     pub poll_interval_secs: u64,
     /// Maximum number of simultaneously active workspaces (LRU eviction).
     pub max_active_workspaces: u32,
+    /// Hours after a PR is merged before its workspace is auto-archived (default 24).
+    pub archive_delay_hours: u64,
+    /// Hours after a PR is closed before its workspace is auto-archived (default 48).
+    pub archive_delay_closed_hours: u64,
     /// GitHub personal access token or OAuth token. `None` means not yet configured.
     pub github_token: Option<String>,
     /// Override for the `SQLite` data directory (`~/.local/share/prism/` by default).
@@ -330,6 +334,11 @@ impl fmt::Debug for AppConfig {
         f.debug_struct("AppConfig")
             .field("poll_interval_secs", &self.poll_interval_secs)
             .field("max_active_workspaces", &self.max_active_workspaces)
+            .field("archive_delay_hours", &self.archive_delay_hours)
+            .field(
+                "archive_delay_closed_hours",
+                &self.archive_delay_closed_hours,
+            )
             .field(
                 "github_token",
                 &self.github_token.as_ref().map(|_| "<redacted>"),
@@ -345,6 +354,8 @@ impl Default for AppConfig {
         Self {
             poll_interval_secs: 300,
             max_active_workspaces: 3,
+            archive_delay_hours: 24,
+            archive_delay_closed_hours: 48,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -388,6 +399,8 @@ where
 pub struct PartialAppConfig {
     pub poll_interval_secs: Option<u64>,
     pub max_active_workspaces: Option<u32>,
+    pub archive_delay_hours: Option<u64>,
+    pub archive_delay_closed_hours: Option<u64>,
     #[serde(deserialize_with = "deserialize_double_option", default)]
     pub github_token: Option<Option<String>>,
     #[serde(deserialize_with = "deserialize_double_option", default)]
@@ -407,6 +420,12 @@ pub fn merge_partial_config(base: &AppConfig, partial: &PartialAppConfig) -> App
         max_active_workspaces: partial
             .max_active_workspaces
             .unwrap_or(base.max_active_workspaces),
+        archive_delay_hours: partial
+            .archive_delay_hours
+            .unwrap_or(base.archive_delay_hours),
+        archive_delay_closed_hours: partial
+            .archive_delay_closed_hours
+            .unwrap_or(base.archive_delay_closed_hours),
         github_token: match &partial.github_token {
             Some(v) => v.clone(),
             None => base.github_token.clone(),
@@ -1002,6 +1021,8 @@ mod tests {
         let config = AppConfig {
             poll_interval_secs: 120,
             max_active_workspaces: 5,
+            archive_delay_hours: 12,
+            archive_delay_closed_hours: 72,
             github_token: Some("test-token".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: None,
@@ -1009,6 +1030,8 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"pollIntervalSecs\""));
         assert!(json.contains("\"maxActiveWorkspaces\""));
+        assert!(json.contains("\"archiveDelayHours\""));
+        assert!(json.contains("\"archiveDelayClosedHours\""));
         assert!(json.contains("\"githubToken\""));
         assert!(json.contains("\"dataDir\""));
         assert!(json.contains("\"workspacesDir\":null"));
@@ -1021,6 +1044,8 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(config.poll_interval_secs, 300);
         assert_eq!(config.max_active_workspaces, 3);
+        assert_eq!(config.archive_delay_hours, 24);
+        assert_eq!(config.archive_delay_closed_hours, 48);
         assert!(config.github_token.is_none());
         assert!(config.data_dir.is_none());
         assert!(config.workspaces_dir.is_none());
