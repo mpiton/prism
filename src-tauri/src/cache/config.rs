@@ -7,6 +7,8 @@ use crate::types::AppConfig;
 /// Keys used in the `config` key-value table.
 const KEY_POLL_INTERVAL: &str = "poll_interval_secs";
 const KEY_MAX_WORKSPACES: &str = "max_active_workspaces";
+const KEY_ARCHIVE_DELAY: &str = "archive_delay_hours";
+const KEY_ARCHIVE_DELAY_CLOSED: &str = "archive_delay_closed_hours";
 const KEY_GITHUB_TOKEN: &str = "github_token";
 const KEY_DATA_DIR: &str = "data_dir";
 const KEY_WORKSPACES_DIR: &str = "workspaces_dir";
@@ -74,6 +76,20 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
                     KEY_MAX_WORKSPACES, row.value
                 ),
             },
+            KEY_ARCHIVE_DELAY => match row.value.parse::<u64>() {
+                Ok(v) => config.archive_delay_hours = v,
+                Err(_) => warn!(
+                    "ignoring non-parseable config value for '{}': '{}', using default",
+                    KEY_ARCHIVE_DELAY, row.value
+                ),
+            },
+            KEY_ARCHIVE_DELAY_CLOSED => match row.value.parse::<u64>() {
+                Ok(v) => config.archive_delay_closed_hours = v,
+                Err(_) => warn!(
+                    "ignoring non-parseable config value for '{}': '{}', using default",
+                    KEY_ARCHIVE_DELAY_CLOSED, row.value
+                ),
+            },
             KEY_GITHUB_TOKEN => {
                 config.github_token = Some(row.value);
             }
@@ -104,6 +120,18 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
 
     upsert_key(&mut *tx, KEY_POLL_INTERVAL, &poll_interval.to_string()).await?;
     upsert_key(&mut *tx, KEY_MAX_WORKSPACES, &max_workspaces.to_string()).await?;
+    upsert_key(
+        &mut *tx,
+        KEY_ARCHIVE_DELAY,
+        &config.archive_delay_hours.to_string(),
+    )
+    .await?;
+    upsert_key(
+        &mut *tx,
+        KEY_ARCHIVE_DELAY_CLOSED,
+        &config.archive_delay_closed_hours.to_string(),
+    )
+    .await?;
 
     set_optional_key(&mut *tx, KEY_GITHUB_TOKEN, config.github_token.as_deref()).await?;
     set_optional_key(&mut *tx, KEY_DATA_DIR, config.data_dir.as_deref()).await?;
@@ -120,6 +148,8 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
     Ok(AppConfig {
         poll_interval_secs: poll_interval,
         max_active_workspaces: max_workspaces,
+        archive_delay_hours: config.archive_delay_hours,
+        archive_delay_closed_hours: config.archive_delay_closed_hours,
         github_token: config.github_token.clone(),
         data_dir: config.data_dir.clone(),
         workspaces_dir: config.workspaces_dir.clone(),
@@ -218,6 +248,8 @@ mod tests {
         let config = AppConfig {
             poll_interval_secs: 120,
             max_active_workspaces: 5,
+            archive_delay_hours: 12,
+            archive_delay_closed_hours: 72,
             github_token: Some("ghp_test".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: Some("/custom/ws".to_string()),

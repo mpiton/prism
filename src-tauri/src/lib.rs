@@ -178,6 +178,7 @@ pub fn run() {
             commands::workspace_suspend,
             commands::workspace_resume,
             commands::workspace_archive,
+            commands::workspace_cleanup,
             commands::pty_write,
             commands::pty_resize,
             commands::pty_kill,
