@@ -1,18 +1,19 @@
 import { useWorkspacesStore } from "../../stores/workspaces";
-import type { Workspace } from "../../lib/types";
+import { useSettingsStore } from "../../stores/settings";
+import type { Workspace, WorkspaceState } from "../../lib/types";
 
 interface WorkspaceSwitcherProps {
   readonly workspaces: readonly Workspace[];
   readonly onBackToDashboard: () => void;
 }
 
-const MAX_ACTIVE = 3;
+const DEFAULT_MAX_ACTIVE = 3;
 
-const STATE_DOT_CLASS: Record<string, string> = {
+const STATE_DOT_CLASS = {
   active: "bg-green",
   suspended: "bg-orange",
   archived: "bg-dim",
-};
+} satisfies Record<WorkspaceState, string>;
 
 export function WorkspaceSwitcher({
   workspaces,
@@ -20,6 +21,8 @@ export function WorkspaceSwitcher({
 }: WorkspaceSwitcherProps) {
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
+  const maxActiveWorkspaces =
+    useSettingsStore((s) => s.config?.maxActiveWorkspaces) ?? DEFAULT_MAX_ACTIVE;
 
   const activeCount = workspaces.filter((w) => w.state === "active").length;
 
@@ -36,13 +39,15 @@ export function WorkspaceSwitcher({
         Dashboard
       </button>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" role="tablist" aria-label="Workspaces">
         {workspaces.map((ws) => {
           const isActive = ws.id === activeWorkspaceId;
           return (
             <button
               key={ws.id}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               data-testid={`tab-${ws.id}`}
               data-active={isActive ? "true" : "false"}
               onClick={() => setActiveWorkspace(ws.id)}
@@ -54,7 +59,7 @@ export function WorkspaceSwitcher({
             >
               <span
                 data-testid={`dot-${ws.id}`}
-                className={`inline-block h-1.5 w-1.5 rounded-full ${STATE_DOT_CLASS[ws.state] ?? "bg-dim"}`}
+                className={`inline-block h-1.5 w-1.5 rounded-full ${STATE_DOT_CLASS[ws.state]}`}
               />
               #{ws.pullRequestNumber}
             </button>
@@ -63,7 +68,7 @@ export function WorkspaceSwitcher({
       </div>
 
       <span className="ml-auto text-xs text-muted">
-        {activeCount}/{MAX_ACTIVE}
+        {activeCount}/{maxActiveWorkspaces}
       </span>
     </nav>
   );

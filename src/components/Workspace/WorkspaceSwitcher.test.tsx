@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import type { Workspace } from "../../lib/types";
 import { useWorkspacesStore } from "../../stores/workspaces";
+import { useSettingsStore } from "../../stores/settings";
 
 // ── Mock data ───────────────────────────────────────────────────────
 
@@ -38,17 +39,34 @@ const WORKSPACES: readonly Workspace[] = [
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
   },
+  {
+    id: "ws-4",
+    repoId: "repo-2",
+    pullRequestNumber: 15,
+    state: "archived",
+    worktreePath: null,
+    sessionId: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+  },
 ] as const;
 
-function resetStore() {
-  useWorkspacesStore.setState({
-    activeWorkspaceId: "ws-1",
+function resetStores() {
+  useWorkspacesStore.setState({ activeWorkspaceId: "ws-1" });
+  useSettingsStore.setState({
+    config: {
+      pollIntervalSecs: 300,
+      maxActiveWorkspaces: 3,
+      githubToken: null,
+      dataDir: null,
+      workspacesDir: null,
+    },
   });
 }
 
 describe("WorkspaceSwitcher", () => {
   beforeEach(() => {
-    resetStore();
+    resetStores();
   });
 
   it("should render all workspace tabs", () => {
@@ -117,9 +135,50 @@ describe("WorkspaceSwitcher", () => {
 
     const activeDot = screen.getByTestId("dot-ws-1");
     const suspendedDot = screen.getByTestId("dot-ws-2");
+    const archivedDot = screen.getByTestId("dot-ws-4");
 
     expect(activeDot.className).toContain("bg-green");
     expect(suspendedDot.className).toContain("bg-orange");
+    expect(archivedDot.className).toContain("bg-dim");
+  });
+
+  it("should use maxActiveWorkspaces from settings store", () => {
+    useSettingsStore.setState({
+      config: {
+        pollIntervalSecs: 300,
+        maxActiveWorkspaces: 5,
+        githubToken: null,
+        dataDir: null,
+        workspacesDir: null,
+      },
+    });
+
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("2/5")).toBeInTheDocument();
+  });
+
+  it("should have proper ARIA tab roles", () => {
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(4);
+
+    const activeTab = screen.getByTestId("tab-ws-1");
+    const inactiveTab = screen.getByTestId("tab-ws-2");
+
+    expect(activeTab).toHaveAttribute("aria-selected", "true");
+    expect(inactiveTab).toHaveAttribute("aria-selected", "false");
   });
 
   it("should call onBackToDashboard when back button is clicked", async () => {
