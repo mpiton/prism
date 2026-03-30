@@ -144,6 +144,9 @@ describe("useWorkspace", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["workspaces"],
     });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["github", "dashboard"],
+    });
   });
 
   it("should show message when active workspace suspended", async () => {
@@ -246,5 +249,76 @@ describe("useWorkspace", () => {
     });
 
     expect(result.current.suspendedActiveWorkspace).toBeNull();
+  });
+
+  it("should clear suspended notice when workspace resumes", async () => {
+    (useWorkspacesStore as unknown as Mock).mockImplementation((selector: (s: { activeWorkspaceId: string | null }) => unknown) =>
+      selector({ activeWorkspaceId: "ws-1" }),
+    );
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "workspace:state_changed",
+        expect.any(Function),
+      );
+    });
+
+    const handler = getEventHandler<{ workspaceId: string; newState: WorkspaceState }>(
+      "workspace:state_changed",
+    );
+
+    await act(() => {
+      handler({ workspaceId: "ws-1", newState: "suspended" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.suspendedActiveWorkspace).toBe("ws-1");
+    });
+
+    await act(() => {
+      handler({ workspaceId: "ws-1", newState: "active" });
+    });
+
+    expect(result.current.suspendedActiveWorkspace).toBeNull();
+  });
+
+  it("should clear stale notice when active workspace changes", async () => {
+    let currentActiveId: string | null = "ws-1";
+    (useWorkspacesStore as unknown as Mock).mockImplementation((selector: (s: { activeWorkspaceId: string | null }) => unknown) =>
+      selector({ activeWorkspaceId: currentActiveId }),
+    );
+
+    const { wrapper } = createWrapper();
+    const { result, rerender } = renderHook(() => useWorkspace(), { wrapper });
+
+    await waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "workspace:state_changed",
+        expect.any(Function),
+      );
+    });
+
+    const handler = getEventHandler<{ workspaceId: string; newState: WorkspaceState }>(
+      "workspace:state_changed",
+    );
+
+    await act(() => {
+      handler({ workspaceId: "ws-1", newState: "suspended" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.suspendedActiveWorkspace).toBe("ws-1");
+    });
+
+    // Switch active workspace
+    currentActiveId = "ws-2";
+    rerender();
+
+    await waitFor(() => {
+      expect(result.current.suspendedActiveWorkspace).toBeNull();
+    });
   });
 });

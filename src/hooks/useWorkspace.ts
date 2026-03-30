@@ -51,6 +51,13 @@ export function useWorkspace(): UseWorkspaceResult {
     staleTime: STALE_TIME,
   });
 
+  // Clear stale suspended notice when the user switches active workspace
+  useEffect(() => {
+    setSuspendedActiveWorkspace((prev) =>
+      prev !== null && prev !== activeWorkspaceId ? null : prev,
+    );
+  }, [activeWorkspaceId]);
+
   // Each effect invocation creates its own `cancelled` closure. On cleanup,
   // `cancelled` is set to `true` so that:
   // (a) any pending `onEvent` promise resolves and immediately unlistens, and
@@ -65,12 +72,12 @@ export function useWorkspace(): UseWorkspaceResult {
       async (payload) => {
         await invalidateWorkspaceQueries(queryClient);
 
-        if (
-          !cancelled &&
-          payload.workspaceId === activeIdRef.current &&
-          payload.newState === "suspended"
-        ) {
-          setSuspendedActiveWorkspace(payload.workspaceId);
+        if (!cancelled && payload.workspaceId === activeIdRef.current) {
+          if (payload.newState === "suspended") {
+            setSuspendedActiveWorkspace(payload.workspaceId);
+          } else if (payload.newState === "active") {
+            setSuspendedActiveWorkspace(null);
+          }
         }
       },
     )
