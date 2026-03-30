@@ -565,10 +565,13 @@ pub(crate) async fn workspace_open_inner(
                 if let Some(old_pty) = pty_state.unregister(&oldest.id) {
                     let _ = pty_state.manager.kill(&old_pty);
                 }
-                if let Err(e) =
-                    update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended, None).await
+                match update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended, None)
+                    .await
                 {
-                    log::warn!("failed to suspend evicted workspace {}: {e}", oldest.id);
+                    Ok(evicted) => spawn_suspension_note(pool, &evicted),
+                    Err(e) => {
+                        log::warn!("failed to suspend evicted workspace {}: {e}", oldest.id);
+                    }
                 }
             }
         }
@@ -589,17 +592,34 @@ pub(crate) async fn workspace_open_inner(
 /// Suspends an active workspace: kills its PTY and sets state to Suspended.
 ///
 /// Emits no event — the Tauri command wrapper handles event emission.
+/// Spawns a background task to generate and store a suspension note.
+///
+/// No-op if the workspace has no `session_id` or `worktree_path`.
+/// Fire-and-forget: failures are logged, never propagated.
+fn spawn_suspension_note(pool: &SqlitePool, ws: &Workspace) {
+    if let (Some(wt_path), Some(session_id)) = (ws.worktree_path.clone(), ws.session_id.clone()) {
+        let pool = pool.clone();
+        let ws_id = ws.id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::workspace::claude::create_suspension_note(
+                &pool,
+                &ws_id,
+                Path::new(&wt_path),
+                Some(&session_id),
+            )
+            .await
+            {
+                log::warn!("failed to generate suspension note for '{ws_id}': {e}");
+            }
+        });
+    }
+}
+
 pub(crate) async fn workspace_suspend_inner(
     pool: &SqlitePool,
     pty_state: &PtyManagerState,
     workspace_id: &str,
 ) -> Result<Workspace, AppError> {
-    // Fetch workspace before suspension to capture session_id + worktree_path
-    // for background note generation.
-    let ws = crate::cache::workspaces::get_workspace(pool, workspace_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("workspace '{workspace_id}'")))?;
-
     // Kill the PTY if one is tracked (before DB update — safe direction of failure)
     if let Some(pty_id) = pty_state.unregister(workspace_id)
         && let Err(e) = pty_state.manager.kill(&pty_id)
@@ -616,24 +636,8 @@ pub(crate) async fn workspace_suspend_inner(
     )
     .await?;
 
-    // Best-effort: generate a suspension note in the background (up to 30 s).
-    // Fire-and-forget so the suspend command returns immediately.
-    if let (Some(wt_path), Some(session_id)) = (ws.worktree_path.clone(), ws.session_id.clone()) {
-        let pool = pool.clone();
-        let ws_id = workspace_id.to_string();
-        tokio::spawn(async move {
-            if let Err(e) = crate::workspace::claude::create_suspension_note(
-                &pool,
-                &ws_id,
-                Path::new(&wt_path),
-                Some(&session_id),
-            )
-            .await
-            {
-                log::warn!("failed to generate suspension note for '{ws_id}': {e}");
-            }
-        });
-    }
+    // Best-effort background note generation using the post-update workspace.
+    spawn_suspension_note(pool, &suspended);
 
     Ok(suspended)
 }
