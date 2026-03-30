@@ -30,21 +30,23 @@ export function WorkspaceView({
         onBackToDashboard={onBackToDashboard}
       />
 
-      {active && info ? (
+      {active ? (
         <>
           <div className="min-h-0 flex-1">
             <Terminal ptyId={active.id} />
           </div>
-          <WorkspaceStatusBar
-            workspaceId={active.id}
-            branch={info.branch}
-            ahead={info.ahead}
-            behind={info.behind}
-            ciStatus={info.ciStatus}
-            sessionName={info.sessionName}
-            sessionCount={info.sessionCount}
-            githubUrl={info.githubUrl}
-          />
+          {info && (
+            <WorkspaceStatusBar
+              workspaceId={active.id}
+              branch={info.branch}
+              ahead={info.ahead}
+              behind={info.behind}
+              ciStatus={info.ciStatus}
+              sessionName={info.sessionName}
+              sessionCount={info.sessionCount}
+              githubUrl={info.githubUrl}
+            />
+          )}
         </>
       ) : (
         <div className="flex flex-1 items-center justify-center text-dim">

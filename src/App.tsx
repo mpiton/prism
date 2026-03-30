@@ -36,6 +36,7 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
     case "feed":
       return <ActivityFeed activities={[]} onMarkAllRead={() => {}} />;
     case "workspaces":
+      // TODO(T-082): wire real workspace data from TanStack Query
       return (
         <WorkspaceView
           workspaces={[]}

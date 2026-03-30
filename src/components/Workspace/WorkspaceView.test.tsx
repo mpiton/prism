@@ -133,7 +133,7 @@ describe("WorkspaceView", () => {
     expect(screen.getByText(/select a workspace/i)).toBeInTheDocument();
   });
 
-  it("should show empty state when active workspace has no status info", () => {
+  it("should render terminal without status bar when status info is missing", () => {
     render(
       <WorkspaceView
         workspaces={WORKSPACES}
@@ -143,8 +143,8 @@ describe("WorkspaceView", () => {
     );
 
     expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
-    expect(screen.queryByTestId("terminal-ws-1")).not.toBeInTheDocument();
-    expect(screen.getByText(/select a workspace/i)).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-ws-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-statusbar")).not.toBeInTheDocument();
   });
 
   it("should show empty state when active workspace not in list", () => {
@@ -160,5 +160,6 @@ describe("WorkspaceView", () => {
 
     expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace-statusbar")).not.toBeInTheDocument();
+    expect(screen.getByText(/select a workspace/i)).toBeInTheDocument();
   });
 });
