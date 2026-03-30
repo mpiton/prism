@@ -258,6 +258,8 @@ mod tests {
         let result = set_config(&pool, &config).await.unwrap();
         assert_eq!(result.poll_interval_secs, 120);
         assert_eq!(result.max_active_workspaces, 5);
+        assert_eq!(result.archive_delay_hours, 12);
+        assert_eq!(result.archive_delay_closed_hours, 72);
         assert_eq!(result.github_token.as_deref(), Some("ghp_test"));
         assert_eq!(result.data_dir.as_deref(), Some("/custom/data"));
         assert_eq!(result.workspaces_dir.as_deref(), Some("/custom/ws"));
