@@ -248,6 +248,16 @@ pub struct DashboardStats {
     pub unread_activity: u32,
 }
 
+/// Personal statistics for the authenticated user (T-085).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonalStats {
+    pub prs_merged_this_week: u32,
+    pub avg_review_response_hours: f64,
+    pub reviews_given_this_week: u32,
+    pub active_workspace_count: u32,
+}
+
 // ── IPC payloads (T-011) ──────────────────────────────────────
 
 /// Request payload for the `workspace_open` IPC command.

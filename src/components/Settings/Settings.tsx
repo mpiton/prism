@@ -8,6 +8,7 @@ import {
   authGetStatus,
 } from "../../lib/tauri";
 import type { PartialAppConfig, Repo } from "../../lib/types";
+import { Stats } from "./Stats";
 
 function useConfigQuery() {
   return useQuery({ queryKey: ["config"], queryFn: getConfig });
@@ -197,6 +198,8 @@ export function Settings(): ReactElement {
           </div>
         )}
       </div>
+
+      <Stats />
     </section>
   );
 }

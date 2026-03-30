@@ -177,6 +177,15 @@ export interface AuthStatus {
   readonly error: string | null;
 }
 
+// ── Personal stats (T-085) ───────────────────────────────────────
+
+export interface PersonalStats {
+  readonly prsMergedThisWeek: number;
+  readonly avgReviewResponseHours: number;
+  readonly reviewsGivenThisWeek: number;
+  readonly activeWorkspaceCount: number;
+}
+
 // ── IPC payloads (T-011) ─────────────────────────────────────────
 
 export interface OpenWorkspaceRequest {
@@ -257,6 +266,7 @@ export type TauriCommandName =
   | "config_set"
   | "activity_mark_read"
   | "activity_mark_all_read"
+  | "stats_personal"
   | "auth_set_token"
   | "auth_get_status"
   | "auth_logout";
@@ -282,6 +292,7 @@ export const TAURI_COMMANDS = {
   config_set: "config_set",
   activity_mark_read: "activity_mark_read",
   activity_mark_all_read: "activity_mark_all_read",
+  stats_personal: "stats_personal",
   auth_set_token: "auth_set_token",
   auth_get_status: "auth_get_status",
   auth_logout: "auth_logout",

@@ -7,5 +7,6 @@ pub mod notifications;
 pub mod pull_requests;
 pub mod repos;
 pub mod reviews;
+pub mod stats;
 pub mod sync;
 pub mod workspaces;
