@@ -153,11 +153,12 @@ pub fn render_claude_md(ctx: &PrContext) -> String {
     );
     md.push('\n');
 
-    // Description
+    // Description (fenced as untrusted content)
     if !ctx.body.is_empty() {
         md.push_str("## Description\n\n");
-        md.push_str(&ctx.body);
-        md.push_str("\n\n");
+        md.push_str("```text\n");
+        md.push_str(&escape_fenced_text(&ctx.body));
+        md.push_str("\n```\n\n");
     }
 
     // Reviews
@@ -169,16 +170,23 @@ pub fn render_claude_md(ctx: &PrContext) -> String {
         md.push('\n');
     }
 
-    // Unresolved review threads
-    if !ctx.unresolved_threads.is_empty() {
+    // Unresolved review threads (skip empty threads)
+    let non_empty_threads: Vec<_> = ctx
+        .unresolved_threads
+        .iter()
+        .filter(|t| !t.comments.is_empty())
+        .collect();
+    if !non_empty_threads.is_empty() {
         md.push_str("## Unresolved Review Comments\n\n");
-        for thread in &ctx.unresolved_threads {
+        for thread in &non_empty_threads {
             let path = thread.path.as_deref().unwrap_or("(no file)");
             let _ = writeln!(md, "### `{path}`");
             md.push('\n');
             for comment in &thread.comments {
-                let _ = writeln!(md, "**{}**: {}", comment.author, comment.body);
-                md.push('\n');
+                let _ = writeln!(md, "**{}**:", comment.author);
+                md.push_str("```text\n");
+                md.push_str(&escape_fenced_text(&comment.body));
+                md.push_str("\n```\n\n");
             }
         }
     }
@@ -188,12 +196,24 @@ pub fn render_claude_md(ctx: &PrContext) -> String {
         md.push_str("## Changed Files\n\n");
         md.push_str("| File | +/- |\n|------|-----|\n");
         for f in &ctx.changed_files {
-            let _ = writeln!(md, "| `{}` | +{}/-{} |", f.path, f.additions, f.deletions);
+            let escaped = escape_table_cell(&f.path);
+            let _ = writeln!(md, "| `{escaped}` | +{}/-{} |", f.additions, f.deletions);
         }
         md.push('\n');
     }
 
     md
+}
+
+/// Escapes text for safe inclusion inside a fenced code block.
+/// Neutralizes triple backticks that would prematurely close the fence.
+fn escape_fenced_text(text: &str) -> String {
+    text.replace("```", "` ` `")
+}
+
+/// Escapes a string for safe use inside a markdown table cell.
+fn escape_table_cell(value: &str) -> String {
+    value.replace('|', "\\|").replace('\n', " ")
 }
 
 /// Parses `repo_id` ("owner/name") into (owner, name).
@@ -596,10 +616,14 @@ mod tests {
         );
         assert!(md.contains("#42"), "should contain PR number");
 
-        // PR body
+        // PR body is fenced
         assert!(
             md.contains("OAuth2 authentication"),
             "should contain PR body"
+        );
+        assert!(
+            md.contains("```text\nThis PR adds OAuth2"),
+            "body should be inside a fenced block"
         );
 
         // Branch info
@@ -662,10 +686,14 @@ mod tests {
             "should show bob's changes requested"
         );
 
-        // Unresolved threads
+        // Unresolved threads — comments are fenced
         assert!(
             md.contains("error handling for expired tokens"),
             "should contain unresolved comment body"
+        );
+        assert!(
+            md.contains("```text\nThis needs error handling"),
+            "comment body should be inside a fenced block"
         );
         assert!(
             md.contains("src/auth/mod.rs"),
@@ -714,6 +742,73 @@ mod tests {
         assert!(
             !md.contains("##\n\n##"),
             "should not have empty section headers back-to-back"
+        );
+    }
+
+    #[test]
+    fn test_render_skips_empty_threads() {
+        let mut ctx = sample_pr_context();
+        ctx.unresolved_threads = vec![
+            ReviewThreadContext {
+                path: Some("src/empty.rs".into()),
+                comments: vec![], // empty — should be skipped
+            },
+            ReviewThreadContext {
+                path: Some("src/real.rs".into()),
+                comments: vec![ThreadComment {
+                    author: "reviewer".into(),
+                    body: "Fix this.".into(),
+                }],
+            },
+        ];
+
+        let md = render_claude_md(&ctx);
+        assert!(
+            md.contains("src/real.rs"),
+            "should include non-empty thread"
+        );
+        assert!(
+            !md.contains("src/empty.rs"),
+            "should skip empty comment thread"
+        );
+    }
+
+    #[test]
+    fn test_render_escapes_backticks_in_body() {
+        let mut ctx = sample_pr_context();
+        ctx.body = "Before ```rust\nlet x = 1;\n``` after".into();
+
+        let md = render_claude_md(&ctx);
+        assert!(
+            !md.contains("```rust"),
+            "triple backticks in body should be escaped"
+        );
+        assert!(md.contains("` ` `rust"), "escaped backticks should appear");
+    }
+
+    #[test]
+    fn test_render_escapes_pipe_in_file_path() {
+        let mut ctx = sample_pr_context();
+        ctx.changed_files = vec![ChangedFile {
+            path: "src/a|b.rs".into(),
+            additions: 1,
+            deletions: 0,
+        }];
+
+        let md = render_claude_md(&ctx);
+        assert!(
+            md.contains("src/a\\|b.rs"),
+            "pipe in path should be escaped"
+        );
+        // Table should still have correct column count
+        let table_row = md
+            .lines()
+            .find(|l| l.contains("a\\|b.rs"))
+            .expect("should find escaped path line");
+        assert_eq!(
+            table_row.matches('|').count(),
+            4,
+            "table row should have 4 pipe delimiters"
         );
     }
 }
