@@ -1,3 +1,2 @@
-export function Workspace() {
-  return <section data-testid="workspace">Workspace</section>;
-}
+export { WorkspaceView } from "./WorkspaceView";
+export type { WorkspaceStatusInfo } from "./WorkspaceView";

@@ -5,7 +5,7 @@ import { ReviewQueue } from "./components/ReviewQueue";
 import { MyPRs } from "./components/MyPRs";
 import { Issues } from "./components/Issues";
 import { ActivityFeed } from "./components/ActivityFeed";
-import { Workspace } from "./components/Workspace";
+import { WorkspaceView } from "./components/Workspace";
 import { Settings } from "./components/Settings";
 import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
@@ -35,7 +35,13 @@ function MainContent({ view }: MainContentProps): ReactElement {
     case "feed":
       return <ActivityFeed activities={[]} onMarkAllRead={() => {}} />;
     case "workspaces":
-      return <Workspace />;
+      return (
+        <WorkspaceView
+          workspaces={[]}
+          statusInfo={{}}
+          onBackToDashboard={() => useDashboardStore.getState().setView("overview")}
+        />
+      );
     case "settings":
       return <Settings />;
     default: {
