@@ -18,7 +18,7 @@ function formatDiskUsage(entries: readonly WorkspaceListEntry[]): string | null 
   const hasAnyDiskData = entries.some((e) => e.diskUsageMb != null);
   if (!hasAnyDiskData) return null;
   const total = entries.reduce((sum, e) => sum + (e.diskUsageMb ?? 0), 0);
-  return `${total} MB`;
+  return `${Math.round(total)} MB`;
 }
 
 export function WorkspaceListPage({
@@ -69,7 +69,7 @@ export function WorkspaceListPage({
                 )}
 
                 <div className="mt-0.5 flex items-center gap-3 text-xs text-dim">
-                  <span>{sessionCount} sessions</span>
+                  <span>{sessionCount} {sessionCount === 1 ? "session" : "sessions"}</span>
                   {diskUsageMb != null && <span>{diskUsageMb} MB</span>}
                 </div>
 

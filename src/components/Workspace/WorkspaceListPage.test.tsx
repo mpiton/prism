@@ -181,8 +181,8 @@ describe("WorkspaceListPage", () => {
       <WorkspaceListPage entries={ENTRIES} onWorkspaceClick={vi.fn()} />,
     );
 
-    expect(screen.getByText(/5 sessions/i)).toBeInTheDocument();
-    expect(screen.getByText(/2 sessions/i)).toBeInTheDocument();
+    expect(screen.getByText(/5 sessions/)).toBeInTheDocument();
+    expect(screen.getByText(/2 sessions/)).toBeInTheDocument();
   });
 
   it("should show last note excerpt when available", () => {
@@ -191,6 +191,18 @@ describe("WorkspaceListPage", () => {
     );
 
     expect(screen.getByText(/Fixed auth flow/)).toBeInTheDocument();
+  });
+
+  it("should use singular form for 1 session", () => {
+    const singleSession: readonly WorkspaceListEntry[] = [
+      { ...ACTIVE_ENTRY, sessionCount: 1 },
+    ];
+
+    render(
+      <WorkspaceListPage entries={singleSession} onWorkspaceClick={vi.fn()} />,
+    );
+
+    expect(screen.getByText(/1 session$/)).toBeInTheDocument();
   });
 
   it("should not show disk usage footer when no entries have disk data", () => {
