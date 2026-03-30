@@ -301,7 +301,7 @@ pub struct PtyResize {
 }
 
 /// Event payload emitted when a workspace changes state (T-070).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceStateChanged {
     pub workspace_id: String,

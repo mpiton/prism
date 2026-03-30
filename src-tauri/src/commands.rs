@@ -646,8 +646,16 @@ pub(crate) async fn workspace_resume_inner(
     // Spawn a new PTY in the existing worktree
     let pty_id = pty_state.manager.spawn(&wt_path, 80, 24, on_pty_output)?;
 
-    // Update DB state to Active
-    let updated = update_workspace_state(pool, workspace_id, &WorkspaceState::Active).await?;
+    // Update DB state to Active — if this fails, kill the PTY to avoid orphaning it
+    let updated = match update_workspace_state(pool, workspace_id, &WorkspaceState::Active).await {
+        Ok(ws) => ws,
+        Err(e) => {
+            if let Err(kill_err) = pty_state.manager.kill(&pty_id) {
+                log::warn!("failed to kill orphaned PTY {pty_id} after DB error: {kill_err}");
+            }
+            return Err(e);
+        }
+    };
 
     // Track workspace → pty mapping
     pty_state.register(workspace_id, &pty_id);
@@ -686,7 +694,10 @@ pub(crate) async fn workspace_archive_inner(
         log::warn!("failed to kill PTY {pty_id} during archive: {e}");
     }
 
-    // Remove worktree from disk
+    // Remove worktree from disk.
+    // Best-effort: filesystem errors do not fail the archive operation.
+    // The workspace is marked Archived in the DB even if worktree removal fails,
+    // balancing filesystem transience against database consistency.
     if let Some(ref wt_path_str) = ws.worktree_path {
         let wt_path = PathBuf::from(wt_path_str);
         if wt_path.exists()
@@ -783,7 +794,7 @@ pub async fn workspace_resume(
         .map_err(|e| e.to_string())?;
 
     let payload = crate::types::WorkspaceStateChanged {
-        workspace_id: workspace_id.clone(),
+        workspace_id: resp.workspace_id.clone(),
         new_state: WorkspaceState::Active,
     };
     if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
@@ -819,7 +830,12 @@ pub async fn workspace_archive(
         .local_path
         .as_deref()
         .map(PathBuf::from)
-        .unwrap_or_default();
+        .ok_or_else(|| {
+            format!(
+                "repo '{}' has no local_path — cannot remove worktree",
+                ws.repo_id
+            )
+        })?;
 
     let archived = workspace_archive_inner(&pool, &pty_state, &workspace_id, &local_path)
         .await
