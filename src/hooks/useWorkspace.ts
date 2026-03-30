@@ -75,7 +75,7 @@ export function useWorkspace(): UseWorkspaceResult {
         if (!cancelled && payload.workspaceId === activeIdRef.current) {
           if (payload.newState === "suspended") {
             setSuspendedActiveWorkspace(payload.workspaceId);
-          } else if (payload.newState === "active") {
+          } else if (payload.newState !== "suspended") {
             setSuspendedActiveWorkspace(null);
           }
         }

@@ -221,8 +221,10 @@ describe("useWorkspace", () => {
 
     unmount();
 
-    expect(unlistenStateChanged).toHaveBeenCalledOnce();
-    expect(unlistenClaudeSession).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(unlistenStateChanged).toHaveBeenCalledOnce();
+      expect(unlistenClaudeSession).toHaveBeenCalledOnce();
+    });
   });
 
   it("should not flag suspended workspace when it is not the active one", async () => {
@@ -280,6 +282,40 @@ describe("useWorkspace", () => {
 
     await act(() => {
       handler({ workspaceId: "ws-1", newState: "active" });
+    });
+
+    expect(result.current.suspendedActiveWorkspace).toBeNull();
+  });
+
+  it("should clear suspended notice when workspace is archived", async () => {
+    (useWorkspacesStore as unknown as Mock).mockImplementation((selector: (s: { activeWorkspaceId: string | null }) => unknown) =>
+      selector({ activeWorkspaceId: "ws-1" }),
+    );
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "workspace:state_changed",
+        expect.any(Function),
+      );
+    });
+
+    const handler = getEventHandler<{ workspaceId: string; newState: WorkspaceState }>(
+      "workspace:state_changed",
+    );
+
+    await act(() => {
+      handler({ workspaceId: "ws-1", newState: "suspended" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.suspendedActiveWorkspace).toBe("ws-1");
+    });
+
+    await act(() => {
+      handler({ workspaceId: "ws-1", newState: "archived" });
     });
 
     expect(result.current.suspendedActiveWorkspace).toBeNull();
