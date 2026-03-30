@@ -494,6 +494,84 @@ mod tests {
         pool.close().await;
     }
 
+    #[tokio::test]
+    async fn test_lru_evicts_all_when_max_zero() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        for (id, pr) in [("ws-1", 42), ("ws-2", 43)] {
+            create_workspace(&pool, &sample_workspace(id, pr))
+                .await
+                .unwrap();
+        }
+        for (id, mins) in [("ws-1", 20), ("ws-2", 10)] {
+            let ts =
+                (Utc::now() - Duration::minutes(mins)).to_rfc3339_opts(SecondsFormat::Millis, true);
+            sqlx::query("UPDATE workspaces SET last_active_at = $1 WHERE id = $2")
+                .bind(&ts)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        let pty_state = PtyManagerState::new();
+        let evicted = enforce_max_active(&pool, &pty_state, 0).await.unwrap();
+
+        assert_eq!(evicted.len(), 2);
+        for id in ["ws-1", "ws-2"] {
+            assert_eq!(
+                get_workspace(&pool, id).await.unwrap().unwrap().state,
+                WorkspaceState::Suspended
+            );
+        }
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_lru_falls_back_to_updated_at_when_last_active_null() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Create workspaces with different updated_at but NULL last_active_at
+        for (id, pr) in [("ws-1", 42), ("ws-2", 43), ("ws-3", 44)] {
+            create_workspace(&pool, &sample_workspace(id, pr))
+                .await
+                .unwrap();
+        }
+
+        // Set updated_at directly (last_active_at stays NULL)
+        // ws-1 oldest, ws-3 newest
+        for (id, mins) in [("ws-1", 30), ("ws-2", 20), ("ws-3", 10)] {
+            let ts =
+                (Utc::now() - Duration::minutes(mins)).to_rfc3339_opts(SecondsFormat::Millis, true);
+            sqlx::query(
+                "UPDATE workspaces SET updated_at = $1, last_active_at = NULL WHERE id = $2",
+            )
+            .bind(&ts)
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        let pty_state = PtyManagerState::new();
+        let evicted = enforce_max_active(&pool, &pty_state, 2).await.unwrap();
+
+        assert_eq!(evicted.len(), 1);
+        assert_eq!(
+            evicted[0], "ws-1",
+            "should evict oldest by updated_at fallback"
+        );
+        assert_eq!(
+            get_workspace(&pool, "ws-1").await.unwrap().unwrap().state,
+            WorkspaceState::Suspended
+        );
+
+        pool.close().await;
+    }
+
     // ── Auto-archive via lifecycle tick ───────────────────────────────
 
     #[tokio::test]
