@@ -467,6 +467,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_update_workspace_state_guarded_rejects_mismatch() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let ws = sample_workspace("ws-1", 42);
+        create_workspace(&pool, &ws).await.unwrap();
+
+        // Workspace is Active — guarded suspend with expected=Active should succeed
+        let updated = update_workspace_state(
+            &pool,
+            "ws-1",
+            &WorkspaceState::Suspended,
+            Some(&WorkspaceState::Active),
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.state, WorkspaceState::Suspended);
+
+        // Now Suspended — guarded suspend with expected=Active should fail (state mismatch)
+        let err = update_workspace_state(
+            &pool,
+            "ws-1",
+            &WorkspaceState::Suspended,
+            Some(&WorkspaceState::Active),
+        )
+        .await;
+        assert!(
+            err.is_err(),
+            "guarded transition should reject state mismatch"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
     async fn test_update_claude_session() {
         let (pool, _tmp) = test_pool().await;
         upsert_repo(&pool, &sample_repo()).await.unwrap();

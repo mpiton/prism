@@ -723,8 +723,8 @@ pub(crate) async fn workspace_archive_inner(
         );
     }
 
-    // Update DB — archive_workspace clears worktree_path
-    crate::cache::workspaces::archive_workspace(pool, &ws.id).await
+    // Atomic transition: guard on current state for consistency with suspend/resume
+    update_workspace_state(pool, &ws.id, &WorkspaceState::Archived, Some(&ws.state)).await
 }
 
 /// Opens a workspace for a PR: creates worktree, spawns PTY, persists in DB.
@@ -839,11 +839,17 @@ pub async fn workspace_archive(
         .ok_or_else(|| format!("workspace '{workspace_id}' not found"))?;
 
     // Look up repo local path — best-effort (None skips worktree removal)
-    let repo = crate::cache::repos::get_repo(&pool, &ws.repo_id)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let local_path: Option<PathBuf> = repo.local_path.as_deref().map(PathBuf::from);
+    let local_path: Option<PathBuf> = match crate::cache::repos::get_repo(&pool, &ws.repo_id).await
+    {
+        Ok(repo) => repo.local_path.as_deref().map(PathBuf::from),
+        Err(e) => {
+            log::warn!(
+                "could not fetch repo '{}' for worktree removal — skipping: {e}",
+                ws.repo_id
+            );
+            None
+        }
+    };
 
     let archived = workspace_archive_inner(&pool, &pty_state, &ws, local_path.as_deref())
         .await
