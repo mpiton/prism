@@ -31,84 +31,87 @@ export function WorkspaceStatusBar({
 
   function handlePtyCommand(command: string): void {
     if (disabled) return;
-    ptyWrite({ workspaceId, data: `${command}\n` }).catch(() => {});
+    ptyWrite({ workspaceId, data: `${command}\n` }).catch((err: unknown) => {
+      console.error("[WorkspaceStatusBar] ptyWrite failed:", err);
+    });
   }
 
   return (
     <div
       data-testid="workspace-statusbar"
-      role="status"
-      aria-label="Workspace status"
       className="flex items-center gap-3 border-t border-border bg-surface px-3 py-1.5 text-xs"
     >
-      {/* Branch */}
-      <span data-testid="status-branch" className="font-mono text-accent">
-        {branch}
-      </span>
-
-      {/* Ahead / Behind */}
-      {hasSync && (
-        <span className="flex gap-1 font-mono text-dim">
-          {ahead > 0 && <span data-testid="status-ahead">↑{ahead}</span>}
-          {behind > 0 && <span data-testid="status-behind">↓{behind}</span>}
+      {/* Informational live region */}
+      <span role="status" aria-label="Workspace status" className="contents">
+        <span data-testid="status-branch" className="font-mono text-accent">
+          {branch}
         </span>
-      )}
 
-      {/* CI Status */}
-      <span data-testid="status-ci">
-        <CI status={ciStatus} />
+        {hasSync && (
+          <span className="flex gap-1 font-mono text-dim">
+            {ahead > 0 && <span data-testid="status-ahead">↑{ahead}</span>}
+            {behind > 0 && <span data-testid="status-behind">↓{behind}</span>}
+          </span>
+        )}
+
+        <span data-testid="status-ci">
+          <CI status={ciStatus} />
+        </span>
+
+        {sessionName !== null && (
+          <>
+            <span data-testid="status-session" className="text-purple">
+              {sessionName}
+            </span>
+            <span
+              data-testid="status-session-count"
+              className="text-dim"
+              aria-label={`${sessionCount} sessions`}
+            >
+              {sessionCount}
+            </span>
+          </>
+        )}
       </span>
 
-      {/* Session info */}
-      {sessionName !== null && (
-        <>
-          <span data-testid="status-session" className="text-purple">
-            {sessionName}
-          </span>
-          <span
-            data-testid="status-session-count"
-            className="text-dim"
-            aria-label={`${sessionCount} sessions`}
-          >
-            {sessionCount}
-          </span>
-        </>
-      )}
-
-      {/* Spacer */}
       <span className="flex-1" />
 
-      {/* Quick action buttons */}
-      <button
-        data-testid="btn-git-push"
-        type="button"
-        aria-label="Git push"
-        disabled={disabled}
-        className="rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-        onClick={() => handlePtyCommand("git push")}
-      >
-        push
-      </button>
-      <button
-        data-testid="btn-git-pull"
-        type="button"
-        aria-label="Git pull"
-        disabled={disabled}
-        className="rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-        onClick={() => handlePtyCommand("git pull")}
-      >
-        pull
-      </button>
-      <a
-        data-testid="btn-open-github"
-        href={safeGithubUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Open pull request on GitHub"
-        className={`rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text ${disabled ? "pointer-events-none opacity-40" : ""}`}
-      >
-        github
-      </a>
+      {/* Action buttons */}
+      <div role="toolbar" aria-label="Workspace actions" className="flex gap-1">
+        <button
+          data-testid="btn-git-push"
+          type="button"
+          aria-label="Git push"
+          disabled={disabled}
+          className="rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => handlePtyCommand("git push")}
+        >
+          push
+        </button>
+        <button
+          data-testid="btn-git-pull"
+          type="button"
+          aria-label="Git pull"
+          disabled={disabled}
+          className="rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => handlePtyCommand("git pull")}
+        >
+          pull
+        </button>
+        <a
+          data-testid="btn-open-github"
+          href={safeGithubUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open pull request on GitHub"
+          aria-disabled={disabled || undefined}
+          tabIndex={disabled ? -1 : undefined}
+          onClick={disabled ? (e) => e.preventDefault() : undefined}
+          className={`rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text ${disabled ? "pointer-events-none opacity-40" : ""}`}
+        >
+          github
+        </a>
+      </div>
     </div>
   );
 }
