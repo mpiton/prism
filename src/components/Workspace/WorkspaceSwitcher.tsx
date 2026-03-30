@@ -32,6 +32,9 @@ export function WorkspaceSwitcher({
 
   const activeCount = workspaces.filter((w) => w.state === "active").length;
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const focusedId = workspaces.some((w) => w.id === activeWorkspaceId)
+    ? activeWorkspaceId
+    : workspaces[0]?.id ?? null;
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent, index: number) => {
@@ -81,7 +84,7 @@ export function WorkspaceSwitcher({
 
       <div className="flex items-center gap-1" role="tablist" aria-label="Workspaces">
         {workspaces.map((ws, i) => {
-          const isActive = ws.id === activeWorkspaceId;
+          const isActive = ws.id === focusedId;
           return (
             <button
               key={ws.id}

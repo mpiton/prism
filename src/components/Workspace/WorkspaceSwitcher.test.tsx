@@ -299,4 +299,21 @@ describe("WorkspaceSwitcher", () => {
     expect(activeTab).toHaveAttribute("tabindex", "0");
     expect(inactiveTab).toHaveAttribute("tabindex", "-1");
   });
+
+  it("should fallback first tab to tabIndex 0 when activeWorkspaceId is null", () => {
+    useWorkspacesStore.setState({ activeWorkspaceId: null });
+
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    const firstTab = screen.getByTestId("tab-ws-1");
+    const secondTab = screen.getByTestId("tab-ws-2");
+
+    expect(firstTab).toHaveAttribute("tabindex", "0");
+    expect(secondTab).toHaveAttribute("tabindex", "-1");
+  });
 });
