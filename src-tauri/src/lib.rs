@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use log::info;
+use sqlx::SqlitePool;
 use tauri::Manager;
 
 /// Guards against concurrent force-sync invocations from the tray or IPC.
@@ -155,6 +156,13 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 try_start_polling(handle, poll_pool).await;
             });
+
+            // Start workspace lifecycle task (auto-suspend & auto-archive).
+            // Intentionally detached: the tokio runtime abort on shutdown is sufficient.
+            let lifecycle_pool = app.state::<SqlitePool>().inner().clone();
+            let lifecycle_handle = app.handle().clone();
+            let _lifecycle_task =
+                workspace::lifecycle::start_workspace_lifecycle(lifecycle_handle, lifecycle_pool);
 
             Ok(())
         })

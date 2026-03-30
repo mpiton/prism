@@ -321,6 +321,8 @@ pub struct AppConfig {
     pub archive_delay_hours: u64,
     /// Hours after a PR is closed before its workspace is auto-archived (default 48).
     pub archive_delay_closed_hours: u64,
+    /// Minutes of inactivity before an active workspace is auto-suspended (default 30).
+    pub auto_suspend_minutes: u64,
     /// GitHub personal access token or OAuth token. `None` means not yet configured.
     pub github_token: Option<String>,
     /// Override for the `SQLite` data directory (`~/.local/share/prism/` by default).
@@ -339,6 +341,7 @@ impl fmt::Debug for AppConfig {
                 "archive_delay_closed_hours",
                 &self.archive_delay_closed_hours,
             )
+            .field("auto_suspend_minutes", &self.auto_suspend_minutes)
             .field(
                 "github_token",
                 &self.github_token.as_ref().map(|_| "<redacted>"),
@@ -356,6 +359,7 @@ impl Default for AppConfig {
             max_active_workspaces: 3,
             archive_delay_hours: 24,
             archive_delay_closed_hours: 48,
+            auto_suspend_minutes: 30,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -401,6 +405,7 @@ pub struct PartialAppConfig {
     pub max_active_workspaces: Option<u32>,
     pub archive_delay_hours: Option<u64>,
     pub archive_delay_closed_hours: Option<u64>,
+    pub auto_suspend_minutes: Option<u64>,
     #[serde(deserialize_with = "deserialize_double_option", default)]
     pub github_token: Option<Option<String>>,
     #[serde(deserialize_with = "deserialize_double_option", default)]
@@ -426,6 +431,9 @@ pub fn merge_partial_config(base: &AppConfig, partial: &PartialAppConfig) -> App
         archive_delay_closed_hours: partial
             .archive_delay_closed_hours
             .unwrap_or(base.archive_delay_closed_hours),
+        auto_suspend_minutes: partial
+            .auto_suspend_minutes
+            .unwrap_or(base.auto_suspend_minutes),
         github_token: match &partial.github_token {
             Some(v) => v.clone(),
             None => base.github_token.clone(),
@@ -1023,6 +1031,7 @@ mod tests {
             max_active_workspaces: 5,
             archive_delay_hours: 12,
             archive_delay_closed_hours: 72,
+            auto_suspend_minutes: 30,
             github_token: Some("test-token".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: None,

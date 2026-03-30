@@ -5,6 +5,7 @@ import type { AppConfig } from "../lib/types";
 const fakeConfig: AppConfig = {
   pollIntervalSecs: 60,
   maxActiveWorkspaces: 3,
+  autoSuspendMinutes: 30,
   githubToken: "FAKE_TOKEN_FOR_TESTING",
   dataDir: "/home/user/.local/share/prism",
   workspacesDir: "/home/user/.prism/workspaces",
@@ -30,6 +31,7 @@ describe("useSettingsStore", () => {
     const minimal: AppConfig = {
       pollIntervalSecs: 30,
       maxActiveWorkspaces: 1,
+      autoSuspendMinutes: 30,
       githubToken: null,
       dataDir: null,
       workspacesDir: null,

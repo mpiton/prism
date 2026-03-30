@@ -439,13 +439,38 @@ pub async fn workspace_get_notes(
 pub struct PtyManagerState {
     pub manager: PtyManager,
     workspace_ptys: Mutex<HashMap<String, String>>,
+    /// Throttle map: `workspace_id` → last time `update_last_active` was called.
+    /// Used to avoid a DB write on every keystroke.
+    last_touch: Mutex<HashMap<String, std::time::Instant>>,
 }
+
+/// Minimum interval between `last_active_at` DB writes per workspace.
+const LAST_ACTIVE_THROTTLE: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl PtyManagerState {
     pub fn new() -> Self {
         Self {
             manager: PtyManager::new(),
             workspace_ptys: Mutex::new(HashMap::new()),
+            last_touch: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Returns `true` if enough time has elapsed since the last touch for
+    /// this workspace (or if it has never been touched). Updates the stored
+    /// timestamp on success.
+    pub fn should_touch_last_active(&self, workspace_id: &str) -> bool {
+        let now = std::time::Instant::now();
+        let mut map = match self.last_touch.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        match map.get(workspace_id) {
+            Some(last) if now.duration_since(*last) < LAST_ACTIVE_THROTTLE => false,
+            _ => {
+                map.insert(workspace_id.to_string(), now);
+                true
+            }
         }
     }
 
@@ -457,7 +482,11 @@ impl PtyManagerState {
     }
 
     /// Removes the mapping by workspace ID and returns the `pty_id` if present.
+    /// Also clears the corresponding `last_touch` throttle entry.
     pub fn unregister(&self, workspace_id: &str) -> Option<String> {
+        if let Ok(mut touch) = self.last_touch.lock() {
+            touch.remove(workspace_id);
+        }
         self.workspace_ptys.lock().ok()?.remove(workspace_id)
     }
 
@@ -465,10 +494,35 @@ impl PtyManagerState {
     ///
     /// Used by `pty_kill` to clean up the workspace→pty mapping when a PTY
     /// is killed directly by its ID rather than through LRU eviction.
+    /// Also clears the corresponding `last_touch` throttle entry.
     pub fn unregister_by_pty_id(&self, pty_id: &str) {
         if let Ok(mut map) = self.workspace_ptys.lock() {
+            // Find the workspace_id before removing, so we can clean last_touch.
+            let ws_id = map
+                .iter()
+                .find(|(_, v)| v.as_str() == pty_id)
+                .map(|(k, _)| k.clone());
             map.retain(|_, v| v != pty_id);
+            if let Some(ws_id) = ws_id
+                && let Ok(mut touch) = self.last_touch.lock()
+            {
+                touch.remove(&ws_id);
+            }
         }
+    }
+
+    /// Reverse lookup: find the workspace ID associated with a PTY ID.
+    ///
+    /// Recovers from a poisoned mutex to avoid silently losing
+    /// `last_active_at` updates (which would cause premature auto-suspend).
+    pub fn lookup_workspace_by_pty(&self, pty_id: &str) -> Option<String> {
+        let map = match self.workspace_ptys.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        map.iter()
+            .find(|(_, v)| v.as_str() == pty_id)
+            .map(|(k, _)| k.clone())
     }
 }
 
@@ -1001,11 +1055,13 @@ pub async fn workspace_cleanup(
     Ok(u32::try_from(archived_ids.len()).unwrap_or(u32::MAX))
 }
 
-/// Writes data to a PTY's stdin.
+/// Writes data to a PTY's stdin and touches `last_active_at` for the
+/// associated workspace so the lifecycle auto-suspend timer is reset.
 ///
 /// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
 #[tauri::command]
 pub async fn pty_write(
+    pool: tauri::State<'_, SqlitePool>,
     pty_state: tauri::State<'_, PtyManagerState>,
     pty_id: String,
     data: String,
@@ -1013,7 +1069,17 @@ pub async fn pty_write(
     pty_state
         .manager
         .write_pty(&pty_id, data.as_bytes())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Best-effort: update last_active_at, throttled to at most once per 5s per workspace.
+    if let Some(ws_id) = pty_state.lookup_workspace_by_pty(&pty_id)
+        && pty_state.should_touch_last_active(&ws_id)
+        && let Err(e) = crate::cache::workspaces::update_last_active(&pool, &ws_id).await
+    {
+        log::warn!("pty_write: failed to touch last_active_at for workspace '{ws_id}': {e}");
+    }
+
+    Ok(())
 }
 
 /// Resizes a PTY to new dimensions.
@@ -1286,6 +1352,7 @@ mod tests {
             max_active_workspaces: 5,
             archive_delay_hours: 12,
             archive_delay_closed_hours: 72,
+            auto_suspend_minutes: 30,
             github_token: Some("ghp_test".into()),
             data_dir: None,
             workspaces_dir: Some("/ws".into()),
@@ -1344,6 +1411,7 @@ mod tests {
             max_active_workspaces: 3,
             archive_delay_hours: 24,
             archive_delay_closed_hours: 48,
+            auto_suspend_minutes: 30,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -1353,6 +1421,7 @@ mod tests {
             max_active_workspaces: None,
             archive_delay_hours: None,
             archive_delay_closed_hours: None,
+            auto_suspend_minutes: None,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -1369,6 +1438,7 @@ mod tests {
             max_active_workspaces: 3,
             archive_delay_hours: 24,
             archive_delay_closed_hours: 48,
+            auto_suspend_minutes: 30,
             github_token: Some("ghp_old".into()),
             data_dir: Some("/data".into()),
             workspaces_dir: None,
@@ -1379,6 +1449,7 @@ mod tests {
             max_active_workspaces: None,
             archive_delay_hours: None,
             archive_delay_closed_hours: None,
+            auto_suspend_minutes: None,
             github_token: Some(None), // clear it
             data_dir: None,           // leave as-is
             workspaces_dir: None,
@@ -1870,6 +1941,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1924,6 +1996,7 @@ mod tests {
                 max_active_workspaces: 1,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1999,6 +2072,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2052,6 +2126,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2121,6 +2196,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2191,6 +2267,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2259,6 +2336,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),

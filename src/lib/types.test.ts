@@ -383,6 +383,7 @@ describe("IPC payload shapes", () => {
     const json = {
       pollIntervalSecs: 300,
       maxActiveWorkspaces: 3,
+      autoSuspendMinutes: 30,
       githubToken: null,
       dataDir: null,
       workspacesDir: null,
@@ -397,6 +398,7 @@ describe("IPC payload shapes", () => {
     const json = {
       pollIntervalSecs: 120,
       maxActiveWorkspaces: 5,
+      autoSuspendMinutes: 30,
       githubToken: "ghp_xxx",
       dataDir: "/custom/data",
       workspacesDir: "/custom/workspaces",
