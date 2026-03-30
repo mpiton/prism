@@ -335,4 +335,20 @@ mod tests {
 
         pool.close().await;
     }
+
+    #[tokio::test]
+    async fn test_set_config_clamps_auto_suspend() {
+        let (pool, _tmp) = test_pool().await;
+
+        let mut config = get_config(&pool).await.unwrap();
+        config.auto_suspend_minutes = 2; // below minimum of 5
+
+        let result = set_config(&pool, &config).await.unwrap();
+        assert_eq!(
+            result.auto_suspend_minutes, MIN_AUTO_SUSPEND_MINUTES,
+            "should clamp 2 to minimum of 5"
+        );
+
+        pool.close().await;
+    }
 }

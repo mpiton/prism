@@ -139,8 +139,27 @@ pub fn start_workspace_lifecycle(
             )
             .await;
 
-            for ws_id in suspended.iter().chain(archived.iter()) {
-                if let Err(e) = app_handle.emit("workspace:state_changed", ws_id) {
+            // Emit structured payloads matching the WorkspaceStateChanged contract.
+            // If a workspace was suspended and then archived in the same tick,
+            // skip the Suspended event — only emit the final Archived state.
+            for ws_id in &suspended {
+                if archived.contains(ws_id) {
+                    continue;
+                }
+                let payload = crate::types::WorkspaceStateChanged {
+                    workspace_id: ws_id.clone(),
+                    new_state: crate::types::WorkspaceState::Suspended,
+                };
+                if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
+                    warn!("lifecycle: failed to emit state_changed for '{ws_id}': {e}");
+                }
+            }
+            for ws_id in &archived {
+                let payload = crate::types::WorkspaceStateChanged {
+                    workspace_id: ws_id.clone(),
+                    new_state: crate::types::WorkspaceState::Archived,
+                };
+                if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
                     warn!("lifecycle: failed to emit state_changed for '{ws_id}': {e}");
                 }
             }

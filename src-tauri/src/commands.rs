@@ -439,13 +439,38 @@ pub async fn workspace_get_notes(
 pub struct PtyManagerState {
     pub manager: PtyManager,
     workspace_ptys: Mutex<HashMap<String, String>>,
+    /// Throttle map: `workspace_id` → last time `update_last_active` was called.
+    /// Used to avoid a DB write on every keystroke.
+    last_touch: Mutex<HashMap<String, std::time::Instant>>,
 }
+
+/// Minimum interval between `last_active_at` DB writes per workspace.
+const LAST_ACTIVE_THROTTLE: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl PtyManagerState {
     pub fn new() -> Self {
         Self {
             manager: PtyManager::new(),
             workspace_ptys: Mutex::new(HashMap::new()),
+            last_touch: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Returns `true` if enough time has elapsed since the last touch for
+    /// this workspace (or if it has never been touched). Updates the stored
+    /// timestamp on success.
+    pub fn should_touch_last_active(&self, workspace_id: &str) -> bool {
+        let now = std::time::Instant::now();
+        let mut map = match self.last_touch.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        match map.get(workspace_id) {
+            Some(last) if now.duration_since(*last) < LAST_ACTIVE_THROTTLE => false,
+            _ => {
+                map.insert(workspace_id.to_string(), now);
+                true
+            }
         }
     }
 
@@ -1031,8 +1056,9 @@ pub async fn pty_write(
         .write_pty(&pty_id, data.as_bytes())
         .map_err(|e| e.to_string())?;
 
-    // Best-effort: update last_active_at for the workspace linked to this PTY.
+    // Best-effort: update last_active_at, throttled to at most once per 5s per workspace.
     if let Some(ws_id) = pty_state.lookup_workspace_by_pty(&pty_id)
+        && pty_state.should_touch_last_active(&ws_id)
         && let Err(e) = crate::cache::workspaces::update_last_active(&pool, &ws_id).await
     {
         log::warn!("pty_write: failed to touch last_active_at for workspace '{ws_id}': {e}");

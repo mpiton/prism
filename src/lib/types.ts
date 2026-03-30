@@ -210,6 +210,8 @@ export interface AppConfig {
   /** Rust type is u64 — safe as `number` since practical values never exceed 2^53. */
   readonly pollIntervalSecs: number;
   readonly maxActiveWorkspaces: number;
+  /** Minutes of inactivity before an active workspace is auto-suspended (min 5, default 30). */
+  readonly autoSuspendMinutes: number;
   readonly githubToken: string | null;
   readonly dataDir: string | null;
   readonly workspacesDir: string | null;
@@ -224,6 +226,7 @@ export interface AppConfig {
 export interface PartialAppConfig {
   readonly pollIntervalSecs?: number;
   readonly maxActiveWorkspaces?: number;
+  readonly autoSuspendMinutes?: number;
   /** undefined = leave unchanged, null = clear token, string = set token.
    * Prefer `authSetToken` for validated token updates. */
   readonly githubToken?: string | null;
