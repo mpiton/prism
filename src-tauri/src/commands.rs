@@ -589,9 +589,6 @@ pub(crate) async fn workspace_open_inner(
 
 // ── Workspace state transitions (T-070) ─────���──────────────────
 
-/// Suspends an active workspace: kills its PTY and sets state to Suspended.
-///
-/// Emits no event — the Tauri command wrapper handles event emission.
 /// Spawns a background task to generate and store a suspension note.
 ///
 /// No-op if the workspace has no `session_id` or `worktree_path`.
@@ -615,6 +612,10 @@ fn spawn_suspension_note(pool: &SqlitePool, ws: &Workspace) {
     }
 }
 
+/// Suspends an active workspace: kills its PTY and sets state to Suspended.
+///
+/// Emits no event — the Tauri command wrapper handles event emission.
+/// Spawns a background note-generation task via [`spawn_suspension_note`].
 pub(crate) async fn workspace_suspend_inner(
     pool: &SqlitePool,
     pty_state: &PtyManagerState,
