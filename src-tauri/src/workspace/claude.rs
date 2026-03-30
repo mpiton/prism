@@ -1,12 +1,15 @@
 use std::path::Path;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use regex::Regex;
+use sqlx::SqlitePool;
 
 use super::pty::PtyManager;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::queries::{PullRequestDetail, pull_request_detail};
+use crate::types::WorkspaceNote;
 
 /// Matches a Claude Code session ID from stdout.
 ///
@@ -337,6 +340,115 @@ fn extract_pr_context(
         unresolved_threads,
         changed_files,
     })
+}
+
+// ── Suspension notes ────────────────────────────────────────────
+
+const SUSPENSION_NOTE_TIMEOUT: Duration = Duration::from_secs(30);
+const SUSPENSION_NOTE_PROMPT: &str = "Resume the current work state in 2-3 sentences";
+
+/// Maximum stdout size (16 KiB). Output beyond this is treated as a failure
+/// to guard against runaway child processes filling memory.
+const MAX_STDOUT_BYTES: usize = 16_384;
+
+/// Runs a command with a timeout, capturing stdout.
+///
+/// Returns trimmed stdout on success, empty string on timeout or error.
+/// Kills the child process on timeout to avoid orphans.
+/// Rejects stdout larger than [`MAX_STDOUT_BYTES`].
+///
+/// This is the testable building block: tests can pass any command
+/// (e.g. `echo`) instead of the real `claude` binary.
+pub(crate) async fn run_headless_with_timeout(
+    program: &str,
+    args: &[&str],
+    cwd: &Path,
+    timeout: Duration,
+) -> String {
+    use std::process::Stdio;
+    use tokio::process::Command;
+
+    let Ok(child) = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+    else {
+        return String::new();
+    };
+
+    // On timeout the future is dropped, which drops `child`, which sends
+    // SIGKILL thanks to `kill_on_drop(true)` — no orphan process.
+    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(Ok(output)) if output.status.success() && output.stdout.len() <= MAX_STDOUT_BYTES => {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+        _ => String::new(),
+    }
+}
+
+/// Runs Claude Code headless to generate a workspace suspension note.
+///
+/// Executes `claude -p "<prompt>" --output-format text` in the worktree.
+/// Returns the note text, or empty string on timeout (30 s) or error.
+#[allow(dead_code)]
+pub async fn generate_suspension_note(worktree_path: &Path) -> String {
+    run_headless_with_timeout(
+        "claude",
+        &["-p", SUSPENSION_NOTE_PROMPT, "--output-format", "text"],
+        worktree_path,
+        SUSPENSION_NOTE_TIMEOUT,
+    )
+    .await
+}
+
+/// Stores a suspension note in the database.
+///
+/// Creates a [`WorkspaceNote`] and persists it via `cache::workspaces::add_note`.
+#[allow(dead_code)]
+pub async fn store_suspension_note(
+    pool: &SqlitePool,
+    workspace_id: &str,
+    content: String,
+) -> Result<WorkspaceNote, AppError> {
+    use chrono::{SecondsFormat, Utc};
+
+    let note = WorkspaceNote {
+        id: uuid::Uuid::new_v4().to_string(),
+        workspace_id: workspace_id.to_string(),
+        content,
+        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+    };
+
+    crate::cache::workspaces::add_note(pool, &note).await
+}
+
+/// Generates a suspension note and stores it in the database.
+///
+/// Only runs if `has_claude_session` is true (Claude Code was active in this
+/// workspace). Returns `None` if Claude wasn't active or if the headless
+/// command failed / timed out (empty output).
+#[allow(dead_code)]
+pub async fn create_suspension_note(
+    pool: &SqlitePool,
+    workspace_id: &str,
+    worktree_path: &Path,
+    has_claude_session: bool,
+) -> Result<Option<WorkspaceNote>, AppError> {
+    if !has_claude_session {
+        return Ok(None);
+    }
+
+    let content = generate_suspension_note(worktree_path).await;
+    if content.is_empty() {
+        return Ok(None);
+    }
+
+    store_suspension_note(pool, workspace_id, content)
+        .await
+        .map(Some)
 }
 
 /// Fetches PR details from GitHub and generates a CLAUDE.md in the worktree.
@@ -810,5 +922,156 @@ mod tests {
             4,
             "table row should have 4 pipe delimiters"
         );
+    }
+
+    // ── Suspension note tests ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_generate_note_success() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let content = run_headless_with_timeout(
+            "echo",
+            &["Working on auth refactor. Tests passing."],
+            tmp.path(),
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert_eq!(content, "Working on auth refactor. Tests passing.");
+    }
+
+    #[tokio::test]
+    async fn test_generate_note_timeout() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let content =
+            run_headless_with_timeout("sleep", &["60"], tmp.path(), Duration::from_secs(1)).await;
+
+        assert!(
+            content.is_empty(),
+            "should return empty on timeout, got: {content:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_generate_note_command_failure() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let content = run_headless_with_timeout(
+            "false", // exits with status 1
+            &[],
+            tmp.path(),
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(content.is_empty(), "should return empty on non-zero exit");
+    }
+
+    #[tokio::test]
+    async fn test_generate_note_stored_in_db() {
+        use crate::cache::db::init_db;
+        use crate::cache::repos::upsert_repo;
+        use crate::cache::workspaces::{create_workspace, get_notes};
+        use crate::types::{Repo, Workspace, WorkspaceState};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = init_db(&tmp.path().join("test.db")).await.unwrap();
+
+        let repo = Repo {
+            id: "repo-1".to_string(),
+            org: "mpiton".to_string(),
+            name: "prism".to_string(),
+            full_name: "mpiton/prism".to_string(),
+            url: "https://github.com/mpiton/prism".to_string(),
+            default_branch: "main".to_string(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        upsert_repo(&pool, &repo).await.unwrap();
+
+        let ws = Workspace {
+            id: "ws-1".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 42,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/tmp/worktree".to_string()),
+            session_id: Some("session-123".to_string()),
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        create_workspace(&pool, &ws).await.unwrap();
+
+        // Store a note
+        let note = store_suspension_note(
+            &pool,
+            "ws-1",
+            "Working on auth refactor. Tests passing.".to_string(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(note.workspace_id, "ws-1");
+        assert_eq!(note.content, "Working on auth refactor. Tests passing.");
+        assert!(!note.id.is_empty());
+        assert!(!note.created_at.is_empty());
+
+        // Verify it's retrievable
+        let notes = get_notes(&pool, "ws-1").await.unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].content, "Working on auth refactor. Tests passing.");
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_create_suspension_note_skips_without_session() {
+        use crate::cache::db::init_db;
+        use crate::cache::repos::upsert_repo;
+        use crate::cache::workspaces::{create_workspace, get_notes};
+        use crate::types::{Repo, Workspace, WorkspaceState};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = init_db(&tmp.path().join("test.db")).await.unwrap();
+
+        let repo = Repo {
+            id: "repo-1".to_string(),
+            org: "mpiton".to_string(),
+            name: "prism".to_string(),
+            full_name: "mpiton/prism".to_string(),
+            url: "https://github.com/mpiton/prism".to_string(),
+            default_branch: "main".to_string(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        upsert_repo(&pool, &repo).await.unwrap();
+
+        let ws = Workspace {
+            id: "ws-1".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 42,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/tmp/worktree".to_string()),
+            session_id: None,
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        create_workspace(&pool, &ws).await.unwrap();
+
+        // No Claude session → should return None, no note stored
+        let result = create_suspension_note(&pool, "ws-1", tmp.path(), false)
+            .await
+            .unwrap();
+        assert!(
+            result.is_none(),
+            "should return None without active session"
+        );
+
+        let notes = get_notes(&pool, "ws-1").await.unwrap();
+        assert!(notes.is_empty(), "no note should be stored");
+
+        pool.close().await;
     }
 }
