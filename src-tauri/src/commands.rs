@@ -482,7 +482,11 @@ impl PtyManagerState {
     }
 
     /// Removes the mapping by workspace ID and returns the `pty_id` if present.
+    /// Also clears the corresponding `last_touch` throttle entry.
     pub fn unregister(&self, workspace_id: &str) -> Option<String> {
+        if let Ok(mut touch) = self.last_touch.lock() {
+            touch.remove(workspace_id);
+        }
         self.workspace_ptys.lock().ok()?.remove(workspace_id)
     }
 
@@ -490,9 +494,20 @@ impl PtyManagerState {
     ///
     /// Used by `pty_kill` to clean up the workspace→pty mapping when a PTY
     /// is killed directly by its ID rather than through LRU eviction.
+    /// Also clears the corresponding `last_touch` throttle entry.
     pub fn unregister_by_pty_id(&self, pty_id: &str) {
         if let Ok(mut map) = self.workspace_ptys.lock() {
+            // Find the workspace_id before removing, so we can clean last_touch.
+            let ws_id = map
+                .iter()
+                .find(|(_, v)| v.as_str() == pty_id)
+                .map(|(k, _)| k.clone());
             map.retain(|_, v| v != pty_id);
+            if let Some(ws_id) = ws_id
+                && let Ok(mut touch) = self.last_touch.lock()
+            {
+                touch.remove(&ws_id);
+            }
         }
     }
 
