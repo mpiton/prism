@@ -199,10 +199,10 @@ describe("Terminal", () => {
 
     unmount();
 
-    // Both unlisten and dispose are deferred via .then() — flush microtasks
+    // dispose is synchronous, unlisten is deferred via .then()
+    expect(mockDispose).toHaveBeenCalledOnce();
     await vi.waitFor(() => {
       expect(unlistenStdout).toHaveBeenCalledOnce();
-      expect(mockDispose).toHaveBeenCalledOnce();
     });
   });
 });

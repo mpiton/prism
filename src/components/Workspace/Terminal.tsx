@@ -79,13 +79,9 @@ export function Terminal({ ptyId }: TerminalProps) {
     return () => {
       resizeObserver.disconnect();
       unlistenPromise
-        .then((unlisten) => {
-          unlisten();
-          term.dispose();
-        })
-        .catch(() => {
-          term.dispose();
-        });
+        .then((unlisten) => unlisten())
+        .catch(() => {});
+      term.dispose();
     };
   }, [ptyId]);
 
