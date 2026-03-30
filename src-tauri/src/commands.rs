@@ -594,6 +594,12 @@ pub(crate) async fn workspace_suspend_inner(
     pty_state: &PtyManagerState,
     workspace_id: &str,
 ) -> Result<Workspace, AppError> {
+    // Fetch workspace before suspension to capture session_id + worktree_path
+    // for background note generation.
+    let ws = crate::cache::workspaces::get_workspace(pool, workspace_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("workspace '{workspace_id}'")))?;
+
     // Kill the PTY if one is tracked (before DB update — safe direction of failure)
     if let Some(pty_id) = pty_state.unregister(workspace_id)
         && let Err(e) = pty_state.manager.kill(&pty_id)
@@ -602,13 +608,34 @@ pub(crate) async fn workspace_suspend_inner(
     }
 
     // Atomic transition: WHERE state = 'active' prevents TOCTOU races
-    update_workspace_state(
+    let suspended = update_workspace_state(
         pool,
         workspace_id,
         &WorkspaceState::Suspended,
         Some(&WorkspaceState::Active),
     )
-    .await
+    .await?;
+
+    // Best-effort: generate a suspension note in the background (up to 30 s).
+    // Fire-and-forget so the suspend command returns immediately.
+    if let (Some(wt_path), Some(session_id)) = (ws.worktree_path.clone(), ws.session_id.clone()) {
+        let pool = pool.clone();
+        let ws_id = workspace_id.to_string();
+        tokio::spawn(async move {
+            if let Err(e) = crate::workspace::claude::create_suspension_note(
+                &pool,
+                &ws_id,
+                Path::new(&wt_path),
+                Some(&session_id),
+            )
+            .await
+            {
+                log::warn!("failed to generate suspension note for '{ws_id}': {e}");
+            }
+        });
+    }
+
+    Ok(suspended)
 }
 
 /// Resumes a suspended workspace: spawns a new PTY in the existing worktree.

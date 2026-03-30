@@ -345,17 +345,18 @@ fn extract_pr_context(
 // ── Suspension notes ────────────────────────────────────────────
 
 const SUSPENSION_NOTE_TIMEOUT: Duration = Duration::from_secs(30);
-const SUSPENSION_NOTE_PROMPT: &str = "Resume the current work state in 2-3 sentences";
+const SUSPENSION_NOTE_PROMPT: &str = "Summarize the current work state in 2-3 sentences";
 
-/// Maximum stdout size (16 KiB). Output beyond this is treated as a failure
-/// to guard against runaway child processes filling memory.
+/// Maximum stdout size (16 KiB). Output beyond this is discarded to avoid
+/// persisting runaway output. The limit is enforced while streaming — the
+/// child is killed as soon as the cap is exceeded.
 const MAX_STDOUT_BYTES: usize = 16_384;
 
-/// Runs a command with a timeout, capturing stdout.
+/// Runs a command with a timeout, capturing stdout with a size cap.
 ///
 /// Returns trimmed stdout on success, empty string on timeout or error.
-/// Kills the child process on timeout to avoid orphans.
-/// Rejects stdout larger than [`MAX_STDOUT_BYTES`].
+/// Streams stdout incrementally and kills the child if output exceeds
+/// [`MAX_STDOUT_BYTES`]. On timeout, `kill_on_drop(true)` sends SIGKILL.
 ///
 /// This is the testable building block: tests can pass any command
 /// (e.g. `echo`) instead of the real `claude` binary.
@@ -366,9 +367,10 @@ pub(crate) async fn run_headless_with_timeout(
     timeout: Duration,
 ) -> String {
     use std::process::Stdio;
+    use tokio::io::AsyncReadExt;
     use tokio::process::Command;
 
-    let Ok(child) = Command::new(program)
+    let Ok(mut child) = Command::new(program)
         .args(args)
         .current_dir(cwd)
         .stdout(Stdio::piped())
@@ -379,11 +381,27 @@ pub(crate) async fn run_headless_with_timeout(
         return String::new();
     };
 
-    // On timeout the future is dropped, which drops `child`, which sends
-    // SIGKILL thanks to `kill_on_drop(true)` — no orphan process.
-    match tokio::time::timeout(timeout, child.wait_with_output()).await {
-        Ok(Ok(output)) if output.status.success() && output.stdout.len() <= MAX_STDOUT_BYTES => {
-            String::from_utf8_lossy(&output.stdout).trim().to_string()
+    let Some(stdout) = child.stdout.take() else {
+        return String::new();
+    };
+
+    // Stream stdout with a size cap: read at most MAX_STDOUT_BYTES + 1 to
+    // detect overflow, then kill the child immediately if exceeded.
+    let read_and_wait = async {
+        let mut buf = Vec::with_capacity(MAX_STDOUT_BYTES);
+        let mut limited = stdout.take((MAX_STDOUT_BYTES as u64) + 1);
+        let n = limited.read_to_end(&mut buf).await?;
+        if n > MAX_STDOUT_BYTES {
+            return Err(std::io::Error::other("output exceeded size limit"));
+        }
+        let status = child.wait().await?;
+        Ok((buf, status))
+    };
+
+    // On timeout the future is dropped → child is dropped → SIGKILL.
+    match tokio::time::timeout(timeout, read_and_wait).await {
+        Ok(Ok((buf, status))) if status.success() => {
+            String::from_utf8_lossy(&buf).trim().to_string()
         }
         _ => String::new(),
     }
@@ -391,13 +409,20 @@ pub(crate) async fn run_headless_with_timeout(
 
 /// Runs Claude Code headless to generate a workspace suspension note.
 ///
-/// Executes `claude -p "<prompt>" --output-format text` in the worktree.
+/// Resumes the given session with `claude --resume <session_id> -p "<prompt>"`
+/// so the note reflects the actual suspended conversation, not a fresh context.
 /// Returns the note text, or empty string on timeout (30 s) or error.
-#[allow(dead_code)]
-pub async fn generate_suspension_note(worktree_path: &Path) -> String {
+pub(crate) async fn generate_suspension_note(session_id: &str, worktree_path: &Path) -> String {
     run_headless_with_timeout(
         "claude",
-        &["-p", SUSPENSION_NOTE_PROMPT, "--output-format", "text"],
+        &[
+            "--resume",
+            session_id,
+            "-p",
+            SUSPENSION_NOTE_PROMPT,
+            "--output-format",
+            "text",
+        ],
         worktree_path,
         SUSPENSION_NOTE_TIMEOUT,
     )
@@ -406,19 +431,26 @@ pub async fn generate_suspension_note(worktree_path: &Path) -> String {
 
 /// Stores a suspension note in the database.
 ///
+/// Trims the content and rejects empty/whitespace-only notes with an error.
 /// Creates a [`WorkspaceNote`] and persists it via `cache::workspaces::add_note`.
-#[allow(dead_code)]
-pub async fn store_suspension_note(
+pub(crate) async fn store_suspension_note(
     pool: &SqlitePool,
     workspace_id: &str,
     content: String,
 ) -> Result<WorkspaceNote, AppError> {
     use chrono::{SecondsFormat, Utc};
 
+    let trimmed = content.trim().to_string();
+    if trimmed.is_empty() {
+        return Err(AppError::Workspace(
+            "suspension note content must not be empty".into(),
+        ));
+    }
+
     let note = WorkspaceNote {
         id: uuid::Uuid::new_v4().to_string(),
         workspace_id: workspace_id.to_string(),
-        content,
+        content: trimmed,
         created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
     };
 
@@ -427,21 +459,20 @@ pub async fn store_suspension_note(
 
 /// Generates a suspension note and stores it in the database.
 ///
-/// Only runs if `has_claude_session` is true (Claude Code was active in this
+/// Only runs if `session_id` is `Some` (Claude Code was active in this
 /// workspace). Returns `None` if Claude wasn't active or if the headless
 /// command failed / timed out (empty output).
-#[allow(dead_code)]
 pub async fn create_suspension_note(
     pool: &SqlitePool,
     workspace_id: &str,
     worktree_path: &Path,
-    has_claude_session: bool,
+    session_id: Option<&str>,
 ) -> Result<Option<WorkspaceNote>, AppError> {
-    if !has_claude_session {
+    let Some(sid) = session_id else {
         return Ok(None);
-    }
+    };
 
-    let content = generate_suspension_note(worktree_path).await;
+    let content = generate_suspension_note(sid, worktree_path).await;
     if content.is_empty() {
         return Ok(None);
     }
@@ -1061,7 +1092,7 @@ mod tests {
         create_workspace(&pool, &ws).await.unwrap();
 
         // No Claude session → should return None, no note stored
-        let result = create_suspension_note(&pool, "ws-1", tmp.path(), false)
+        let result = create_suspension_note(&pool, "ws-1", tmp.path(), None)
             .await
             .unwrap();
         assert!(
@@ -1071,6 +1102,53 @@ mod tests {
 
         let notes = get_notes(&pool, "ws-1").await.unwrap();
         assert!(notes.is_empty(), "no note should be stored");
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_store_suspension_note_rejects_empty() {
+        use crate::cache::db::init_db;
+        use crate::cache::repos::upsert_repo;
+        use crate::cache::workspaces::create_workspace;
+        use crate::types::{Repo, Workspace, WorkspaceState};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = init_db(&tmp.path().join("test.db")).await.unwrap();
+
+        let repo = Repo {
+            id: "repo-1".to_string(),
+            org: "mpiton".to_string(),
+            name: "prism".to_string(),
+            full_name: "mpiton/prism".to_string(),
+            url: "https://github.com/mpiton/prism".to_string(),
+            default_branch: "main".to_string(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        upsert_repo(&pool, &repo).await.unwrap();
+
+        let ws = Workspace {
+            id: "ws-1".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 42,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/tmp/worktree".to_string()),
+            session_id: None,
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        create_workspace(&pool, &ws).await.unwrap();
+
+        // Empty content should be rejected
+        let err = store_suspension_note(&pool, "ws-1", String::new()).await;
+        assert!(err.is_err(), "should reject empty content");
+
+        // Whitespace-only content should be rejected
+        let err = store_suspension_note(&pool, "ws-1", "   \n  ".to_string()).await;
+        assert!(err.is_err(), "should reject whitespace-only content");
 
         pool.close().await;
     }
