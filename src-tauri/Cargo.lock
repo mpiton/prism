@@ -3423,6 +3423,7 @@ dependencies = [
  "mockito",
  "notify-rust",
  "portable-pty",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
