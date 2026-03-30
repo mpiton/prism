@@ -43,6 +43,7 @@ type PullRequest implements Node {
   id: ID!
   number: Int!
   title: String!
+  body: String
   author: Actor
   state: PullRequestState!
   isDraft: Boolean!
@@ -57,6 +58,8 @@ type PullRequest implements Node {
   labels(first: Int): LabelConnection
   reviewRequests(first: Int): ReviewRequestConnection
   reviews(first: Int, states: [PullRequestReviewState!]): PullRequestReviewConnection
+  reviewThreads(first: Int): PullRequestReviewThreadConnection
+  files(first: Int): PullRequestChangedFileConnection
   commits(last: Int): PullRequestCommitConnection
 }
 
@@ -194,6 +197,41 @@ type PullRequestReview implements Node {
   state: PullRequestReviewState!
   createdAt: DateTime!
   submittedAt: DateTime
+}
+
+# ── Review Threads ────────────────────────────────────────────────
+
+type PullRequestReviewThreadConnection {
+  nodes: [PullRequestReviewThread]
+}
+
+type PullRequestReviewThread {
+  isResolved: Boolean!
+  path: String
+  comments(first: Int): PullRequestReviewCommentConnection
+}
+
+type PullRequestReviewCommentConnection {
+  nodes: [PullRequestReviewComment]
+}
+
+type PullRequestReviewComment implements Node {
+  id: ID!
+  author: Actor
+  body: String!
+  createdAt: DateTime!
+}
+
+# ── Changed Files ────────────────────────────────────────────────
+
+type PullRequestChangedFileConnection {
+  nodes: [PullRequestChangedFile]
+}
+
+type PullRequestChangedFile {
+  path: String!
+  additions: Int!
+  deletions: Int!
 }
 
 # ── CI / Status ───────────────────────────────────────────────────
