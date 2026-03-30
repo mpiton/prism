@@ -61,6 +61,51 @@ pub(crate) async fn auto_suspend_expired(
     Ok(suspended_ids)
 }
 
+/// Enforce the maximum number of active workspaces (LRU eviction).
+///
+/// Counts active workspaces and, if the count exceeds `max`, suspends
+/// the oldest ones (by `last_active_at` ASC, falling back to `updated_at`)
+/// until the active count is within the limit.
+///
+/// Returns the IDs of workspaces that were successfully suspended.
+pub(crate) async fn enforce_max_active(
+    pool: &SqlitePool,
+    pty_state: &PtyManagerState,
+    max: u32,
+) -> Result<Vec<String>, AppError> {
+    let max = max as usize;
+
+    // Oldest first — candidates for eviction are at the front.
+    let candidates: Vec<(String,)> = sqlx::query_as(
+        "SELECT id FROM workspaces \
+         WHERE state = 'active' \
+         ORDER BY COALESCE(last_active_at, updated_at) ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    if candidates.len() <= max {
+        return Ok(Vec::new());
+    }
+
+    let to_evict = candidates.len() - max;
+    let mut suspended_ids = Vec::new();
+
+    for (ws_id,) in candidates.into_iter().take(to_evict) {
+        match workspace_suspend_inner(pool, pty_state, &ws_id).await {
+            Ok(_) => {
+                info!("lifecycle: LRU-evicted workspace '{ws_id}'");
+                suspended_ids.push(ws_id);
+            }
+            Err(e) => {
+                warn!("lifecycle: failed to LRU-evict workspace '{ws_id}': {e}");
+            }
+        }
+    }
+
+    Ok(suspended_ids)
+}
+
 /// Run one lifecycle tick: auto-suspend idle workspaces and auto-archive
 /// workspaces whose PRs have been merged/closed past the configured delay.
 ///
@@ -293,6 +338,158 @@ mod tests {
 
         let ws = get_workspace(&pool, "ws-1").await.unwrap().unwrap();
         assert_eq!(ws.state, WorkspaceState::Active);
+
+        pool.close().await;
+    }
+
+    // ── LRU eviction tests ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_lru_no_eviction_under_limit() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // 2 active workspaces, max = 3 → no eviction
+        create_workspace(&pool, &sample_workspace("ws-1", 42))
+            .await
+            .unwrap();
+        create_workspace(&pool, &sample_workspace("ws-2", 43))
+            .await
+            .unwrap();
+
+        let ts1 = (Utc::now() - Duration::minutes(10)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        let ts2 = (Utc::now() - Duration::minutes(5)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        sqlx::query("UPDATE workspaces SET last_active_at = $1 WHERE id = $2")
+            .bind(&ts1)
+            .bind("ws-1")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE workspaces SET last_active_at = $1 WHERE id = $2")
+            .bind(&ts2)
+            .bind("ws-2")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let pty_state = PtyManagerState::new();
+        let evicted = enforce_max_active(&pool, &pty_state, 3).await.unwrap();
+
+        assert!(evicted.is_empty(), "should not evict when under limit");
+        assert_eq!(
+            get_workspace(&pool, "ws-1").await.unwrap().unwrap().state,
+            WorkspaceState::Active
+        );
+        assert_eq!(
+            get_workspace(&pool, "ws-2").await.unwrap().unwrap().state,
+            WorkspaceState::Active
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_lru_evicts_oldest() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // 4 active workspaces, max = 3 → evict 1 (the oldest)
+        for (id, pr) in [("ws-1", 42), ("ws-2", 43), ("ws-3", 44), ("ws-4", 45)] {
+            create_workspace(&pool, &sample_workspace(id, pr))
+                .await
+                .unwrap();
+        }
+
+        // ws-1: 40 min ago (oldest), ws-2: 30, ws-3: 20, ws-4: 10
+        for (id, mins) in [("ws-1", 40), ("ws-2", 30), ("ws-3", 20), ("ws-4", 10)] {
+            let ts =
+                (Utc::now() - Duration::minutes(mins)).to_rfc3339_opts(SecondsFormat::Millis, true);
+            sqlx::query("UPDATE workspaces SET last_active_at = $1 WHERE id = $2")
+                .bind(&ts)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        let pty_state = PtyManagerState::new();
+        let evicted = enforce_max_active(&pool, &pty_state, 3).await.unwrap();
+
+        assert_eq!(evicted.len(), 1);
+        assert_eq!(evicted[0], "ws-1");
+
+        assert_eq!(
+            get_workspace(&pool, "ws-1").await.unwrap().unwrap().state,
+            WorkspaceState::Suspended
+        );
+        // Others remain active
+        for id in ["ws-2", "ws-3", "ws-4"] {
+            assert_eq!(
+                get_workspace(&pool, id).await.unwrap().unwrap().state,
+                WorkspaceState::Active
+            );
+        }
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_lru_evicts_multiple() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // 5 active workspaces, max = 3 → evict 2 (the 2 oldest)
+        for (id, pr) in [
+            ("ws-1", 42),
+            ("ws-2", 43),
+            ("ws-3", 44),
+            ("ws-4", 45),
+            ("ws-5", 46),
+        ] {
+            create_workspace(&pool, &sample_workspace(id, pr))
+                .await
+                .unwrap();
+        }
+
+        // ws-1: 50 min ago (oldest), ws-2: 40, ws-3: 30, ws-4: 20, ws-5: 10
+        for (id, mins) in [
+            ("ws-1", 50),
+            ("ws-2", 40),
+            ("ws-3", 30),
+            ("ws-4", 20),
+            ("ws-5", 10),
+        ] {
+            let ts =
+                (Utc::now() - Duration::minutes(mins)).to_rfc3339_opts(SecondsFormat::Millis, true);
+            sqlx::query("UPDATE workspaces SET last_active_at = $1 WHERE id = $2")
+                .bind(&ts)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        let pty_state = PtyManagerState::new();
+        let evicted = enforce_max_active(&pool, &pty_state, 3).await.unwrap();
+
+        assert_eq!(evicted.len(), 2);
+        assert!(evicted.contains(&"ws-1".to_string()));
+        assert!(evicted.contains(&"ws-2".to_string()));
+
+        // ws-1 and ws-2 suspended
+        for id in ["ws-1", "ws-2"] {
+            assert_eq!(
+                get_workspace(&pool, id).await.unwrap().unwrap().state,
+                WorkspaceState::Suspended
+            );
+        }
+        // ws-3, ws-4, ws-5 remain active
+        for id in ["ws-3", "ws-4", "ws-5"] {
+            assert_eq!(
+                get_workspace(&pool, id).await.unwrap().unwrap().state,
+                WorkspaceState::Active
+            );
+        }
 
         pool.close().await;
     }

@@ -609,28 +609,14 @@ pub(crate) async fn workspace_open_inner(
 
     // 7. LRU eviction — deferred until AFTER the new workspace is safely created.
     //    Best-effort: eviction failures must not fail the already-created workspace.
-    //    Note: SQLite serialises writes, so concurrent opens are not a realistic
-    //    race for this single-window desktop app.
-    if let Ok(active) = list_workspaces(pool, Some(&WorkspaceState::Active)).await {
-        if active.len() > config.max_active_workspaces as usize {
-            // Suspend the oldest active workspace (last in updated_at DESC list),
-            // skipping the one we just created.
-            if let Some(oldest) = active.iter().rev().find(|w| w.id != workspace_id) {
-                if let Some(old_pty) = pty_state.unregister(&oldest.id) {
-                    let _ = pty_state.manager.kill(&old_pty);
-                }
-                match update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended, None)
-                    .await
-                {
-                    Ok(evicted) => spawn_suspension_note(pool, &evicted),
-                    Err(e) => {
-                        log::warn!("failed to suspend evicted workspace {}: {e}", oldest.id);
-                    }
-                }
-            }
-        }
-    } else {
-        log::warn!("failed to list active workspaces for LRU eviction");
+    if let Err(e) = crate::workspace::lifecycle::enforce_max_active(
+        pool,
+        pty_state,
+        config.max_active_workspaces,
+    )
+    .await
+    {
+        log::warn!("LRU eviction failed: {e}");
     }
 
     Ok(OpenWorkspaceResponse {
