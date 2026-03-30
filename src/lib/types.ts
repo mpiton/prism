@@ -115,6 +115,16 @@ export interface WorkspaceNote {
   readonly createdAt: string;
 }
 
+export interface WorkspaceStatusInfo {
+  readonly branch: string;
+  readonly ahead: number;
+  readonly behind: number;
+  readonly ciStatus: CiStatus;
+  readonly sessionName: string | null;
+  readonly sessionCount: number;
+  readonly githubUrl: string;
+}
+
 // ── Composite structs (T-010) ────────────────────────────────────
 
 export interface WorkspaceSummary {

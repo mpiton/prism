@@ -5,7 +5,7 @@ import { ReviewQueue } from "./components/ReviewQueue";
 import { MyPRs } from "./components/MyPRs";
 import { Issues } from "./components/Issues";
 import { ActivityFeed } from "./components/ActivityFeed";
-import { Workspace } from "./components/Workspace";
+import { WorkspaceView } from "./components/Workspace";
 import { Settings } from "./components/Settings";
 import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
@@ -20,9 +20,10 @@ function openUrl(url: string): void {
 
 interface MainContentProps {
   readonly view: DashboardView;
+  readonly onBackToDashboard: () => void;
 }
 
-function MainContent({ view }: MainContentProps): ReactElement {
+function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElement {
   switch (view) {
     case "overview":
       return <Overview />;
@@ -35,7 +36,14 @@ function MainContent({ view }: MainContentProps): ReactElement {
     case "feed":
       return <ActivityFeed activities={[]} onMarkAllRead={() => {}} />;
     case "workspaces":
-      return <Workspace />;
+      // TODO(T-082): wire real workspace data from TanStack Query
+      return (
+        <WorkspaceView
+          workspaces={[]}
+          statusInfo={{}}
+          onBackToDashboard={onBackToDashboard}
+        />
+      );
     case "settings":
       return <Settings />;
     default: {
@@ -93,7 +101,7 @@ function App(): ReactElement {
       </aside>
 
       <main className={isWorkspace ? "flex-1" : "min-w-0 flex-1"}>
-        <MainContent view={currentView} />
+        <MainContent view={currentView} onBackToDashboard={handleEscape} />
       </main>
 
       <Toast />

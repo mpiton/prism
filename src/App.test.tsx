@@ -77,14 +77,14 @@ describe("App layout", () => {
   it("should render workspace in workspace mode", () => {
     useDashboardStore.setState({ currentView: "workspaces" });
     renderApp();
-    expect(screen.getByTestId("workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-view")).toBeInTheDocument();
   });
 
   it("should keep sidebar visible in workspace mode", () => {
     useDashboardStore.setState({ currentView: "workspaces" });
     renderApp();
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
-    expect(screen.getByTestId("workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-view")).toBeInTheDocument();
   });
 });
 
