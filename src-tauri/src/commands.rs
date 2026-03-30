@@ -566,7 +566,7 @@ pub(crate) async fn workspace_open_inner(
                     let _ = pty_state.manager.kill(&old_pty);
                 }
                 if let Err(e) =
-                    update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended).await
+                    update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended, None).await
                 {
                     log::warn!("failed to suspend evicted workspace {}: {e}", oldest.id);
                 }
@@ -594,25 +594,21 @@ pub(crate) async fn workspace_suspend_inner(
     pty_state: &PtyManagerState,
     workspace_id: &str,
 ) -> Result<Workspace, AppError> {
-    let ws = crate::cache::workspaces::get_workspace(pool, workspace_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("workspace '{workspace_id}'")))?;
-
-    if ws.state != WorkspaceState::Active {
-        return Err(AppError::Workspace(format!(
-            "cannot suspend workspace in state '{:?}' — must be Active",
-            ws.state
-        )));
-    }
-
-    // Kill the PTY if one is tracked
+    // Kill the PTY if one is tracked (before DB update — safe direction of failure)
     if let Some(pty_id) = pty_state.unregister(workspace_id)
         && let Err(e) = pty_state.manager.kill(&pty_id)
     {
         log::warn!("failed to kill PTY {pty_id} during suspend: {e}");
     }
 
-    update_workspace_state(pool, workspace_id, &WorkspaceState::Suspended).await
+    // Atomic transition: WHERE state = 'active' prevents TOCTOU races
+    update_workspace_state(
+        pool,
+        workspace_id,
+        &WorkspaceState::Suspended,
+        Some(&WorkspaceState::Active),
+    )
+    .await
 }
 
 /// Resumes a suspended workspace: spawns a new PTY in the existing worktree.
@@ -643,11 +639,27 @@ pub(crate) async fn workspace_resume_inner(
     })?;
     let wt_path = PathBuf::from(wt_path_str);
 
+    // Verify worktree still exists on disk before spawning PTY
+    if !wt_path.exists() {
+        return Err(AppError::Workspace(format!(
+            "workspace '{workspace_id}' worktree no longer exists at '{}' — cannot resume",
+            wt_path.display()
+        )));
+    }
+
     // Spawn a new PTY in the existing worktree
     let pty_id = pty_state.manager.spawn(&wt_path, 80, 24, on_pty_output)?;
 
-    // Update DB state to Active — if this fails, kill the PTY to avoid orphaning it
-    let updated = match update_workspace_state(pool, workspace_id, &WorkspaceState::Active).await {
+    // Atomic transition: WHERE state = 'suspended' prevents TOCTOU races.
+    // If this fails, kill the PTY to avoid orphaning it.
+    let updated = match update_workspace_state(
+        pool,
+        workspace_id,
+        &WorkspaceState::Active,
+        Some(&WorkspaceState::Suspended),
+    )
+    .await
+    {
         Ok(ws) => ws,
         Err(e) => {
             if let Err(kill_err) = pty_state.manager.kill(&pty_id) {
@@ -670,45 +682,49 @@ pub(crate) async fn workspace_resume_inner(
 
 /// Archives a workspace: kills PTY if active, removes worktree, sets state to Archived.
 ///
-/// Works from both Active and Suspended states.
+/// Accepts the pre-fetched `Workspace` to avoid a redundant DB query.
+/// `repo_local_path` is optional — when `None`, worktree removal is skipped
+/// (best-effort: a missing `local_path` should not block archiving).
 pub(crate) async fn workspace_archive_inner(
     pool: &SqlitePool,
     pty_state: &PtyManagerState,
-    workspace_id: &str,
-    repo_local_path: &Path,
+    ws: &Workspace,
+    repo_local_path: Option<&Path>,
 ) -> Result<Workspace, AppError> {
-    let ws = crate::cache::workspaces::get_workspace(pool, workspace_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("workspace '{workspace_id}'")))?;
-
     if ws.state == WorkspaceState::Archived {
         return Err(AppError::Workspace(format!(
-            "workspace '{workspace_id}' is already archived"
+            "workspace '{}' is already archived",
+            ws.id
         )));
     }
 
     // Kill PTY if tracked (Active state)
-    if let Some(pty_id) = pty_state.unregister(workspace_id)
+    if let Some(pty_id) = pty_state.unregister(&ws.id)
         && let Err(e) = pty_state.manager.kill(&pty_id)
     {
         log::warn!("failed to kill PTY {pty_id} during archive: {e}");
     }
 
     // Remove worktree from disk.
-    // Best-effort: filesystem errors do not fail the archive operation.
-    // The workspace is marked Archived in the DB even if worktree removal fails,
+    // Best-effort: filesystem errors and missing local_path do not fail the
+    // archive operation. The workspace is marked Archived in the DB regardless,
     // balancing filesystem transience against database consistency.
-    if let Some(ref wt_path_str) = ws.worktree_path {
+    if let (Some(wt_path_str), Some(repo_path)) = (&ws.worktree_path, repo_local_path) {
         let wt_path = PathBuf::from(wt_path_str);
         if wt_path.exists()
-            && let Err(e) = worktree::remove_worktree(repo_local_path, &wt_path).await
+            && let Err(e) = worktree::remove_worktree(repo_path, &wt_path).await
         {
             log::warn!("failed to remove worktree during archive: {e}");
         }
+    } else if ws.worktree_path.is_some() && repo_local_path.is_none() {
+        log::warn!(
+            "repo has no local_path — worktree for workspace '{}' will not be removed from disk",
+            ws.id
+        );
     }
 
     // Update DB — archive_workspace clears worktree_path
-    crate::cache::workspaces::archive_workspace(pool, workspace_id).await
+    crate::cache::workspaces::archive_workspace(pool, &ws.id).await
 }
 
 /// Opens a workspace for a PR: creates worktree, spawns PTY, persists in DB.
@@ -816,28 +832,20 @@ pub async fn workspace_archive(
     app_handle: tauri::AppHandle,
     workspace_id: String,
 ) -> Result<(), String> {
-    // Look up the repo local path for worktree removal
+    // Pre-fetch workspace (passed to inner to avoid double query)
     let ws = crate::cache::workspaces::get_workspace(&pool, &workspace_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("workspace '{workspace_id}' not found"))?;
 
+    // Look up repo local path — best-effort (None skips worktree removal)
     let repo = crate::cache::repos::get_repo(&pool, &ws.repo_id)
         .await
         .map_err(|e| e.to_string())?;
 
-    let local_path = repo
-        .local_path
-        .as_deref()
-        .map(PathBuf::from)
-        .ok_or_else(|| {
-            format!(
-                "repo '{}' has no local_path — cannot remove worktree",
-                ws.repo_id
-            )
-        })?;
+    let local_path: Option<PathBuf> = repo.local_path.as_deref().map(PathBuf::from);
 
-    let archived = workspace_archive_inner(&pool, &pty_state, &workspace_id, &local_path)
+    let archived = workspace_archive_inner(&pool, &pty_state, &ws, local_path.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1973,7 +1981,11 @@ mod tests {
         assert!(wt_path.exists(), "worktree should exist before archive");
 
         // Archive — should kill PTY, remove worktree, set state to Archived
-        let archived = workspace_archive_inner(&pool, &pty_state, &ws_id, &local_repo).await;
+        let ws = crate::cache::workspaces::get_workspace(&pool, &ws_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let archived = workspace_archive_inner(&pool, &pty_state, &ws, Some(&local_repo)).await;
         assert!(archived.is_ok(), "archive should succeed: {archived:?}");
 
         // PTY should be killed
@@ -2041,7 +2053,11 @@ mod tests {
             .unwrap();
 
         // Archive from suspended state — should still remove worktree
-        let archived = workspace_archive_inner(&pool, &pty_state, &ws_id, &local_repo).await;
+        let ws = crate::cache::workspaces::get_workspace(&pool, &ws_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let archived = workspace_archive_inner(&pool, &pty_state, &ws, Some(&local_repo)).await;
         assert!(
             archived.is_ok(),
             "archive from suspended should succeed: {archived:?}"
@@ -2096,7 +2112,11 @@ mod tests {
             .unwrap();
 
         // Archive the workspace
-        workspace_archive_inner(&pool, &pty_state, &ws_id, &local_repo)
+        let ws = crate::cache::workspaces::get_workspace(&pool, &ws_id)
+            .await
+            .unwrap()
+            .unwrap();
+        workspace_archive_inner(&pool, &pty_state, &ws, Some(&local_repo))
             .await
             .unwrap();
 
