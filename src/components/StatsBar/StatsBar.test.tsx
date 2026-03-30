@@ -33,6 +33,7 @@ function createWrapper() {
 describe("StatsBar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useDashboardStore.setState({ focusMode: false });
   });
 
   it("should render all 4 stats", () => {

@@ -86,7 +86,7 @@ const multiRepoReviews = [...allReviews, repo2HighPr, repo2LowPr];
 
 describe("ReviewQueue", () => {
   beforeEach(() => {
-    useDashboardStore.setState({ activeFilters: {} });
+    useDashboardStore.setState({ activeFilters: {}, focusMode: false });
   });
   it("should render PRs sorted by priority", () => {
     render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);

@@ -88,7 +88,7 @@ function renderSidebar() {
 describe("Sidebar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useDashboardStore.setState({ currentView: "overview", activeFilters: {} });
+    useDashboardStore.setState({ currentView: "overview", activeFilters: {}, focusMode: false });
     useWorkspacesStore.setState({ activeWorkspaceId: null });
   });
 

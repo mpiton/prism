@@ -21,6 +21,8 @@ const PRIORITY_ORDER: Record<Priority, number> = {
 
 type PriorityFilter = "all" | Priority;
 
+const FOCUS_PRIORITIES: readonly Priority[] = ["critical", "high"];
+
 const PRIORITY_FILTERS: readonly PriorityFilter[] = [
   "all",
   "critical",
@@ -75,7 +77,7 @@ export function ReviewQueue({
 
   const sorted = useMemo(() => {
     const filtered = reviews.filter((r) => {
-      if (focusMode && r.pullRequest.priority !== "critical" && r.pullRequest.priority !== "high")
+      if (focusMode && !FOCUS_PRIORITIES.includes(r.pullRequest.priority))
         return false;
       if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter)
         return false;
