@@ -1,3 +1,4 @@
+import { useRef, useCallback } from "react";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useSettingsStore } from "../../stores/settings";
 import type { Workspace, WorkspaceState } from "../../lib/types";
@@ -15,16 +16,55 @@ const STATE_DOT_CLASS = {
   archived: "bg-dim",
 } satisfies Record<WorkspaceState, string>;
 
+function sanitizeMax(value: number | undefined | null): number {
+  return Number.isFinite(value) && value! > 0 ? value! : DEFAULT_MAX_ACTIVE;
+}
+
 export function WorkspaceSwitcher({
   workspaces,
   onBackToDashboard,
 }: WorkspaceSwitcherProps) {
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
-  const maxActiveWorkspaces =
-    useSettingsStore((s) => s.config?.maxActiveWorkspaces) ?? DEFAULT_MAX_ACTIVE;
+  const maxActiveWorkspaces = sanitizeMax(
+    useSettingsStore((s) => s.config?.maxActiveWorkspaces),
+  );
 
   const activeCount = workspaces.filter((w) => w.state === "active").length;
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent, index: number) => {
+      const count = workspaces.length;
+      if (count === 0) return;
+
+      let next: number | null = null;
+      switch (e.key) {
+        case "ArrowRight":
+          next = (index + 1) % count;
+          break;
+        case "ArrowLeft":
+          next = (index - 1 + count) % count;
+          break;
+        case "Home":
+          next = 0;
+          break;
+        case "End":
+          next = count - 1;
+          break;
+        default:
+          return;
+      }
+
+      e.preventDefault();
+      const ws = workspaces[next];
+      if (ws) {
+        setActiveWorkspace(ws.id);
+        tabRefs.current[next]?.focus();
+      }
+    },
+    [workspaces, setActiveWorkspace],
+  );
 
   return (
     <nav
@@ -40,17 +80,20 @@ export function WorkspaceSwitcher({
       </button>
 
       <div className="flex items-center gap-1" role="tablist" aria-label="Workspaces">
-        {workspaces.map((ws) => {
+        {workspaces.map((ws, i) => {
           const isActive = ws.id === activeWorkspaceId;
           return (
             <button
               key={ws.id}
+              ref={(el) => { tabRefs.current[i] = el; }}
               type="button"
               role="tab"
               aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
               data-testid={`tab-${ws.id}`}
               data-active={isActive ? "true" : "false"}
               onClick={() => setActiveWorkspace(ws.id)}
+              onKeyDown={(e) => handleKeyDown(e, i)}
               className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors ${
                 isActive
                   ? "bg-surface-hover text-accent"

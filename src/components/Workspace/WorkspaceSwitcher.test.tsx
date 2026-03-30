@@ -194,4 +194,109 @@ describe("WorkspaceSwitcher", () => {
 
     expect(onBack).toHaveBeenCalledOnce();
   });
+
+  it("should fallback to default when maxActiveWorkspaces is invalid", () => {
+    useSettingsStore.setState({
+      config: {
+        pollIntervalSecs: 300,
+        maxActiveWorkspaces: 0,
+        githubToken: null,
+        dataDir: null,
+        workspacesDir: null,
+      },
+    });
+
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("2/3")).toBeInTheDocument();
+  });
+
+  it("should navigate tabs with ArrowRight key", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    const firstTab = screen.getByTestId("tab-ws-1");
+    firstTab.focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-2");
+  });
+
+  it("should navigate tabs with ArrowLeft key (wrap around)", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    const firstTab = screen.getByTestId("tab-ws-1");
+    firstTab.focus();
+    await user.keyboard("{ArrowLeft}");
+
+    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-4");
+  });
+
+  it("should navigate to first tab with Home key", async () => {
+    const user = userEvent.setup();
+    useWorkspacesStore.setState({ activeWorkspaceId: "ws-3" });
+
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    const tab = screen.getByTestId("tab-ws-3");
+    tab.focus();
+    await user.keyboard("{Home}");
+
+    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-1");
+  });
+
+  it("should navigate to last tab with End key", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    const firstTab = screen.getByTestId("tab-ws-1");
+    firstTab.focus();
+    await user.keyboard("{End}");
+
+    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-4");
+  });
+
+  it("should set tabIndex 0 on active tab and -1 on others", () => {
+    render(
+      <WorkspaceSwitcher
+        workspaces={WORKSPACES}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    const activeTab = screen.getByTestId("tab-ws-1");
+    const inactiveTab = screen.getByTestId("tab-ws-2");
+
+    expect(activeTab).toHaveAttribute("tabindex", "0");
+    expect(inactiveTab).toHaveAttribute("tabindex", "-1");
+  });
 });
