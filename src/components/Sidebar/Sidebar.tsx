@@ -29,6 +29,8 @@ export function Sidebar(): ReactElement {
   const queryClient = useQueryClient();
   const currentView = useDashboardStore((s) => s.currentView);
   const setView = useDashboardStore((s) => s.setView);
+  const focusMode = useDashboardStore((s) => s.focusMode);
+  const toggleFocusMode = useDashboardStore((s) => s.toggleFocusMode);
   const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
   const { stats, dashboard } = useGitHubData();
 
@@ -116,6 +118,22 @@ export function Sidebar(): ReactElement {
           <RepoList repos={repos} onToggleRepo={handleToggleRepo} />
         </div>
       )}
+
+      {/* Focus Mode Toggle */}
+      <div className="px-2">
+        <button
+          type="button"
+          aria-pressed={focusMode}
+          onClick={toggleFocusMode}
+          className={`w-full rounded px-2 py-1 text-xs font-medium ${
+            focusMode
+              ? "bg-accent text-white"
+              : "text-dim hover:text-foreground"
+          }`}
+        >
+          Focus
+        </button>
+      </div>
 
       {/* Footer */}
       <div className="mt-auto border-t border-border px-2 pt-2">

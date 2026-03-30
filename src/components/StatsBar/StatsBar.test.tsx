@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import { StatsBar } from "./StatsBar";
+import { useDashboardStore } from "../../stores/dashboard";
 import type { DashboardStats } from "../../lib/types";
 
 vi.mock("../../hooks/useGitHubData", () => ({
@@ -133,6 +134,34 @@ describe("StatsBar", () => {
     render(<StatsBar />, { wrapper: createWrapper() });
 
     expect(screen.getByText(/never synced/i)).toBeInTheDocument();
+  });
+
+  it("should show FOCUS MODE indicator when focus mode is on", () => {
+    useDashboardStore.setState({ focusMode: true });
+    (useGitHubData as Mock).mockReturnValue({
+      stats: MOCK_STATS,
+      dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<StatsBar />, { wrapper: createWrapper() });
+
+    expect(screen.getByText("FOCUS MODE")).toBeInTheDocument();
+  });
+
+  it("should not show FOCUS MODE indicator when focus mode is off", () => {
+    useDashboardStore.setState({ focusMode: false });
+    (useGitHubData as Mock).mockReturnValue({
+      stats: MOCK_STATS,
+      dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<StatsBar />, { wrapper: createWrapper() });
+
+    expect(screen.queryByText("FOCUS MODE")).not.toBeInTheDocument();
   });
 
   it("should show 'never synced' when syncedAt is an invalid date", () => {

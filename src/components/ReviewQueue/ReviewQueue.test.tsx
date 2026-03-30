@@ -232,6 +232,37 @@ describe("ReviewQueue", () => {
     expect(screen.getAllByRole("link")).toHaveLength(4);
   });
 
+  it("should filter critical+high in focus mode", () => {
+    useDashboardStore.setState({ focusMode: true });
+    render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
+
+    const cards = screen.getAllByRole("link");
+    expect(cards).toHaveLength(2);
+    expect(screen.getByText("Critical fix")).toBeInTheDocument();
+    expect(screen.getByText("High feature")).toBeInTheDocument();
+    expect(screen.queryByText("Medium task")).not.toBeInTheDocument();
+    expect(screen.queryByText("Low chore")).not.toBeInTheDocument();
+  });
+
+  it("should show all PRs when focus mode is off", () => {
+    useDashboardStore.setState({ focusMode: false });
+    render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
+
+    expect(screen.getAllByRole("link")).toHaveLength(4);
+  });
+
+  it("should combine focus mode with priority filter", async () => {
+    const user = userEvent.setup();
+    useDashboardStore.setState({ focusMode: true });
+    render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /^critical$/i }));
+
+    const cards = screen.getAllByRole("link");
+    expect(cards).toHaveLength(1);
+    expect(screen.getByText("Critical fix")).toBeInTheDocument();
+  });
+
   it("should forward onWorkspaceAction to ReviewCard", async () => {
     const prWithWorkspace = makePr({
       number: 99,
