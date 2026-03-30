@@ -4,6 +4,7 @@ query PullRequestDetail($owner: String!, $name: String!, $number: Int!) {
       id
       number
       title
+      body
       author { __typename login }
       state
       isDraft
@@ -31,6 +32,25 @@ query PullRequestDetail($owner: String!, $name: String!, $number: Int!) {
           author { __typename login }
           state
           createdAt
+        }
+      }
+      reviewThreads(first: 50) {
+        nodes {
+          isResolved
+          path
+          comments(first: 20) {
+            nodes {
+              author { __typename login }
+              body
+            }
+          }
+        }
+      }
+      files(first: 100) {
+        nodes {
+          path
+          additions
+          deletions
         }
       }
       commits(last: 1) {

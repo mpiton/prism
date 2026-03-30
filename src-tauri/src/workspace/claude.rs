@@ -1,9 +1,12 @@
+use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
 
 use super::pty::PtyManager;
 use crate::error::AppError;
+use crate::github::client::GitHubClient;
+use crate::github::queries::{PullRequestDetail, pull_request_detail};
 
 /// Matches a Claude Code session ID from stdout.
 ///
@@ -91,6 +94,282 @@ pub fn rename_claude_session(
     reject_control_chars(name, "session name")?;
     let cmd = format!("/session rename {name}\n");
     pty_manager.write_pty(pty_id, cmd.as_bytes())
+}
+
+// ── CLAUDE.md generation ─────────────────────────────────────────
+
+/// Review comment context for CLAUDE.md generation.
+#[derive(Debug, Clone)]
+pub struct ReviewThreadContext {
+    pub path: Option<String>,
+    pub comments: Vec<ThreadComment>,
+}
+
+/// A single comment within a review thread.
+#[derive(Debug, Clone)]
+pub struct ThreadComment {
+    pub author: String,
+    pub body: String,
+}
+
+/// A changed file in the PR.
+#[derive(Debug, Clone)]
+pub struct ChangedFile {
+    pub path: String,
+    pub additions: i64,
+    pub deletions: i64,
+}
+
+/// All the PR context needed to render a CLAUDE.md.
+#[derive(Debug, Clone)]
+pub struct PrContext {
+    pub title: String,
+    pub number: i64,
+    pub body: String,
+    pub author: String,
+    pub head_branch: String,
+    pub base_branch: String,
+    pub repo_name: String,
+    pub url: String,
+    pub reviews: Vec<(String, String)>, // (reviewer, state)
+    pub unresolved_threads: Vec<ReviewThreadContext>,
+    pub changed_files: Vec<ChangedFile>,
+}
+
+/// Renders the CLAUDE.md content from PR context (pure function).
+#[allow(dead_code)]
+pub fn render_claude_md(ctx: &PrContext) -> String {
+    use std::fmt::Write;
+
+    let mut md = String::with_capacity(2048);
+
+    // Header
+    let _ = writeln!(md, "# PR #{} — {}", ctx.number, ctx.title);
+    md.push('\n');
+    let _ = write!(
+        md,
+        "- **Author**: {}\n- **Branch**: `{}` → `{}`\n- **Repo**: {}\n- **URL**: {}\n",
+        ctx.author, ctx.head_branch, ctx.base_branch, ctx.repo_name, ctx.url
+    );
+    md.push('\n');
+
+    // Description (fenced as untrusted content)
+    if !ctx.body.is_empty() {
+        md.push_str("## Description\n\n");
+        md.push_str("```text\n");
+        md.push_str(&escape_fenced_text(&ctx.body));
+        md.push_str("\n```\n\n");
+    }
+
+    // Reviews
+    if !ctx.reviews.is_empty() {
+        md.push_str("## Reviews\n\n");
+        for (reviewer, state) in &ctx.reviews {
+            let _ = writeln!(md, "- **{reviewer}**: {state}");
+        }
+        md.push('\n');
+    }
+
+    // Unresolved review threads (skip empty threads)
+    let non_empty_threads: Vec<_> = ctx
+        .unresolved_threads
+        .iter()
+        .filter(|t| !t.comments.is_empty())
+        .collect();
+    if !non_empty_threads.is_empty() {
+        md.push_str("## Unresolved Review Comments\n\n");
+        for thread in &non_empty_threads {
+            let path = thread.path.as_deref().unwrap_or("(no file)");
+            let _ = writeln!(md, "### `{path}`");
+            md.push('\n');
+            for comment in &thread.comments {
+                let _ = writeln!(md, "**{}**:", comment.author);
+                md.push_str("```text\n");
+                md.push_str(&escape_fenced_text(&comment.body));
+                md.push_str("\n```\n\n");
+            }
+        }
+    }
+
+    // Changed files
+    if !ctx.changed_files.is_empty() {
+        md.push_str("## Changed Files\n\n");
+        md.push_str("| File | +/- |\n|------|-----|\n");
+        for f in &ctx.changed_files {
+            let escaped = escape_table_cell(&f.path);
+            let _ = writeln!(md, "| `{escaped}` | +{}/-{} |", f.additions, f.deletions);
+        }
+        md.push('\n');
+    }
+
+    md
+}
+
+/// Escapes text for safe inclusion inside a fenced code block.
+/// Neutralizes triple backticks that would prematurely close the fence.
+fn escape_fenced_text(text: &str) -> String {
+    text.replace("```", "` ` `")
+}
+
+/// Escapes a string for safe use inside a markdown table cell.
+fn escape_table_cell(value: &str) -> String {
+    value.replace('|', "\\|").replace('\n', " ")
+}
+
+/// Parses `repo_id` ("owner/name") into (owner, name).
+fn parse_repo_id(repo_id: &str) -> Result<(&str, &str), AppError> {
+    let (owner, name) = repo_id
+        .split_once('/')
+        .ok_or_else(|| AppError::Workspace("repo_id must be in 'owner/name' format".into()))?;
+    if owner.is_empty() || name.is_empty() {
+        return Err(AppError::Workspace(
+            "repo_id owner and name must not be empty".into(),
+        ));
+    }
+    if name.contains('/') {
+        return Err(AppError::Workspace(
+            "repo_id must not contain extra path segments".into(),
+        ));
+    }
+    Ok((owner, name))
+}
+
+/// Extracts a `PrContext` from the GraphQL response.
+fn extract_pr_context(
+    data: &pull_request_detail::ResponseData,
+    repo_id: &str,
+) -> Result<PrContext, AppError> {
+    let pr = data
+        .repository
+        .as_ref()
+        .and_then(|r| r.pull_request.as_ref())
+        .ok_or_else(|| AppError::NotFound("pull request not found".into()))?;
+
+    let author = pr
+        .author
+        .as_ref()
+        .map_or("unknown".to_string(), |a| a.login.clone());
+
+    let reviews: Vec<(String, String)> = pr
+        .reviews
+        .as_ref()
+        .and_then(|r| r.nodes.as_ref())
+        .map(|nodes| {
+            nodes
+                .iter()
+                .flatten()
+                .map(|r| {
+                    let reviewer = r
+                        .author
+                        .as_ref()
+                        .map_or("unknown".to_string(), |a| a.login.clone());
+                    // Debug format matches GraphQL enum variant names (APPROVED, CHANGES_REQUESTED, etc.)
+                    let state = format!("{:?}", r.state);
+                    (reviewer, state)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let unresolved_threads: Vec<ReviewThreadContext> = pr
+        .review_threads
+        .as_ref()
+        .and_then(|rt| rt.nodes.as_ref())
+        .map(|nodes| {
+            nodes
+                .iter()
+                .flatten()
+                .filter(|t| !t.is_resolved)
+                .map(|t| {
+                    let comments: Vec<ThreadComment> = t
+                        .comments
+                        .as_ref()
+                        .and_then(|c| c.nodes.as_ref())
+                        .map(|cn| {
+                            cn.iter()
+                                .flatten()
+                                .map(|c| ThreadComment {
+                                    author: c
+                                        .author
+                                        .as_ref()
+                                        .map_or("unknown".to_string(), |a| a.login.clone()),
+                                    body: c.body.clone(),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    ReviewThreadContext {
+                        path: t.path.clone(),
+                        comments,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let changed_files: Vec<ChangedFile> = pr
+        .files
+        .as_ref()
+        .and_then(|f| f.nodes.as_ref())
+        .map(|nodes| {
+            nodes
+                .iter()
+                .flatten()
+                .map(|f| ChangedFile {
+                    path: f.path.clone(),
+                    additions: f.additions,
+                    deletions: f.deletions,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(PrContext {
+        title: pr.title.clone(),
+        number: pr.number,
+        body: pr.body.clone().unwrap_or_default(),
+        author,
+        head_branch: pr.head_ref_name.clone(),
+        base_branch: pr.base_ref_name.clone(),
+        repo_name: repo_id.to_string(),
+        url: pr.url.clone(),
+        reviews,
+        unresolved_threads,
+        changed_files,
+    })
+}
+
+/// Fetches PR details from GitHub and generates a CLAUDE.md in the worktree.
+///
+/// `repo_id` must be in "owner/name" format (e.g. "mpiton/prism").
+#[allow(dead_code)]
+pub async fn generate_claude_md(
+    client: &GitHubClient,
+    repo_id: &str,
+    pr_number: i64,
+    worktree_path: &Path,
+) -> Result<(), AppError> {
+    let (owner, name) = parse_repo_id(repo_id)?;
+
+    let variables = pull_request_detail::Variables {
+        owner: owner.to_string(),
+        name: name.to_string(),
+        number: pr_number,
+    };
+
+    let data = client
+        .execute_graphql::<PullRequestDetail>(variables)
+        .await?;
+
+    let ctx = extract_pr_context(&data, repo_id)?;
+    let content = render_claude_md(&ctx);
+
+    let file_path = worktree_path.join("CLAUDE.md");
+    tokio::fs::write(&file_path, content.as_bytes())
+        .await
+        .map_err(AppError::Io)?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -298,5 +577,238 @@ mod tests {
         assert!(result.is_err(), "should reject name with newline");
 
         manager.kill(&pty_id).unwrap();
+    }
+
+    // ── CLAUDE.md generation tests ───────────────────────────────────
+
+    fn sample_pr_context() -> PrContext {
+        PrContext {
+            title: "feat: add user authentication".into(),
+            number: 42,
+            body: "This PR adds OAuth2 authentication.\n\n## Changes\n- Added auth middleware\n- Added login page".into(),
+            author: "octocat".into(),
+            head_branch: "feat/auth".into(),
+            base_branch: "main".into(),
+            repo_name: "mpiton/prism".into(),
+            url: "https://github.com/mpiton/prism/pull/42".into(),
+            reviews: vec![
+                ("alice".into(), "APPROVED".into()),
+                ("bob".into(), "CHANGES_REQUESTED".into()),
+            ],
+            unresolved_threads: vec![],
+            changed_files: vec![
+                ChangedFile { path: "src/auth/mod.rs".into(), additions: 120, deletions: 5 },
+                ChangedFile { path: "src/auth/middleware.rs".into(), additions: 80, deletions: 0 },
+                ChangedFile { path: "src/main.rs".into(), additions: 3, deletions: 1 },
+            ],
+        }
+    }
+
+    #[test]
+    fn test_generate_claude_md_content() {
+        let ctx = sample_pr_context();
+        let md = render_claude_md(&ctx);
+
+        // Title and PR number
+        assert!(
+            md.contains("feat: add user authentication"),
+            "should contain PR title"
+        );
+        assert!(md.contains("#42"), "should contain PR number");
+
+        // PR body is fenced
+        assert!(
+            md.contains("OAuth2 authentication"),
+            "should contain PR body"
+        );
+        assert!(
+            md.contains("```text\nThis PR adds OAuth2"),
+            "body should be inside a fenced block"
+        );
+
+        // Branch info
+        assert!(md.contains("feat/auth"), "should contain head branch");
+        assert!(md.contains("main"), "should contain base branch");
+
+        // Changed files
+        assert!(md.contains("src/auth/mod.rs"), "should list changed files");
+        assert!(
+            md.contains("src/auth/middleware.rs"),
+            "should list changed files"
+        );
+        assert!(md.contains("src/main.rs"), "should list changed files");
+
+        // Author
+        assert!(md.contains("octocat"), "should contain author");
+
+        // URL
+        assert!(
+            md.contains("https://github.com/mpiton/prism/pull/42"),
+            "should contain URL"
+        );
+    }
+
+    #[test]
+    fn test_generate_claude_md_with_reviews() {
+        let mut ctx = sample_pr_context();
+        ctx.unresolved_threads = vec![
+            ReviewThreadContext {
+                path: Some("src/auth/mod.rs".into()),
+                comments: vec![
+                    ThreadComment {
+                        author: "bob".into(),
+                        body: "This needs error handling for expired tokens.".into(),
+                    },
+                    ThreadComment {
+                        author: "octocat".into(),
+                        body: "Good point, will fix.".into(),
+                    },
+                ],
+            },
+            ReviewThreadContext {
+                path: Some("src/main.rs".into()),
+                comments: vec![ThreadComment {
+                    author: "alice".into(),
+                    body: "Consider using middleware instead of manual check.".into(),
+                }],
+            },
+        ];
+
+        let md = render_claude_md(&ctx);
+
+        // Review states
+        assert!(
+            md.contains("alice") && md.contains("APPROVED"),
+            "should show alice's approval"
+        );
+        assert!(
+            md.contains("bob") && md.contains("CHANGES_REQUESTED"),
+            "should show bob's changes requested"
+        );
+
+        // Unresolved threads — comments are fenced
+        assert!(
+            md.contains("error handling for expired tokens"),
+            "should contain unresolved comment body"
+        );
+        assert!(
+            md.contains("```text\nThis needs error handling"),
+            "comment body should be inside a fenced block"
+        );
+        assert!(
+            md.contains("src/auth/mod.rs"),
+            "should contain thread file path"
+        );
+        assert!(
+            md.contains("Consider using middleware"),
+            "should contain second thread comment"
+        );
+    }
+
+    #[test]
+    fn test_parse_repo_id_valid() {
+        let (owner, name) = parse_repo_id("mpiton/prism").unwrap();
+        assert_eq!(owner, "mpiton");
+        assert_eq!(name, "prism");
+    }
+
+    #[test]
+    fn test_parse_repo_id_invalid() {
+        assert!(parse_repo_id("no-slash").is_err());
+        assert!(parse_repo_id("/name").is_err());
+        assert!(parse_repo_id("owner/").is_err());
+        assert!(parse_repo_id("").is_err());
+        assert!(parse_repo_id("owner/name/extra").is_err());
+    }
+
+    #[test]
+    fn test_generate_claude_md_empty_body() {
+        let mut ctx = sample_pr_context();
+        ctx.body = String::new();
+        ctx.reviews = vec![];
+        ctx.unresolved_threads = vec![];
+        ctx.changed_files = vec![];
+
+        let md = render_claude_md(&ctx);
+
+        // Should still have title and basic structure
+        assert!(
+            md.contains("feat: add user authentication"),
+            "should still contain title"
+        );
+        assert!(md.contains("#42"), "should still contain PR number");
+
+        // Should not have empty sections that look broken
+        assert!(
+            !md.contains("##\n\n##"),
+            "should not have empty section headers back-to-back"
+        );
+    }
+
+    #[test]
+    fn test_render_skips_empty_threads() {
+        let mut ctx = sample_pr_context();
+        ctx.unresolved_threads = vec![
+            ReviewThreadContext {
+                path: Some("src/empty.rs".into()),
+                comments: vec![], // empty — should be skipped
+            },
+            ReviewThreadContext {
+                path: Some("src/real.rs".into()),
+                comments: vec![ThreadComment {
+                    author: "reviewer".into(),
+                    body: "Fix this.".into(),
+                }],
+            },
+        ];
+
+        let md = render_claude_md(&ctx);
+        assert!(
+            md.contains("src/real.rs"),
+            "should include non-empty thread"
+        );
+        assert!(
+            !md.contains("src/empty.rs"),
+            "should skip empty comment thread"
+        );
+    }
+
+    #[test]
+    fn test_render_escapes_backticks_in_body() {
+        let mut ctx = sample_pr_context();
+        ctx.body = "Before ```rust\nlet x = 1;\n``` after".into();
+
+        let md = render_claude_md(&ctx);
+        assert!(
+            !md.contains("```rust"),
+            "triple backticks in body should be escaped"
+        );
+        assert!(md.contains("` ` `rust"), "escaped backticks should appear");
+    }
+
+    #[test]
+    fn test_render_escapes_pipe_in_file_path() {
+        let mut ctx = sample_pr_context();
+        ctx.changed_files = vec![ChangedFile {
+            path: "src/a|b.rs".into(),
+            additions: 1,
+            deletions: 0,
+        }];
+
+        let md = render_claude_md(&ctx);
+        assert!(
+            md.contains("src/a\\|b.rs"),
+            "pipe in path should be escaped"
+        );
+        // Table should still have correct column count
+        let table_row = md
+            .lines()
+            .find(|l| l.contains("a\\|b.rs"))
+            .expect("should find escaped path line");
+        assert_eq!(
+            table_row.matches('|').count(),
+            4,
+            "table row should have 4 pipe delimiters"
+        );
     }
 }
