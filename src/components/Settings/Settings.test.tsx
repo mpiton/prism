@@ -44,6 +44,7 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     githubToken: "test-token",
     dataDir: null,
     workspacesDir: null,
+    theme: "dark",
     ...overrides,
   };
 }
@@ -240,7 +241,8 @@ describe("Settings", () => {
 
     renderWithProviders(<Settings />);
 
-    const toggle = await screen.findByRole("checkbox");
+    const reposSection = await screen.findByTestId("settings-repos");
+    const toggle = within(reposSection).getByRole("checkbox");
     await user.click(toggle);
 
     expect(mockedSetRepoEnabled).toHaveBeenCalledWith("repo-1", false);
@@ -289,6 +291,37 @@ describe("Settings", () => {
     await user.tab();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/failed to save/i);
+  });
+
+  it("should apply light theme class", async () => {
+    setupMocks(makeConfig({ theme: "light" }));
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByTestId("settings-github");
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+  });
+
+  it("should apply dark theme class by default", async () => {
+    setupMocks(makeConfig({ theme: "dark" }));
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByTestId("settings-github");
+    expect(document.documentElement.classList.contains("light")).toBe(false);
+  });
+
+  it("should persist theme in config", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    mockedSetConfig.mockResolvedValue(makeConfig({ theme: "light" }));
+
+    renderWithProviders(<Settings />);
+
+    const toggle = await screen.findByLabelText(/theme/i);
+    await user.click(toggle);
+
+    expect(mockedSetConfig).toHaveBeenCalledWith({ theme: "light" });
   });
 
   it("should reset draft to original value when config mutation fails", async () => {

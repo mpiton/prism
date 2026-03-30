@@ -329,6 +329,8 @@ pub struct AppConfig {
     pub data_dir: Option<String>,
     /// Override for the workspaces root directory (`~/.prism/workspaces/` by default).
     pub workspaces_dir: Option<String>,
+    /// UI theme: `"dark"` (default) or `"light"`.
+    pub theme: String,
 }
 
 impl fmt::Debug for AppConfig {
@@ -348,6 +350,7 @@ impl fmt::Debug for AppConfig {
             )
             .field("data_dir", &self.data_dir)
             .field("workspaces_dir", &self.workspaces_dir)
+            .field("theme", &self.theme)
             .finish()
     }
 }
@@ -363,6 +366,7 @@ impl Default for AppConfig {
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
+            theme: "dark".to_string(),
         }
     }
 }
@@ -412,6 +416,7 @@ pub struct PartialAppConfig {
     pub data_dir: Option<Option<String>>,
     #[serde(deserialize_with = "deserialize_double_option", default)]
     pub workspaces_dir: Option<Option<String>>,
+    pub theme: Option<String>,
 }
 
 /// Merge a partial update into a base config, returning a new config.
@@ -446,6 +451,7 @@ pub fn merge_partial_config(base: &AppConfig, partial: &PartialAppConfig) -> App
             Some(v) => v.clone(),
             None => base.workspaces_dir.clone(),
         },
+        theme: partial.theme.clone().unwrap_or_else(|| base.theme.clone()),
     }
 }
 
@@ -1035,6 +1041,7 @@ mod tests {
             github_token: Some("test-token".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: None,
+            theme: "dark".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"pollIntervalSecs\""));

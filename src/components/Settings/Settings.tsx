@@ -118,6 +118,14 @@ export function Settings(): ReactElement {
     },
   });
 
+  useEffect(() => {
+    if (configQuery.data?.theme === "light") {
+      document.documentElement.classList.add("light");
+    } else {
+      document.documentElement.classList.remove("light");
+    }
+  }, [configQuery.data?.theme]);
+
   if (configQuery.error && !configQuery.data) {
     return (
       <div data-testid="settings" className="flex h-full items-center justify-center text-dim">
@@ -135,6 +143,7 @@ export function Settings(): ReactElement {
   }
 
   const config = configQuery.data;
+  const isLight = config.theme === "light";
 
   return (
     <section data-testid="settings" className="flex h-full flex-col gap-6 overflow-y-auto p-4">
@@ -143,6 +152,21 @@ export function Settings(): ReactElement {
       {saveError ? (
         <p role="alert" className="text-sm text-red-400">{saveError}</p>
       ) : null}
+
+      <div data-testid="settings-appearance" className="flex flex-col gap-3">
+        <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">Appearance</h2>
+        <label className="flex items-center justify-between gap-4">
+          <span className="text-dim text-sm">Light theme</span>
+          <input
+            type="checkbox"
+            checked={isLight}
+            onChange={() =>
+              configMutation.mutate({ theme: isLight ? "dark" : "light" })
+            }
+            className="accent-accent h-4 w-4"
+          />
+        </label>
+      </div>
 
       <div data-testid="settings-github" className="flex flex-col gap-3">
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">GitHub</h2>

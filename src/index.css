@@ -33,6 +33,19 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+.light {
+  --color-bg: #faf9f6;
+  --color-surface: #f0efe8;
+  --color-surface-hover: #e8e7e0;
+  --color-surface-alt: #f5f4ef;
+  --color-border: #d4d0c8;
+  --color-text: #2a2a27;
+  --color-dim: #6b6860;
+  --color-muted: #9e9b93;
+  --color-white: #1a1a18;
+  --color-accent: #7a9900;
+}
+
 body {
   background-color: var(--color-bg);
   color: var(--color-text);

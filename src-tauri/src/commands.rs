@@ -1342,6 +1342,7 @@ mod tests {
             github_token: Some("ghp_test".into()),
             data_dir: None,
             workspaces_dir: Some("/ws".into()),
+            theme: "dark".to_string(),
         };
         let json = serde_json::to_value(&config).unwrap();
         assert_eq!(json["pollIntervalSecs"], 120);
@@ -1401,6 +1402,7 @@ mod tests {
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
+            theme: "dark".to_string(),
         };
         let partial = PartialAppConfig {
             poll_interval_secs: Some(60),
@@ -1411,6 +1413,7 @@ mod tests {
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
+            theme: None,
         };
         let merged = merge_partial_config(&base, &partial);
         assert_eq!(merged.poll_interval_secs, 60);
@@ -1428,6 +1431,7 @@ mod tests {
             github_token: Some("ghp_old".into()),
             data_dir: Some("/data".into()),
             workspaces_dir: None,
+            theme: "dark".to_string(),
         };
         // Double-option: Some(None) means "explicitly set to null"
         let partial = PartialAppConfig {
@@ -1439,6 +1443,7 @@ mod tests {
             github_token: Some(None), // clear it
             data_dir: None,           // leave as-is
             workspaces_dir: None,
+            theme: None,
         };
         let merged = merge_partial_config(&base, &partial);
         assert!(
@@ -1931,6 +1936,7 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                theme: "dark".to_string(),
             },
         )
         .await
@@ -1986,6 +1992,7 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                theme: "dark".to_string(),
             },
         )
         .await
@@ -2062,6 +2069,7 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                theme: "dark".to_string(),
             },
         )
         .await
@@ -2116,6 +2124,7 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                theme: "dark".to_string(),
             },
         )
         .await
@@ -2186,6 +2195,7 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                theme: "dark".to_string(),
             },
         )
         .await
@@ -2257,6 +2267,7 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                theme: "dark".to_string(),
             },
         )
         .await
@@ -2326,6 +2337,7 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                theme: "dark".to_string(),
             },
         )
         .await

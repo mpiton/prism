@@ -1,4 +1,5 @@
-import { useCallback, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
 import { ReviewQueue } from "./components/ReviewQueue";
@@ -10,6 +11,7 @@ import { Settings } from "./components/Settings";
 import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { useKeyboard } from "./hooks/useKeyboard";
+import { getConfig } from "./lib/tauri";
 import { useDashboardStore } from "./stores/dashboard";
 import { useWorkspacesStore } from "./stores/workspaces";
 import type { DashboardView } from "./stores/dashboard";
@@ -57,6 +59,15 @@ function App(): ReactElement {
   const currentView = useDashboardStore((s) => s.currentView);
   const isWorkspace = currentView === "workspaces";
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  const { data: appConfig } = useQuery({ queryKey: ["config"], queryFn: getConfig });
+  useEffect(() => {
+    if (appConfig?.theme === "light") {
+      document.documentElement.classList.add("light");
+    } else {
+      document.documentElement.classList.remove("light");
+    }
+  }, [appConfig?.theme]);
 
   const handleNavigate = useCallback((direction: "up" | "down") => {
     useDashboardStore.getState().navigateList(direction);

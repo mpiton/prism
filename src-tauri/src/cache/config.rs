@@ -13,6 +13,7 @@ const KEY_AUTO_SUSPEND: &str = "auto_suspend_minutes";
 const KEY_GITHUB_TOKEN: &str = "github_token";
 const KEY_DATA_DIR: &str = "data_dir";
 const KEY_WORKSPACES_DIR: &str = "workspaces_dir";
+const KEY_THEME: &str = "theme";
 
 /// Minimum allowed value for `poll_interval_secs`.
 const MIN_POLL_INTERVAL_SECS: u64 = 30;
@@ -121,6 +122,9 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
             KEY_WORKSPACES_DIR => {
                 config.workspaces_dir = Some(row.value);
             }
+            KEY_THEME => {
+                config.theme = row.value;
+            }
             _ => {} // ignore unknown keys for forward-compat
         }
     }
@@ -165,6 +169,7 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
         config.workspaces_dir.as_deref(),
     )
     .await?;
+    upsert_key(&mut *tx, KEY_THEME, &config.theme).await?;
 
     tx.commit().await?;
 
@@ -178,6 +183,7 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
         github_token: config.github_token.clone(),
         data_dir: config.data_dir.clone(),
         workspaces_dir: config.workspaces_dir.clone(),
+        theme: config.theme.clone(),
     })
 }
 
@@ -279,6 +285,7 @@ mod tests {
             github_token: Some("ghp_test".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: Some("/custom/ws".to_string()),
+            theme: "light".to_string(),
         };
 
         let result = set_config(&pool, &config).await.unwrap();
@@ -332,6 +339,24 @@ mod tests {
             result.max_active_workspaces, MIN_MAX_ACTIVE_WORKSPACES,
             "should clamp 0 to minimum of 1"
         );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_set_config_theme_persists() {
+        let (pool, _tmp) = test_pool().await;
+
+        let mut config = get_config(&pool).await.unwrap();
+        assert_eq!(config.theme, "dark", "default theme should be dark");
+
+        config.theme = "light".to_string();
+        let result = set_config(&pool, &config).await.unwrap();
+        assert_eq!(result.theme, "light");
+
+        // Re-read to confirm persistence
+        let reloaded = get_config(&pool).await.unwrap();
+        assert_eq!(reloaded.theme, "light");
 
         pool.close().await;
     }

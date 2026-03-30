@@ -215,6 +215,8 @@ export interface AppConfig {
   readonly githubToken: string | null;
   readonly dataDir: string | null;
   readonly workspacesDir: string | null;
+  /** UI theme: `"dark"` (default) or `"light"`. */
+  readonly theme: string;
 }
 
 /** Partial update payload for `config_set`. Mirrors Rust `PartialAppConfig`.
@@ -232,6 +234,7 @@ export interface PartialAppConfig {
   readonly githubToken?: string | null;
   readonly dataDir?: string | null;
   readonly workspacesDir?: string | null;
+  readonly theme?: string;
 }
 
 // ── Tauri IPC command & event registries ─────────────────────────
