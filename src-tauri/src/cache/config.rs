@@ -9,6 +9,7 @@ const KEY_POLL_INTERVAL: &str = "poll_interval_secs";
 const KEY_MAX_WORKSPACES: &str = "max_active_workspaces";
 const KEY_ARCHIVE_DELAY: &str = "archive_delay_hours";
 const KEY_ARCHIVE_DELAY_CLOSED: &str = "archive_delay_closed_hours";
+const KEY_AUTO_SUSPEND: &str = "auto_suspend_minutes";
 const KEY_GITHUB_TOKEN: &str = "github_token";
 const KEY_DATA_DIR: &str = "data_dir";
 const KEY_WORKSPACES_DIR: &str = "workspaces_dir";
@@ -17,6 +18,8 @@ const KEY_WORKSPACES_DIR: &str = "workspaces_dir";
 const MIN_POLL_INTERVAL_SECS: u64 = 30;
 /// Minimum allowed value for `max_active_workspaces`.
 const MIN_MAX_ACTIVE_WORKSPACES: u32 = 1;
+/// Minimum allowed value for `auto_suspend_minutes`.
+const MIN_AUTO_SUSPEND_MINUTES: u64 = 5;
 
 /// Row from the `config` key-value table.
 #[derive(sqlx::FromRow)]
@@ -44,6 +47,18 @@ fn clamp_max_workspaces(value: u32) -> u32 {
             "max_active_workspaces {value} would evict all workspaces; clamping to {MIN_MAX_ACTIVE_WORKSPACES}"
         );
         MIN_MAX_ACTIVE_WORKSPACES
+    } else {
+        value
+    }
+}
+
+/// Clamp `auto_suspend_minutes` to its minimum, warning on violation.
+fn clamp_auto_suspend(value: u64) -> u64 {
+    if value < MIN_AUTO_SUSPEND_MINUTES {
+        warn!(
+            "auto_suspend_minutes {value} is below the minimum of {MIN_AUTO_SUSPEND_MINUTES}; clamping"
+        );
+        MIN_AUTO_SUSPEND_MINUTES
     } else {
         value
     }
@@ -90,6 +105,13 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
                     KEY_ARCHIVE_DELAY_CLOSED, row.value
                 ),
             },
+            KEY_AUTO_SUSPEND => match row.value.parse::<u64>() {
+                Ok(v) => config.auto_suspend_minutes = clamp_auto_suspend(v),
+                Err(_) => warn!(
+                    "ignoring non-parseable config value for '{}': '{}', using default",
+                    KEY_AUTO_SUSPEND, row.value
+                ),
+            },
             KEY_GITHUB_TOKEN => {
                 config.github_token = Some(row.value);
             }
@@ -115,6 +137,7 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
 pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConfig, AppError> {
     let poll_interval = clamp_poll_interval(config.poll_interval_secs);
     let max_workspaces = clamp_max_workspaces(config.max_active_workspaces);
+    let auto_suspend = clamp_auto_suspend(config.auto_suspend_minutes);
 
     let mut tx = pool.begin().await?;
 
@@ -132,6 +155,7 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
         &config.archive_delay_closed_hours.to_string(),
     )
     .await?;
+    upsert_key(&mut *tx, KEY_AUTO_SUSPEND, &auto_suspend.to_string()).await?;
 
     set_optional_key(&mut *tx, KEY_GITHUB_TOKEN, config.github_token.as_deref()).await?;
     set_optional_key(&mut *tx, KEY_DATA_DIR, config.data_dir.as_deref()).await?;
@@ -150,6 +174,7 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
         max_active_workspaces: max_workspaces,
         archive_delay_hours: config.archive_delay_hours,
         archive_delay_closed_hours: config.archive_delay_closed_hours,
+        auto_suspend_minutes: auto_suspend,
         github_token: config.github_token.clone(),
         data_dir: config.data_dir.clone(),
         workspaces_dir: config.workspaces_dir.clone(),
@@ -250,6 +275,7 @@ mod tests {
             max_active_workspaces: 5,
             archive_delay_hours: 12,
             archive_delay_closed_hours: 72,
+            auto_suspend_minutes: 30,
             github_token: Some("ghp_test".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: Some("/custom/ws".to_string()),

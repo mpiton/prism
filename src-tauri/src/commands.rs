@@ -470,6 +470,20 @@ impl PtyManagerState {
             map.retain(|_, v| v != pty_id);
         }
     }
+
+    /// Reverse lookup: find the workspace ID associated with a PTY ID.
+    ///
+    /// Recovers from a poisoned mutex to avoid silently losing
+    /// `last_active_at` updates (which would cause premature auto-suspend).
+    pub fn lookup_workspace_by_pty(&self, pty_id: &str) -> Option<String> {
+        let map = match self.workspace_ptys.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        map.iter()
+            .find(|(_, v)| v.as_str() == pty_id)
+            .map(|(k, _)| k.clone())
+    }
 }
 
 impl Default for PtyManagerState {
@@ -1001,11 +1015,13 @@ pub async fn workspace_cleanup(
     Ok(u32::try_from(archived_ids.len()).unwrap_or(u32::MAX))
 }
 
-/// Writes data to a PTY's stdin.
+/// Writes data to a PTY's stdin and touches `last_active_at` for the
+/// associated workspace so the lifecycle auto-suspend timer is reset.
 ///
 /// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
 #[tauri::command]
 pub async fn pty_write(
+    pool: tauri::State<'_, SqlitePool>,
     pty_state: tauri::State<'_, PtyManagerState>,
     pty_id: String,
     data: String,
@@ -1013,7 +1029,16 @@ pub async fn pty_write(
     pty_state
         .manager
         .write_pty(&pty_id, data.as_bytes())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Best-effort: update last_active_at for the workspace linked to this PTY.
+    if let Some(ws_id) = pty_state.lookup_workspace_by_pty(&pty_id)
+        && let Err(e) = crate::cache::workspaces::update_last_active(&pool, &ws_id).await
+    {
+        log::warn!("pty_write: failed to touch last_active_at for workspace '{ws_id}': {e}");
+    }
+
+    Ok(())
 }
 
 /// Resizes a PTY to new dimensions.
@@ -1286,6 +1311,7 @@ mod tests {
             max_active_workspaces: 5,
             archive_delay_hours: 12,
             archive_delay_closed_hours: 72,
+            auto_suspend_minutes: 30,
             github_token: Some("ghp_test".into()),
             data_dir: None,
             workspaces_dir: Some("/ws".into()),
@@ -1344,6 +1370,7 @@ mod tests {
             max_active_workspaces: 3,
             archive_delay_hours: 24,
             archive_delay_closed_hours: 48,
+            auto_suspend_minutes: 30,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -1353,6 +1380,7 @@ mod tests {
             max_active_workspaces: None,
             archive_delay_hours: None,
             archive_delay_closed_hours: None,
+            auto_suspend_minutes: None,
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
@@ -1369,6 +1397,7 @@ mod tests {
             max_active_workspaces: 3,
             archive_delay_hours: 24,
             archive_delay_closed_hours: 48,
+            auto_suspend_minutes: 30,
             github_token: Some("ghp_old".into()),
             data_dir: Some("/data".into()),
             workspaces_dir: None,
@@ -1379,6 +1408,7 @@ mod tests {
             max_active_workspaces: None,
             archive_delay_hours: None,
             archive_delay_closed_hours: None,
+            auto_suspend_minutes: None,
             github_token: Some(None), // clear it
             data_dir: None,           // leave as-is
             workspaces_dir: None,
@@ -1870,6 +1900,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1924,6 +1955,7 @@ mod tests {
                 max_active_workspaces: 1,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -1999,6 +2031,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2052,6 +2085,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2121,6 +2155,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2191,6 +2226,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
@@ -2259,6 +2295,7 @@ mod tests {
                 max_active_workspaces: 3,
                 archive_delay_hours: 24,
                 archive_delay_closed_hours: 48,
+                auto_suspend_minutes: 30,
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
