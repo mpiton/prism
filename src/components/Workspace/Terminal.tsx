@@ -28,8 +28,6 @@ interface TerminalProps {
 
 export function Terminal({ ptyId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<XTerm | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -50,12 +48,11 @@ export function Terminal({ ptyId }: TerminalProps) {
     term.open(container);
     fitAddon.fit();
 
-    termRef.current = term;
-    fitAddonRef.current = fitAddon;
-
     // stdin: forward user keystrokes to PTY
     term.onData((data) => {
-      ptyWrite({ workspaceId: ptyId, data }).catch(() => {});
+      ptyWrite({ workspaceId: ptyId, data }).catch((err: unknown) => {
+        console.error("[Terminal] ptyWrite failed:", err);
+      });
     });
 
     // stdout: listen for PTY output events
@@ -70,15 +67,25 @@ export function Terminal({ ptyId }: TerminalProps) {
       fitAddon.fit();
       const dims = fitAddon.proposeDimensions();
       if (dims) {
-        ptyResize({ workspaceId: ptyId, cols: dims.cols, rows: dims.rows }).catch(() => {});
+        ptyResize({ workspaceId: ptyId, cols: dims.cols, rows: dims.rows }).catch(
+          (err: unknown) => {
+            console.error("[Terminal] ptyResize failed:", err);
+          },
+        );
       }
     });
     resizeObserver.observe(container);
 
     return () => {
       resizeObserver.disconnect();
-      unlistenPromise.then((unlisten) => unlisten());
-      term.dispose();
+      unlistenPromise
+        .then((unlisten) => {
+          unlisten();
+          term.dispose();
+        })
+        .catch(() => {
+          term.dispose();
+        });
     };
   }, [ptyId]);
 
