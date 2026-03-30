@@ -1,5 +1,6 @@
 import { useState, useEffect, type ReactElement } from "react";
 import { useGitHubData } from "../../hooks/useGitHubData";
+import { useDashboardStore } from "../../stores/dashboard";
 
 const TICK_INTERVAL = 10_000;
 
@@ -42,6 +43,7 @@ function StatItem({ label, value, testId, highlight }: StatItemProps): ReactElem
 
 export function StatsBar(): ReactElement {
   const { stats, dashboard } = useGitHubData();
+  const focusMode = useDashboardStore((s) => s.focusMode);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -79,7 +81,14 @@ export function StatsBar(): ReactElement {
           testId="stat-workspaces"
         />
       </div>
-      <span className="text-xs text-dim">{formatSyncedTime(syncedAt, now)}</span>
+      <div className="flex items-center gap-3">
+        {focusMode && (
+          <span className="rounded bg-accent px-2 py-0.5 text-xs font-bold text-white">
+            FOCUS MODE
+          </span>
+        )}
+        <span className="text-xs text-dim">{formatSyncedTime(syncedAt, now)}</span>
+      </div>
     </div>
   );
 }

@@ -26,6 +26,7 @@ interface DashboardUiState {
   readonly activeFilters: DashboardFilters;
   readonly selectedIndex: number;
   readonly navigableItems: readonly NavigableItem[];
+  readonly focusMode: boolean;
 }
 
 interface DashboardActions {
@@ -34,6 +35,7 @@ interface DashboardActions {
   clearFilters: () => void;
   navigateList: (direction: "up" | "down") => void;
   setNavigableItems: (items: readonly NavigableItem[]) => void;
+  toggleFocusMode: () => void;
 }
 
 type DashboardState = DashboardUiState & DashboardActions;
@@ -43,6 +45,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   activeFilters: {},
   selectedIndex: -1,
   navigableItems: [],
+  focusMode: false,
   setView: (view) =>
     set({ currentView: view, selectedIndex: -1, navigableItems: [] }),
   setFilter: (filter) =>
@@ -79,4 +82,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
           : state.selectedIndex;
       return { navigableItems: items, selectedIndex: clamped };
     }),
+  toggleFocusMode: () =>
+    set((state) => ({ focusMode: !state.focusMode })),
 }));

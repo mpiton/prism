@@ -88,7 +88,7 @@ function renderSidebar() {
 describe("Sidebar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useDashboardStore.setState({ currentView: "overview", activeFilters: {} });
+    useDashboardStore.setState({ currentView: "overview", activeFilters: {}, focusMode: false });
     useWorkspacesStore.setState({ activeWorkspaceId: null });
   });
 
@@ -152,6 +152,27 @@ describe("Sidebar", () => {
     renderSidebar();
     await userEvent.click(screen.getByRole("button", { name: /issues/i }));
     expect(useDashboardStore.getState().currentView).toBe("issues");
+  });
+
+  it("should toggle focus mode via button", async () => {
+    renderSidebar();
+
+    const focusBtn = screen.getByRole("button", { name: /focus/i });
+    expect(focusBtn).toBeInTheDocument();
+
+    expect(useDashboardStore.getState().focusMode).toBe(false);
+    await userEvent.click(focusBtn);
+    expect(useDashboardStore.getState().focusMode).toBe(true);
+    await userEvent.click(focusBtn);
+    expect(useDashboardStore.getState().focusMode).toBe(false);
+  });
+
+  it("should show focus mode button as active when focus mode is on", () => {
+    useDashboardStore.setState({ focusMode: true });
+    renderSidebar();
+
+    const focusBtn = screen.getByRole("button", { name: /focus/i });
+    expect(focusBtn).toHaveAttribute("aria-pressed", "true");
   });
 
   it("should show footer with keyboard shortcut", () => {

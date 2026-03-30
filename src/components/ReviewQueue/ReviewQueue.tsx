@@ -21,6 +21,8 @@ const PRIORITY_ORDER: Record<Priority, number> = {
 
 type PriorityFilter = "all" | Priority;
 
+const FOCUS_PRIORITIES: readonly Priority[] = ["critical", "high"];
+
 const PRIORITY_FILTERS: readonly PriorityFilter[] = [
   "all",
   "critical",
@@ -54,6 +56,7 @@ export function ReviewQueue({
   const storePriority = useDashboardStore((s) => s.activeFilters.priority);
   const storeRepo = useDashboardStore((s) => s.activeFilters.repo);
   const setFilter = useDashboardStore((s) => s.setFilter);
+  const focusMode = useDashboardStore((s) => s.focusMode);
 
   useEffect(() => {
     return () => setFilter({ priority: undefined, repo: undefined });
@@ -74,13 +77,15 @@ export function ReviewQueue({
 
   const sorted = useMemo(() => {
     const filtered = reviews.filter((r) => {
+      if (focusMode && !FOCUS_PRIORITIES.includes(r.pullRequest.priority))
+        return false;
       if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter)
         return false;
       if (repoFilter && r.pullRequest.repoId !== repoFilter) return false;
       return true;
     });
     return sortByPriority(filtered);
-  }, [reviews, priorityFilter, repoFilter]);
+  }, [reviews, focusMode, priorityFilter, repoFilter]);
 
   const navItems = useMemo(
     () => sorted.map((r) => ({ url: r.pullRequest.url })),
