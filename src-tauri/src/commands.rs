@@ -565,10 +565,13 @@ pub(crate) async fn workspace_open_inner(
                 if let Some(old_pty) = pty_state.unregister(&oldest.id) {
                     let _ = pty_state.manager.kill(&old_pty);
                 }
-                if let Err(e) =
-                    update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended, None).await
+                match update_workspace_state(pool, &oldest.id, &WorkspaceState::Suspended, None)
+                    .await
                 {
-                    log::warn!("failed to suspend evicted workspace {}: {e}", oldest.id);
+                    Ok(evicted) => spawn_suspension_note(pool, &evicted),
+                    Err(e) => {
+                        log::warn!("failed to suspend evicted workspace {}: {e}", oldest.id);
+                    }
                 }
             }
         }
@@ -586,9 +589,33 @@ pub(crate) async fn workspace_open_inner(
 
 // ── Workspace state transitions (T-070) ─────���──────────────────
 
+/// Spawns a background task to generate and store a suspension note.
+///
+/// No-op if the workspace has no `session_id` or `worktree_path`.
+/// Fire-and-forget: failures are logged, never propagated.
+fn spawn_suspension_note(pool: &SqlitePool, ws: &Workspace) {
+    if let (Some(wt_path), Some(session_id)) = (ws.worktree_path.clone(), ws.session_id.clone()) {
+        let pool = pool.clone();
+        let ws_id = ws.id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::workspace::claude::create_suspension_note(
+                &pool,
+                &ws_id,
+                Path::new(&wt_path),
+                Some(&session_id),
+            )
+            .await
+            {
+                log::warn!("failed to generate suspension note for '{ws_id}': {e}");
+            }
+        });
+    }
+}
+
 /// Suspends an active workspace: kills its PTY and sets state to Suspended.
 ///
 /// Emits no event — the Tauri command wrapper handles event emission.
+/// Spawns a background note-generation task via [`spawn_suspension_note`].
 pub(crate) async fn workspace_suspend_inner(
     pool: &SqlitePool,
     pty_state: &PtyManagerState,
@@ -602,13 +629,18 @@ pub(crate) async fn workspace_suspend_inner(
     }
 
     // Atomic transition: WHERE state = 'active' prevents TOCTOU races
-    update_workspace_state(
+    let suspended = update_workspace_state(
         pool,
         workspace_id,
         &WorkspaceState::Suspended,
         Some(&WorkspaceState::Active),
     )
-    .await
+    .await?;
+
+    // Best-effort background note generation using the post-update workspace.
+    spawn_suspension_note(pool, &suspended);
+
+    Ok(suspended)
 }
 
 /// Resumes a suspended workspace: spawns a new PTY in the existing worktree.
