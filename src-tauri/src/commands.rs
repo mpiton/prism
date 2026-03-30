@@ -868,24 +868,33 @@ pub async fn workspace_archive(
 // ── Workspace cleanup (T-071) ────────────────────────────────────
 
 /// Archives workspaces whose PR is merged (> `archive_delay_hours`) or
-/// closed (> `archive_delay_closed_hours`). Returns the number archived.
+/// closed (> `archive_delay_closed_hours`). Returns the IDs of archived
+/// workspaces so the caller can emit per-workspace events.
 ///
 /// Accepts delay values as parameters so tests can control timing.
+/// Delay values are capped at ~100 years to avoid `Duration` overflow.
 pub(crate) async fn workspace_cleanup_inner(
     pool: &SqlitePool,
     pty_state: &PtyManagerState,
     archive_delay_hours: u64,
     archive_delay_closed_hours: u64,
-) -> Result<u32, AppError> {
+) -> Result<Vec<String>, AppError> {
     use chrono::{Duration, SecondsFormat, Utc};
 
+    // Cap at ~100 years to avoid Duration::hours overflow (i64 * 3_600_000_000_000 ns).
+    const MAX_DELAY_HOURS: i64 = 365 * 24 * 100;
+
     let now = Utc::now();
-    let merged_cutoff = (now
-        - Duration::hours(i64::try_from(archive_delay_hours).unwrap_or(i64::MAX)))
-    .to_rfc3339_opts(SecondsFormat::Millis, true);
-    let closed_cutoff = (now
-        - Duration::hours(i64::try_from(archive_delay_closed_hours).unwrap_or(i64::MAX)))
-    .to_rfc3339_opts(SecondsFormat::Millis, true);
+    let delay_merged = i64::try_from(archive_delay_hours)
+        .unwrap_or(MAX_DELAY_HOURS)
+        .min(MAX_DELAY_HOURS);
+    let delay_closed = i64::try_from(archive_delay_closed_hours)
+        .unwrap_or(MAX_DELAY_HOURS)
+        .min(MAX_DELAY_HOURS);
+    let merged_cutoff =
+        (now - Duration::hours(delay_merged)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let closed_cutoff =
+        (now - Duration::hours(delay_closed)).to_rfc3339_opts(SecondsFormat::Millis, true);
 
     // Find workspace IDs eligible for cleanup via a single JOIN query.
     let ids: Vec<(String,)> = sqlx::query_as(
@@ -902,7 +911,7 @@ pub(crate) async fn workspace_cleanup_inner(
     .fetch_all(pool)
     .await?;
 
-    let mut archived_count = 0u32;
+    let mut archived_ids = Vec::new();
     for (ws_id,) in &ids {
         let Some(ws) = crate::cache::workspaces::get_workspace(pool, ws_id).await? else {
             continue;
@@ -918,30 +927,46 @@ pub(crate) async fn workspace_cleanup_inner(
             };
 
         match workspace_archive_inner(pool, pty_state, &ws, local_path.as_deref()).await {
-            Ok(_) => archived_count += 1,
+            Ok(_) => archived_ids.push(ws.id.clone()),
             Err(e) => log::warn!("cleanup: failed to archive workspace '{}': {e}", ws.id),
         }
     }
 
-    Ok(archived_count)
+    Ok(archived_ids)
 }
 
 /// Auto-archives workspaces whose PR has been merged or closed past the
 /// configured delay. Returns the number of workspaces archived.
+///
+/// Emits `workspace:state_changed` for each archived workspace so the
+/// frontend stays in sync.
 #[tauri::command]
 pub async fn workspace_cleanup(
     pool: tauri::State<'_, SqlitePool>,
     pty_state: tauri::State<'_, PtyManagerState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<u32, String> {
     let config = get_config(&pool).await.map_err(|e| e.to_string())?;
-    workspace_cleanup_inner(
+    let archived_ids = workspace_cleanup_inner(
         &pool,
         &pty_state,
         config.archive_delay_hours,
         config.archive_delay_closed_hours,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    for ws_id in &archived_ids {
+        let payload = crate::types::WorkspaceStateChanged {
+            workspace_id: ws_id.clone(),
+            new_state: WorkspaceState::Archived,
+        };
+        if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
+            log::warn!("cleanup: failed to emit workspace:state_changed for '{ws_id}': {e}");
+        }
+    }
+
+    Ok(u32::try_from(archived_ids.len()).unwrap_or(u32::MAX))
 }
 
 /// Writes data to a PTY's stdin.
@@ -2370,10 +2395,11 @@ mod tests {
             .await
             .unwrap();
 
-        let count = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
             .await
             .unwrap();
-        assert_eq!(count, 1, "should archive 1 workspace");
+        assert_eq!(archived.len(), 1, "should archive 1 workspace");
+        assert_eq!(archived[0], "ws-1");
 
         let ws = crate::cache::workspaces::get_workspace(&pool, "ws-1")
             .await
@@ -2405,10 +2431,15 @@ mod tests {
             .await
             .unwrap();
 
-        let count = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
             .await
             .unwrap();
-        assert_eq!(count, 1, "should archive 1 workspace for closed PR");
+        assert_eq!(
+            archived.len(),
+            1,
+            "should archive 1 workspace for closed PR"
+        );
+        assert_eq!(archived[0], "ws-2");
 
         let ws = crate::cache::workspaces::get_workspace(&pool, "ws-2")
             .await
@@ -2434,10 +2465,13 @@ mod tests {
             .await
             .unwrap();
 
-        let count = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
             .await
             .unwrap();
-        assert_eq!(count, 0, "should not archive workspace within delay");
+        assert!(
+            archived.is_empty(),
+            "should not archive workspace within delay"
+        );
 
         let ws = crate::cache::workspaces::get_workspace(&pool, "ws-3")
             .await
@@ -2473,17 +2507,23 @@ mod tests {
             .await
             .unwrap();
 
-        let count = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 24, 48)
             .await
             .unwrap();
-        assert_eq!(count, 0, "should not archive workspace for open PR");
+        assert!(
+            archived.is_empty(),
+            "should not archive workspace for open PR"
+        );
 
         // No workspaces at all
         let (pool2, _tmp2) = test_pool().await;
-        let count = workspace_cleanup_inner(&pool2, &pty_state, 24, 48)
+        let archived = workspace_cleanup_inner(&pool2, &pty_state, 24, 48)
             .await
             .unwrap();
-        assert_eq!(count, 0, "should return 0 with no workspaces");
+        assert!(
+            archived.is_empty(),
+            "should return empty with no workspaces"
+        );
 
         pool.close().await;
         pool2.close().await;
