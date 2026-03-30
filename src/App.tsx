@@ -20,9 +20,10 @@ function openUrl(url: string): void {
 
 interface MainContentProps {
   readonly view: DashboardView;
+  readonly onBackToDashboard: () => void;
 }
 
-function MainContent({ view }: MainContentProps): ReactElement {
+function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElement {
   switch (view) {
     case "overview":
       return <Overview />;
@@ -39,7 +40,7 @@ function MainContent({ view }: MainContentProps): ReactElement {
         <WorkspaceView
           workspaces={[]}
           statusInfo={{}}
-          onBackToDashboard={() => useDashboardStore.getState().setView("overview")}
+          onBackToDashboard={onBackToDashboard}
         />
       );
     case "settings":
@@ -99,7 +100,7 @@ function App(): ReactElement {
       </aside>
 
       <main className={isWorkspace ? "flex-1" : "min-w-0 flex-1"}>
-        <MainContent view={currentView} />
+        <MainContent view={currentView} onBackToDashboard={handleEscape} />
       </main>
 
       <Toast />

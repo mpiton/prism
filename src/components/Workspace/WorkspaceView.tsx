@@ -1,19 +1,9 @@
 import type { ReactElement } from "react";
-import type { CiStatus, Workspace } from "../../lib/types";
+import type { Workspace, WorkspaceStatusInfo } from "../../lib/types";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { Terminal } from "./Terminal";
 import { WorkspaceStatusBar } from "./WorkspaceStatusBar";
-
-export interface WorkspaceStatusInfo {
-  readonly branch: string;
-  readonly ahead: number;
-  readonly behind: number;
-  readonly ciStatus: CiStatus;
-  readonly sessionName: string | null;
-  readonly sessionCount: number;
-  readonly githubUrl: string;
-}
 
 interface WorkspaceViewProps {
   readonly workspaces: readonly Workspace[];

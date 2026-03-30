@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { useWorkspacesStore } from "../../stores/workspaces";
-import type { Workspace, CiStatus } from "../../lib/types";
+import type { Workspace, WorkspaceStatusInfo } from "../../lib/types";
 
 // ── Mock child components ────────────────────────────────────────
 
@@ -31,7 +31,6 @@ vi.mock("./WorkspaceStatusBar", () => ({
 }));
 
 import { WorkspaceView } from "./WorkspaceView";
-import type { WorkspaceStatusInfo } from "./WorkspaceView";
 
 // ── Mock data ────────────────────────────────────────────────────
 
@@ -58,12 +57,12 @@ const WORKSPACES: readonly Workspace[] = [
   },
 ];
 
-const STATUS_INFO: Readonly<Record<string, WorkspaceStatusInfo>> = {
+const STATUS_INFO = {
   "ws-1": {
     branch: "feat/login",
     ahead: 2,
     behind: 0,
-    ciStatus: "success" as CiStatus,
+    ciStatus: "success",
     sessionName: "prism-pr-42",
     sessionCount: 3,
     githubUrl: "https://github.com/test/repo/pull/42",
@@ -72,12 +71,12 @@ const STATUS_INFO: Readonly<Record<string, WorkspaceStatusInfo>> = {
     branch: "fix/bug-99",
     ahead: 0,
     behind: 1,
-    ciStatus: "pending" as CiStatus,
+    ciStatus: "pending",
     sessionName: null,
     sessionCount: 0,
     githubUrl: "https://github.com/test/repo/pull/99",
   },
-};
+} satisfies Readonly<Record<string, WorkspaceStatusInfo>>;
 
 describe("WorkspaceView", () => {
   beforeEach(() => {
@@ -125,6 +124,20 @@ describe("WorkspaceView", () => {
       <WorkspaceView
         workspaces={WORKSPACES}
         statusInfo={STATUS_INFO}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
+    expect(screen.queryByTestId("terminal-ws-1")).not.toBeInTheDocument();
+    expect(screen.getByText(/select a workspace/i)).toBeInTheDocument();
+  });
+
+  it("should show empty state when active workspace has no status info", () => {
+    render(
+      <WorkspaceView
+        workspaces={WORKSPACES}
+        statusInfo={{}}
         onBackToDashboard={vi.fn()}
       />,
     );
