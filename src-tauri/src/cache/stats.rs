@@ -6,24 +6,28 @@ use crate::types::PersonalStats;
 /// Compute personal statistics for the authenticated user.
 ///
 /// Queries:
-/// - `prs_merged_this_week`: PRs authored by the user merged in the current ISO week.
+/// - `prs_merged_this_week`: PRs authored by the user whose state changed to `merged`
+///   this week. Uses `updated_at` as proxy because the schema has no `merged_at` column;
+///   this is approximate — a PR re-synced this week will be counted even if merged earlier.
 /// - `avg_review_response_hours`: average hours between review request and review submission
 ///   for this user as reviewer (all time). `0.0` when no data.
 /// - `reviews_given_this_week`: reviews submitted by the user in the current ISO week.
-/// - `active_workspace_count`: workspaces in `active` state (global, not user-scoped).
+/// - `active_workspace_count`: workspaces in `active` state (global, not user-scoped —
+///   the workspaces table has no owner column).
 pub async fn compute_personal_stats(
     pool: &SqlitePool,
     username: &str,
 ) -> Result<PersonalStats, AppError> {
     // Week boundary: Monday 00:00:00 UTC of the current ISO week.
-    // SQLite strftime('%W', ...) returns week number (Monday-based, 00-53).
-    // We compute the start-of-week as: date('now', 'weekday 0', '-6 days') which gives Monday.
+    // `weekday 1` advances to next Monday, `-7 days` rolls back to the most recent Monday.
+    // This is correct for all days of the week including Sunday (unlike `weekday 0, -6 days`).
+    let monday = "date('now', 'weekday 1', '-7 days')";
 
-    let row: (i64, f64, i64, i64) = sqlx::query_as(
+    let sql = format!(
         "SELECT \
          (SELECT COUNT(*) FROM pull_requests \
           WHERE author = $1 AND state = 'merged' \
-          AND updated_at >= date('now', 'weekday 0', '-6 days')), \
+          AND updated_at >= {monday}), \
          (SELECT COALESCE(AVG( \
             (julianday(rv.submitted_at) - julianday(rr.requested_at)) * 24.0 \
           ), 0.0) \
@@ -34,13 +38,13 @@ pub async fn compute_personal_stats(
           WHERE rv.reviewer = $1), \
          (SELECT COUNT(*) FROM reviews \
           WHERE reviewer = $1 \
-          AND submitted_at >= date('now', 'weekday 0', '-6 days')), \
-         (SELECT COUNT(*) FROM workspaces WHERE state = 'active')",
-    )
-    .bind(username)
-    .fetch_one(pool)
-    .await?;
+          AND submitted_at >= {monday}), \
+         (SELECT COUNT(*) FROM workspaces WHERE state = 'active')"
+    );
 
+    let row: (i64, f64, i64, i64) = sqlx::query_as(&sql).bind(username).fetch_one(pool).await?;
+
+    // Saturating — COUNT(*) on a local SQLite DB will never exceed u32::MAX.
     Ok(PersonalStats {
         prs_merged_this_week: u32::try_from(row.0).unwrap_or(u32::MAX),
         avg_review_response_hours: if row.1 < 0.0 { 0.0 } else { row.1 },
