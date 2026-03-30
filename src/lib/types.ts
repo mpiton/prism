@@ -125,6 +125,19 @@ export interface WorkspaceStatusInfo {
   readonly githubUrl: string;
 }
 
+// ── Workspace list entry (T-076) ─────────────────────────────────
+
+export interface WorkspaceListEntry {
+  readonly workspace: Workspace;
+  readonly branch: string | null;
+  readonly ahead: number;
+  readonly behind: number;
+  readonly ciStatus: CiStatus | null;
+  readonly sessionCount: number;
+  readonly diskUsageMb: number | null;
+  readonly lastNote: string | null;
+}
+
 // ── Composite structs (T-010) ────────────────────────────────────
 
 export interface WorkspaceSummary {
