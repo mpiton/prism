@@ -40,6 +40,7 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     pollIntervalSecs: 300,
     maxActiveWorkspaces: 3,
+    autoSuspendMinutes: 30,
     githubToken: "test-token",
     dataDir: null,
     workspacesDir: null,
