@@ -300,6 +300,14 @@ pub struct PtyResize {
     pub rows: u16,
 }
 
+/// Event payload emitted when a workspace changes state (T-070).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceStateChanged {
+    pub workspace_id: String,
+    pub new_state: WorkspaceState,
+}
+
 /// Application-level configuration persisted in the `config` table.
 // Hash omitted: config structs are likely to gain Vec fields (e.g. watched_repos).
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]

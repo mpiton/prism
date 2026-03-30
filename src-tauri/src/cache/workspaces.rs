@@ -159,29 +159,56 @@ pub async fn list_workspaces(
 /// Update the workspace state and `updated_at` timestamp.
 /// When transitioning to `Archived`, also clears `worktree_path` for consistency
 /// with [`archive_workspace`].
+///
+/// If `expected_state` is provided, the UPDATE includes a `WHERE state = ?` guard
+/// making the transition atomic — the row is only updated if the current state
+/// matches. Returns `NotFound` if the guard rejects the update (TOCTOU-safe).
 #[allow(dead_code)]
 pub async fn update_workspace_state(
     pool: &SqlitePool,
     id: &str,
     new_state: &WorkspaceState,
+    expected_state: Option<&WorkspaceState>,
 ) -> Result<Workspace, AppError> {
     let now = now_utc_millis();
-    let sql = if *new_state == WorkspaceState::Archived {
-        format!(
-            "UPDATE workspaces SET state = $1, worktree_path = NULL, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
-        )
-    } else {
-        format!(
-            "UPDATE workspaces SET state = $1, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
-        )
+
+    let (sql, has_expected) = match (new_state, expected_state) {
+        (WorkspaceState::Archived, Some(exp)) => (
+            format!(
+                "UPDATE workspaces SET state = $1, worktree_path = NULL, updated_at = $2 WHERE id = $3 AND state = $4 RETURNING {WS_COLS}"
+            ),
+            Some(exp),
+        ),
+        (WorkspaceState::Archived, None) => (
+            format!(
+                "UPDATE workspaces SET state = $1, worktree_path = NULL, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
+            ),
+            None,
+        ),
+        (_, Some(exp)) => (
+            format!(
+                "UPDATE workspaces SET state = $1, updated_at = $2 WHERE id = $3 AND state = $4 RETURNING {WS_COLS}"
+            ),
+            Some(exp),
+        ),
+        (_, None) => (
+            format!(
+                "UPDATE workspaces SET state = $1, updated_at = $2 WHERE id = $3 RETURNING {WS_COLS}"
+            ),
+            None,
+        ),
     };
 
-    let row: Option<WorkspaceRow> = sqlx::query_as(&sql)
+    let mut query = sqlx::query_as(&sql)
         .bind(workspace_state_to_str(new_state))
         .bind(&now)
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        .bind(id);
+
+    if let Some(exp) = has_expected {
+        query = query.bind(workspace_state_to_str(exp));
+    }
+
+    let row: Option<WorkspaceRow> = query.fetch_optional(pool).await?;
 
     require_workspace(row, id)
 }
@@ -374,7 +401,7 @@ mod tests {
         create_workspace(&pool, &ws2).await.unwrap();
 
         // Suspend ws-2
-        update_workspace_state(&pool, "ws-2", &WorkspaceState::Suspended)
+        update_workspace_state(&pool, "ws-2", &WorkspaceState::Suspended, None)
             .await
             .unwrap();
 
@@ -413,7 +440,7 @@ mod tests {
         let ws = sample_workspace("ws-1", 42);
         create_workspace(&pool, &ws).await.unwrap();
 
-        let updated = update_workspace_state(&pool, "ws-1", &WorkspaceState::Suspended)
+        let updated = update_workspace_state(&pool, "ws-1", &WorkspaceState::Suspended, None)
             .await
             .unwrap();
         assert_eq!(updated.state, WorkspaceState::Suspended);
@@ -423,7 +450,7 @@ mod tests {
         );
 
         // Transitioning to Archived via update_workspace_state also clears worktree_path
-        let archived = update_workspace_state(&pool, "ws-1", &WorkspaceState::Archived)
+        let archived = update_workspace_state(&pool, "ws-1", &WorkspaceState::Archived, None)
             .await
             .unwrap();
         assert_eq!(archived.state, WorkspaceState::Archived);
@@ -433,8 +460,43 @@ mod tests {
         );
 
         // Non-existent workspace returns NotFound
-        let err = update_workspace_state(&pool, "nonexistent", &WorkspaceState::Active).await;
+        let err = update_workspace_state(&pool, "nonexistent", &WorkspaceState::Active, None).await;
         assert!(err.is_err());
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_update_workspace_state_guarded_rejects_mismatch() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let ws = sample_workspace("ws-1", 42);
+        create_workspace(&pool, &ws).await.unwrap();
+
+        // Workspace is Active — guarded suspend with expected=Active should succeed
+        let updated = update_workspace_state(
+            &pool,
+            "ws-1",
+            &WorkspaceState::Suspended,
+            Some(&WorkspaceState::Active),
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.state, WorkspaceState::Suspended);
+
+        // Now Suspended — guarded suspend with expected=Active should fail (state mismatch)
+        let err = update_workspace_state(
+            &pool,
+            "ws-1",
+            &WorkspaceState::Suspended,
+            Some(&WorkspaceState::Active),
+        )
+        .await;
+        assert!(
+            err.is_err(),
+            "guarded transition should reject state mismatch"
+        );
 
         pool.close().await;
     }
