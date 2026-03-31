@@ -9,6 +9,7 @@ import {
 } from "../../lib/tauri";
 import type { PartialAppConfig, Repo } from "../../lib/types";
 import { Stats } from "./Stats";
+import { DebugInfo } from "./DebugInfo";
 
 function useConfigQuery() {
   return useQuery({ queryKey: ["config"], queryFn: getConfig });
@@ -200,6 +201,8 @@ export function Settings(): ReactElement {
       </div>
 
       <Stats />
+
+      <DebugInfo />
     </section>
   );
 }

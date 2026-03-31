@@ -310,6 +310,16 @@ pub struct PtyResize {
     pub rows: u16,
 }
 
+/// Memory usage statistics returned by `debug_memory_usage` (T-087).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryStats {
+    /// Resident Set Size of the main process in bytes.
+    pub rss_bytes: u64,
+    /// Size of the SQLite database file in bytes.
+    pub db_size_bytes: u64,
+}
+
 /// Event payload emitted when a workspace changes state (T-070).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1090,6 +1100,19 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn test_memory_stats_serializes_camel_case() {
+        let stats = MemoryStats {
+            rss_bytes: 50_000_000,
+            db_size_bytes: 1_234_567,
+        };
+        let json = serde_json::to_value(&stats).unwrap();
+        assert_eq!(json["rssBytes"], 50_000_000);
+        assert_eq!(json["dbSizeBytes"], 1_234_567);
+        let roundtrip: MemoryStats = serde_json::from_value(json).unwrap();
+        assert_eq!(stats, roundtrip);
     }
 
     #[test]

@@ -12,6 +12,7 @@ vi.mock("../../lib/tauri", () => ({
   setRepoEnabled: vi.fn(),
   authGetStatus: vi.fn(),
   getPersonalStats: vi.fn(),
+  getMemoryUsage: vi.fn(),
 }));
 
 import {
@@ -21,6 +22,7 @@ import {
   setRepoEnabled,
   authGetStatus,
   getPersonalStats,
+  getMemoryUsage,
 } from "../../lib/tauri";
 
 const mockedGetConfig = vi.mocked(getConfig);
@@ -29,6 +31,7 @@ const mockedListRepos = vi.mocked(listRepos);
 const mockedSetRepoEnabled = vi.mocked(setRepoEnabled);
 const mockedAuthGetStatus = vi.mocked(authGetStatus);
 const mockedGetPersonalStats = vi.mocked(getPersonalStats);
+const mockedGetMemoryUsage = vi.mocked(getMemoryUsage);
 
 function renderWithProviders(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -97,6 +100,10 @@ function setupMocks(
   mockedAuthGetStatus.mockResolvedValue(auth);
   mockedSetConfig.mockResolvedValue(config);
   mockedGetPersonalStats.mockResolvedValue(stats);
+  mockedGetMemoryUsage.mockResolvedValue({
+    rssBytes: 50_000_000,
+    dbSizeBytes: 1_048_576,
+  });
 }
 
 // Lazy import so mocks are set up before module loads
@@ -352,6 +359,16 @@ describe("Settings", () => {
     renderWithProviders(<Settings />);
 
     expect(await screen.findByText(/stats unavailable/i)).toBeInTheDocument();
+  });
+
+  it("should render debug section with memory info", async () => {
+    setupMocks();
+
+    renderWithProviders(<Settings />);
+
+    const debugSection = await screen.findByTestId("settings-debug");
+    expect(debugSection).toBeInTheDocument();
+    expect(within(debugSection).getByText(/debug/i)).toBeInTheDocument();
   });
 
   it("should show N/A for non-finite avg review response hours", async () => {

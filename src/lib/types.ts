@@ -243,6 +243,13 @@ export interface PartialAppConfig {
   readonly workspacesDir?: string | null;
 }
 
+// ── Debug (T-087) ───────────────────────────────────────────────
+
+export interface MemoryStats {
+  readonly rssBytes: number;
+  readonly dbSizeBytes: number;
+}
+
 // ── Tauri IPC command & event registries ─────────────────────────
 
 export type TauriCommandName =
@@ -269,7 +276,8 @@ export type TauriCommandName =
   | "stats_personal"
   | "auth_set_token"
   | "auth_get_status"
-  | "auth_logout";
+  | "auth_logout"
+  | "debug_memory_usage";
 
 export const TAURI_COMMANDS = {
   github_get_dashboard: "github_get_dashboard",
@@ -296,6 +304,7 @@ export const TAURI_COMMANDS = {
   auth_set_token: "auth_set_token",
   auth_get_status: "auth_get_status",
   auth_logout: "auth_logout",
+  debug_memory_usage: "debug_memory_usage",
 } as const satisfies Record<TauriCommandName, TauriCommandName>;
 
 export type TauriEventName =
