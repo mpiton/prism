@@ -340,9 +340,9 @@ describe("Settings", () => {
     // Wait for stats data to load (the section renders immediately in loading state)
     expect(await screen.findByText("3.2h")).toBeInTheDocument();
     const statsSection = screen.getByTestId("settings-stats");
-    expect(within(statsSection).getByText("5")).toBeInTheDocument();
-    expect(within(statsSection).getByText("12")).toBeInTheDocument();
-    expect(within(statsSection).getByText("2")).toBeInTheDocument();
+    expect(within(statsSection).getByText(/^5$/)).toBeInTheDocument();
+    expect(within(statsSection).getByText(/^12$/)).toBeInTheDocument();
+    expect(within(statsSection).getByText(/^2$/)).toBeInTheDocument();
   });
 
   it("should show stats unavailable when stats fetch fails", async () => {

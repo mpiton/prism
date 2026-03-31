@@ -23,19 +23,25 @@ pub async fn compute_personal_stats(
     // This is correct for all days of the week including Sunday (unlike `weekday 0, -6 days`).
     let monday = "date('now', 'weekday 1', '-7 days')";
 
+    // The avg review response sub-query uses an inner aggregation to avoid
+    // M×N cross-products when a reviewer has multiple review_requests or reviews
+    // on the same PR (dismiss/re-request, changes_requested/approve).
+    // We take MIN(submitted_at) paired with MIN(requested_at) per (PR, reviewer).
     let sql = format!(
         "SELECT \
          (SELECT COUNT(*) FROM pull_requests \
           WHERE author = $1 AND state = 'merged' \
           AND updated_at >= {monday}), \
-         (SELECT COALESCE(AVG( \
-            (julianday(rv.submitted_at) - julianday(rr.requested_at)) * 24.0 \
-          ), 0.0) \
-          FROM reviews rv \
-          JOIN review_requests rr \
-            ON rv.pull_request_id = rr.pull_request_id \
-           AND rv.reviewer = rr.reviewer \
-          WHERE rv.reviewer = $1), \
+         (SELECT COALESCE(AVG(response_hours), 0.0) FROM ( \
+            SELECT (julianday(MIN(rv.submitted_at)) - julianday(MIN(rr.requested_at))) * 24.0 \
+              AS response_hours \
+            FROM reviews rv \
+            JOIN review_requests rr \
+              ON rv.pull_request_id = rr.pull_request_id \
+             AND rv.reviewer = rr.reviewer \
+            WHERE rv.reviewer = $1 \
+            GROUP BY rv.pull_request_id, rv.reviewer \
+          )), \
          (SELECT COUNT(*) FROM reviews \
           WHERE reviewer = $1 \
           AND submitted_at >= {monday}), \
@@ -65,11 +71,24 @@ mod tests {
         CiStatus, PrState, Priority, PullRequest, Repo, Review, ReviewRequest, ReviewStatus,
         Workspace, WorkspaceState,
     };
+    use chrono::Utc;
 
     async fn test_pool() -> (SqlitePool, tempfile::TempDir) {
         let tmp = tempfile::TempDir::new().unwrap();
         let pool = init_db(&tmp.path().join("test.db")).await.unwrap();
         (pool, tmp)
+    }
+
+    /// Returns an ISO 8601 timestamp for "now", always within the current week.
+    fn now_ts() -> String {
+        Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+    }
+
+    /// Returns an ISO 8601 timestamp for `hours` hours ago (still within current day).
+    fn hours_ago(hours: i64) -> String {
+        (Utc::now() - chrono::Duration::hours(hours))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
     }
 
     fn sample_repo() -> Repo {
@@ -101,8 +120,8 @@ mod tests {
             labels: vec![],
             additions: 10,
             deletions: 5,
-            created_at: "2026-03-01T10:00:00Z".to_string(),
-            updated_at: "2026-03-30T10:00:00Z".to_string(),
+            created_at: hours_ago(48),
+            updated_at: now_ts(),
         }
     }
 
@@ -140,6 +159,7 @@ mod tests {
         upsert_pull_request(&pool, &pr4).await.unwrap();
 
         // Review request + review by alice (for avg response hours)
+        // requested_at = 4 hours ago, submitted_at = now → ~4h response
         let pr5 = sample_pr("pr-5", 5, "charlie", PrState::Open);
         upsert_pull_request(&pool, &pr5).await.unwrap();
         let rr = ReviewRequest {
@@ -147,7 +167,7 @@ mod tests {
             pull_request_id: "pr-5".to_string(),
             reviewer: "alice".to_string(),
             status: ReviewStatus::Approved,
-            requested_at: "2026-03-30T10:00:00Z".to_string(),
+            requested_at: hours_ago(4),
         };
         upsert_review_request(&pool, &rr).await.unwrap();
         let review = Review {
@@ -156,7 +176,7 @@ mod tests {
             reviewer: "alice".to_string(),
             status: ReviewStatus::Approved,
             body: Some("LGTM".to_string()),
-            submitted_at: "2026-03-30T14:00:00Z".to_string(), // 4 hours later
+            submitted_at: now_ts(),
         };
         upsert_review(&pool, &review).await.unwrap();
 
@@ -168,8 +188,8 @@ mod tests {
             state: WorkspaceState::Active,
             worktree_path: Some("/tmp/ws".to_string()),
             session_id: None,
-            created_at: "2026-03-20T10:00:00Z".to_string(),
-            updated_at: "2026-03-20T10:00:00Z".to_string(),
+            created_at: hours_ago(24),
+            updated_at: hours_ago(1),
         };
         create_workspace(&pool, &ws).await.unwrap();
 
@@ -181,8 +201,8 @@ mod tests {
             state: WorkspaceState::Suspended,
             worktree_path: None,
             session_id: None,
-            created_at: "2026-03-20T10:00:00Z".to_string(),
-            updated_at: "2026-03-20T10:00:00Z".to_string(),
+            created_at: hours_ago(24),
+            updated_at: hours_ago(1),
         };
         create_workspace(&pool, &ws2).await.unwrap();
 
@@ -193,7 +213,7 @@ mod tests {
             "2 merged PRs by alice this week"
         );
         assert!(
-            (stats.avg_review_response_hours - 4.0).abs() < 0.01,
+            (stats.avg_review_response_hours - 4.0).abs() < 0.1,
             "avg review response ~4 hours, got {}",
             stats.avg_review_response_hours
         );

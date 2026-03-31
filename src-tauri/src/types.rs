@@ -947,6 +947,23 @@ mod tests {
         assert_eq!(stats, deserialized);
     }
 
+    #[test]
+    fn test_personal_stats_json_roundtrip() {
+        let stats = PersonalStats {
+            prs_merged_this_week: 3,
+            avg_review_response_hours: 2.5,
+            reviews_given_this_week: 7,
+            active_workspace_count: 1,
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains("\"prsMergedThisWeek\""));
+        assert!(json.contains("\"avgReviewResponseHours\""));
+        assert!(json.contains("\"reviewsGivenThisWeek\""));
+        assert!(json.contains("\"activeWorkspaceCount\""));
+        let deserialized: PersonalStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(stats, deserialized);
+    }
+
     // ── T-011: IPC payload roundtrip tests ─────────────────────────
 
     #[test]
