@@ -68,23 +68,23 @@ describe("App layout", () => {
     expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
   });
 
-  it("should render settings view", () => {
+  it("should render settings view", async () => {
     useDashboardStore.setState({ currentView: "settings" });
     renderApp();
-    expect(screen.getByTestId("settings")).toBeInTheDocument();
+    expect(await screen.findByTestId("settings")).toBeInTheDocument();
   });
 
-  it("should render workspace in workspace mode", () => {
+  it("should render workspace in workspace mode", async () => {
     useDashboardStore.setState({ currentView: "workspaces" });
     renderApp();
-    expect(screen.getByTestId("workspace-view")).toBeInTheDocument();
+    expect(await screen.findByTestId("workspace-view")).toBeInTheDocument();
   });
 
-  it("should keep sidebar visible in workspace mode", () => {
+  it("should keep sidebar visible in workspace mode", async () => {
     useDashboardStore.setState({ currentView: "workspaces" });
     renderApp();
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
-    expect(screen.getByTestId("workspace-view")).toBeInTheDocument();
+    expect(await screen.findByTestId("workspace-view")).toBeInTheDocument();
   });
 });
 
