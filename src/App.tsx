@@ -1,12 +1,8 @@
-import { useCallback, useState, type ReactElement } from "react";
+import { lazy, Suspense, useCallback, useState, type ReactElement } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
 import { ReviewQueue } from "./components/ReviewQueue";
 import { MyPRs } from "./components/MyPRs";
-import { Issues } from "./components/Issues";
-import { ActivityFeed } from "./components/ActivityFeed";
-import { WorkspaceView } from "./components/Workspace";
-import { Settings } from "./components/Settings";
 import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { useKeyboard } from "./hooks/useKeyboard";
@@ -14,8 +10,29 @@ import { useDashboardStore } from "./stores/dashboard";
 import { useWorkspacesStore } from "./stores/workspaces";
 import type { DashboardView } from "./stores/dashboard";
 
+const Issues = lazy(() =>
+  import("./components/Issues").then((m) => ({ default: m.Issues })),
+);
+const ActivityFeed = lazy(() =>
+  import("./components/ActivityFeed").then((m) => ({ default: m.ActivityFeed })),
+);
+const WorkspaceView = lazy(() =>
+  import("./components/Workspace").then((m) => ({ default: m.WorkspaceView })),
+);
+const Settings = lazy(() =>
+  import("./components/Settings").then((m) => ({ default: m.Settings })),
+);
+
 function openUrl(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function LazyFallback(): ReactElement {
+  return (
+    <div className="flex h-full items-center justify-center text-fg-muted">
+      Loading…
+    </div>
+  );
 }
 
 interface MainContentProps {
@@ -101,7 +118,9 @@ function App(): ReactElement {
       </aside>
 
       <main className={isWorkspace ? "flex-1" : "min-w-0 flex-1"}>
-        <MainContent view={currentView} onBackToDashboard={handleEscape} />
+        <Suspense fallback={<LazyFallback />}>
+          <MainContent view={currentView} onBackToDashboard={handleEscape} />
+        </Suspense>
       </main>
 
       <Toast />
