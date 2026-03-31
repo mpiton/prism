@@ -27,7 +27,7 @@ export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
       <a
         href={issue.url}
         onClick={handleClick}
-        aria-label={`Issue #${issue.number}: ${issue.title}`}
+        aria-label={`Issue #${issue.number}: ${issue.title} (${issue.state})`}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
       >
         <span

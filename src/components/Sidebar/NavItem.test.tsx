@@ -58,9 +58,17 @@ describe("NavItem", () => {
     expect(button).toHaveAttribute("aria-label", "To Review (5)");
   });
 
-  it("should have aria-label without count when count is zero or absent", () => {
+  it("should not have aria-label when count is absent", () => {
     render(
       <NavItem label="Overview" view="overview" isActive={false} onClick={vi.fn()} />,
+    );
+    const button = screen.getByRole("button");
+    expect(button).not.toHaveAttribute("aria-label");
+  });
+
+  it("should not have aria-label when count is zero", () => {
+    render(
+      <NavItem label="Issues" view="issues" count={0} isActive={false} onClick={vi.fn()} />,
     );
     const button = screen.getByRole("button");
     expect(button).not.toHaveAttribute("aria-label");
