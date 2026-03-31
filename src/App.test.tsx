@@ -33,7 +33,7 @@ describe("App layout", () => {
     expect(screen.getByRole("main")).toBeInTheDocument();
   });
 
-  it("should switch views based on store", async () => {
+  it("should switch views based on store", () => {
     useDashboardStore.setState({ currentView: "mine" });
     renderApp();
     expect(screen.getByTestId("my-prs")).toBeInTheDocument();
@@ -41,7 +41,7 @@ describe("App layout", () => {
     act(() => {
       useDashboardStore.setState({ currentView: "issues" });
     });
-    expect(await screen.findByTestId("issues")).toBeInTheDocument();
+    expect(screen.getByTestId("issues")).toBeInTheDocument();
     expect(screen.queryByTestId("my-prs")).not.toBeInTheDocument();
   });
 
@@ -56,16 +56,16 @@ describe("App layout", () => {
     expect(screen.getByTestId("my-prs")).toBeInTheDocument();
   });
 
-  it("should render issues view", async () => {
+  it("should render issues view", () => {
     useDashboardStore.setState({ currentView: "issues" });
     renderApp();
-    expect(await screen.findByTestId("issues")).toBeInTheDocument();
+    expect(screen.getByTestId("issues")).toBeInTheDocument();
   });
 
-  it("should render activity feed view", async () => {
+  it("should render activity feed view", () => {
     useDashboardStore.setState({ currentView: "feed" });
     renderApp();
-    expect(await screen.findByTestId("activity-feed")).toBeInTheDocument();
+    expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
   });
 
   it("should render settings view", async () => {
