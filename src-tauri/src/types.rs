@@ -316,7 +316,7 @@ pub struct PtyResize {
 pub struct MemoryStats {
     /// Resident Set Size of the main process in bytes.
     pub rss_bytes: u64,
-    /// Size of the SQLite database file in bytes.
+    /// Size of the `SQLite` database file in bytes.
     pub db_size_bytes: u64,
 }
 

@@ -1141,16 +1141,18 @@ pub(crate) fn get_file_size_bytes(path: &Path) -> u64 {
 }
 
 /// Returns memory usage statistics for the debug section in Settings.
+///
+/// Best-effort: returns 0 for any metric that cannot be read rather than
+/// failing the entire call.
 #[tauri::command]
 pub async fn debug_memory_usage(app_handle: tauri::AppHandle) -> Result<MemoryStats, String> {
     let rss_bytes = get_process_rss_bytes();
 
-    let db_path = app_handle
+    let db_size_bytes = app_handle
         .path()
         .app_data_dir()
-        .map(|d| d.join("prism.db"))
-        .map_err(|e| format!("failed to resolve data dir: {e}"))?;
-    let db_size_bytes = get_file_size_bytes(&db_path);
+        .map(|d| get_file_size_bytes(&d.join("prism.db")))
+        .unwrap_or(0);
 
     Ok(MemoryStats {
         rss_bytes,
@@ -2707,7 +2709,9 @@ mod tests {
 
     #[test]
     fn test_get_file_size_bytes_missing_file() {
-        let size = get_file_size_bytes(Path::new("/tmp/nonexistent_prism_test_file.db"));
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("nonexistent.db");
+        let size = get_file_size_bytes(&missing);
         assert_eq!(size, 0, "missing file should return 0");
     }
 }

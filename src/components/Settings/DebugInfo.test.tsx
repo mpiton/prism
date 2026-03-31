@@ -100,4 +100,26 @@ describe("DebugInfo", () => {
 
     expect(await screen.findByText("512 B")).toBeInTheDocument();
   });
+
+  it("should format GB-level sizes", async () => {
+    mockedGetMemoryUsage.mockResolvedValue({
+      rssBytes: 1_610_612_736, // 1.5 GB
+      dbSizeBytes: 1_048_576,
+    });
+
+    renderWithProviders(<DebugInfo />);
+
+    expect(await screen.findByText("1.5 GB")).toBeInTheDocument();
+  });
+
+  it("should show N/A when RSS is 0 (non-Linux)", async () => {
+    mockedGetMemoryUsage.mockResolvedValue({
+      rssBytes: 0,
+      dbSizeBytes: 1_048_576,
+    });
+
+    renderWithProviders(<DebugInfo />);
+
+    expect(await screen.findByText("N/A")).toBeInTheDocument();
+  });
 });
