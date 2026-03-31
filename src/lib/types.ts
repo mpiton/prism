@@ -310,6 +310,8 @@ export const TAURI_COMMANDS = {
 export type TauriEventName =
   | "github:updated"
   | "github:sync_error"
+  | "auth:expired"
+  | "auth:restored"
   | "workspace:stdout"
   | "workspace:state_changed"
   | "workspace:claude_session"
@@ -320,6 +322,8 @@ export type TauriEventName =
 export const TAURI_EVENTS = {
   "github:updated": "github:updated",
   "github:sync_error": "github:sync_error",
+  "auth:expired": "auth:expired",
+  "auth:restored": "auth:restored",
   "workspace:stdout": "workspace:stdout",
   "workspace:state_changed": "workspace:state_changed",
   "workspace:claude_session": "workspace:claude_session",

@@ -463,8 +463,8 @@ describe("TAURI_COMMANDS constant", () => {
 });
 
 describe("TAURI_EVENTS constant", () => {
-  it("should contain all 8 event names", () => {
-    expect(Object.keys(TAURI_EVENTS)).toHaveLength(8);
+  it("should contain all 10 event names", () => {
+    expect(Object.keys(TAURI_EVENTS)).toHaveLength(10);
   });
 
   it("should have matching key-value pairs", () => {

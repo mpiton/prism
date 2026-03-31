@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getGithubDashboard,
@@ -19,12 +19,14 @@ function invalidateGitHub(queryClient: ReturnType<typeof useQueryClient>) {
 
 export function useGitHubData(refetchInterval?: number) {
   const queryClient = useQueryClient();
+  const [authExpired, setAuthExpired] = useState(false);
 
   const dashboardQuery = useQuery({
     queryKey: ["github", "dashboard"],
     queryFn: getGithubDashboard,
     staleTime: STALE_TIME,
     refetchInterval,
+    enabled: !authExpired,
   });
 
   const statsQuery = useQuery({
@@ -32,6 +34,7 @@ export function useGitHubData(refetchInterval?: number) {
     queryFn: getGithubStats,
     staleTime: STALE_TIME,
     refetchInterval,
+    enabled: !authExpired,
   });
 
   const syncMutation = useMutation({
@@ -43,7 +46,7 @@ export function useGitHubData(refetchInterval?: number) {
 
   useEffect(() => {
     let cancelled = false;
-    let unlisten: (() => void) | undefined;
+    const unlisteners: (() => void)[] = [];
 
     onEvent(TAURI_EVENTS["github:updated"], async () => {
       await invalidateGitHub(queryClient);
@@ -51,15 +54,42 @@ export function useGitHubData(refetchInterval?: number) {
       if (cancelled) {
         fn();
       } else {
-        unlisten = fn;
+        unlisteners.push(fn);
       }
     }).catch((err: unknown) => {
       console.error("[useGitHubData] failed to register github:updated listener:", err);
     });
 
+    onEvent<string>(TAURI_EVENTS["auth:expired"], () => {
+      setAuthExpired(true);
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+      } else {
+        unlisteners.push(fn);
+      }
+    }).catch((err: unknown) => {
+      console.error("[useGitHubData] failed to register auth:expired listener:", err);
+    });
+
+    onEvent<string>(TAURI_EVENTS["auth:restored"], async () => {
+      setAuthExpired(false);
+      await invalidateGitHub(queryClient);
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+      } else {
+        unlisteners.push(fn);
+      }
+    }).catch((err: unknown) => {
+      console.error("[useGitHubData] failed to register auth:restored listener:", err);
+    });
+
     return () => {
       cancelled = true;
-      unlisten?.();
+      for (const unlisten of unlisteners) {
+        unlisten();
+      }
     };
   }, [queryClient]);
 
@@ -68,6 +98,7 @@ export function useGitHubData(refetchInterval?: number) {
     stats: statsQuery.data ?? null,
     isLoading: dashboardQuery.isLoading || statsQuery.isLoading,
     error: dashboardQuery.error ?? statsQuery.error ?? null,
+    authExpired,
     forceSync: syncMutation.mutate,
     isSyncing: syncMutation.isPending,
   };
