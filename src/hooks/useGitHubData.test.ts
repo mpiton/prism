@@ -157,12 +157,12 @@ describe("useGitHubData", () => {
     const { unmount } = renderHook(() => useGitHubData(), { wrapper });
 
     await waitFor(() => {
-      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEvent).toHaveBeenCalledTimes(3);
     });
 
     unmount();
-    // Both listeners should be cleaned up
-    expect(unlistenFn).toHaveBeenCalledTimes(2);
+    // All 3 listeners should be cleaned up
+    expect(unlistenFn).toHaveBeenCalledTimes(3);
   });
 
   it("should set authExpired when auth:expired event fires", async () => {
@@ -196,13 +196,15 @@ describe("useGitHubData", () => {
   });
 
   it("should disable queries when authExpired", async () => {
+    vi.useFakeTimers();
+
     (getGithubDashboard as Mock).mockResolvedValue(MOCK_DASHBOARD);
     (getGithubStats as Mock).mockResolvedValue(MOCK_STATS);
 
     const { wrapper } = createWrapper();
-    const { result } = renderHook(() => useGitHubData(30_000), { wrapper });
+    const { result } = renderHook(() => useGitHubData(100), { wrapper });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(result.current.isLoading).toBe(false);
     });
 
@@ -222,9 +224,59 @@ describe("useGitHubData", () => {
 
     expect(result.current.authExpired).toBe(true);
 
-    // Queries should not refetch after auth expiry
-    // (enabled: false prevents new fetches)
+    // Advance past the refetch interval to verify queries don't fire
+    await act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(getGithubDashboard).not.toHaveBeenCalled();
     expect(getGithubStats).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("should reset authExpired when auth:restored fires", async () => {
+    (getGithubDashboard as Mock).mockResolvedValue(MOCK_DASHBOARD);
+    (getGithubStats as Mock).mockResolvedValue(MOCK_STATS);
+
+    const { wrapper, queryClient } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useGitHubData(), { wrapper });
+
+    await waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "auth:expired",
+        expect.any(Function),
+      );
+    });
+
+    // First: trigger auth:expired
+    const expiredCall = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "auth:expired",
+    );
+    await act(() => {
+      (expiredCall![1] as (p: string) => void)("token expired");
+    });
+    expect(result.current.authExpired).toBe(true);
+
+    // Then: trigger auth:restored
+    const restoredCall = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "auth:restored",
+    );
+    expect(restoredCall).toBeDefined();
+
+    invalidateSpy.mockClear();
+    await act(() => {
+      (restoredCall![1] as (p: string) => void)("octocat");
+    });
+
+    expect(result.current.authExpired).toBe(false);
+    // Should invalidate queries to refetch fresh data
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["github", "dashboard"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["github", "stats"],
+    });
   });
 });

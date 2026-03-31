@@ -76,17 +76,28 @@ async fn set_token_inner(token: String) -> Result<String, String> {
 /// Validates and stores a GitHub token. Returns the authenticated username.
 ///
 /// Also updates the cached username so subsequent dashboard calls use the
-/// new identity without re-validating the token.
+/// new identity without re-validating the token. Restarts the background
+/// polling loop and emits `auth:restored` so the frontend can recover from
+/// an `auth:expired` state.
 #[tauri::command]
 pub async fn auth_set_token(
     token: String,
     cached: tauri::State<'_, GithubUsername>,
+    app_handle: tauri::AppHandle,
+    pool: tauri::State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let username = set_token_inner(token).await?;
     match cached.0.lock() {
         Ok(mut guard) => *guard = Some(username.clone()),
         Err(e) => warn!("failed to update cached username: {e}"),
     }
+
+    // Restart polling with the new token and notify the frontend
+    crate::try_start_polling(app_handle.clone(), pool.inner().clone()).await;
+    if let Err(e) = app_handle.emit("auth:restored", &username) {
+        warn!("failed to emit auth:restored: {e}");
+    }
+
     Ok(username)
 }
 

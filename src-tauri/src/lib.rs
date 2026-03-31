@@ -41,7 +41,7 @@ impl Default for PollingHandle {
 ///
 /// Runs asynchronously after app setup completes. If no token is stored
 /// or validation fails, polling is deferred until the next app launch.
-async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool) {
+pub(crate) async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool) {
     use crate::github::{auth, client::GitHubClient, polling::start_polling};
 
     // Read token from keychain (blocking — runs on a dedicated thread)

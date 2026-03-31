@@ -72,6 +72,19 @@ export function useGitHubData(refetchInterval?: number) {
       console.error("[useGitHubData] failed to register auth:expired listener:", err);
     });
 
+    onEvent<string>(TAURI_EVENTS["auth:restored"], async () => {
+      setAuthExpired(false);
+      await invalidateGitHub(queryClient);
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+      } else {
+        unlisteners.push(fn);
+      }
+    }).catch((err: unknown) => {
+      console.error("[useGitHubData] failed to register auth:restored listener:", err);
+    });
+
     return () => {
       cancelled = true;
       for (const unlisten of unlisteners) {
