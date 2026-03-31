@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, Fragment, type ErrorInfo, type ReactNode } from "react";
 
 interface ErrorBoundaryProps {
   readonly children: ReactNode;
@@ -6,6 +6,8 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   readonly error: Error | null;
+  // Incrementing key forces React to unmount and remount the entire child tree,
+  // ensuring stale component state is discarded on retry.
   readonly resetKey: number;
 }
 
@@ -46,6 +48,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         </div>
       );
     }
-    return <div key={this.state.resetKey}>{this.props.children}</div>;
+    return <Fragment key={this.state.resetKey}>{this.props.children}</Fragment>;
   }
 }

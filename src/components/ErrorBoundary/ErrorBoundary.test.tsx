@@ -45,7 +45,11 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
 
-    expect(console.error).toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      "ErrorBoundary caught:",
+      expect.any(Error),
+      expect.objectContaining({ componentStack: expect.any(String) }),
+    );
   });
 
   it("should retry on button click", async () => {
