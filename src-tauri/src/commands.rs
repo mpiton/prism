@@ -20,9 +20,9 @@ use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
 use crate::types::{
-    AppConfig, DashboardData, DashboardStats, OpenWorkspaceRequest, OpenWorkspaceResponse,
-    PartialAppConfig, PersonalStats, Repo, Workspace, WorkspaceNote, WorkspaceState,
-    merge_partial_config,
+    AppConfig, DashboardData, DashboardStats, MemoryStats, OpenWorkspaceRequest,
+    OpenWorkspaceResponse, PartialAppConfig, PersonalStats, Repo, Workspace, WorkspaceNote,
+    WorkspaceState, merge_partial_config,
 };
 use crate::workspace::pty::PtyManager;
 use crate::workspace::worktree;
@@ -1109,6 +1109,55 @@ pub async fn pty_kill(
 ) -> Result<(), String> {
     pty_state.unregister_by_pty_id(&pty_id);
     pty_state.manager.kill(&pty_id).map_err(|e| e.to_string())
+}
+
+// ── Debug / Memory monitoring (T-087) ───────────────────────────
+
+/// Reads the RSS (Resident Set Size) of the current process from `/proc/self/statm`.
+///
+/// Returns 0 on non-Linux platforms or if the read fails (best-effort).
+pub(crate) fn get_process_rss_bytes() -> u64 {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(statm) = std::fs::read_to_string("/proc/self/statm") else {
+            return 0;
+        };
+        let rss_pages: u64 = statm
+            .split_whitespace()
+            .nth(1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        rss_pages * (page_size::get() as u64)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        0
+    }
+}
+
+/// Returns the file size in bytes, or 0 if the file does not exist / is unreadable.
+pub(crate) fn get_file_size_bytes(path: &Path) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+/// Returns memory usage statistics for the debug section in Settings.
+///
+/// Best-effort: returns 0 for any metric that cannot be read rather than
+/// failing the entire call.
+#[tauri::command]
+pub async fn debug_memory_usage(app_handle: tauri::AppHandle) -> Result<MemoryStats, String> {
+    let rss_bytes = get_process_rss_bytes();
+
+    let db_size_bytes = app_handle
+        .path()
+        .app_data_dir()
+        .map(|d| get_file_size_bytes(&d.join("prism.db")))
+        .unwrap_or(0);
+
+    Ok(MemoryStats {
+        rss_bytes,
+        db_size_bytes,
+    })
 }
 
 #[cfg(test)]
@@ -2637,5 +2686,32 @@ mod tests {
 
         pool.close().await;
         pool2.close().await;
+    }
+
+    // -- Memory monitoring tests (T-087) --
+
+    #[test]
+    fn test_get_process_rss_bytes_returns_nonzero_on_linux() {
+        let rss = get_process_rss_bytes();
+        #[cfg(target_os = "linux")]
+        assert!(rss > 0, "RSS should be > 0 on Linux, got {rss}");
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(rss, 0, "RSS should be 0 on non-Linux");
+    }
+
+    #[test]
+    fn test_get_file_size_bytes_existing_file() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "hello world").unwrap();
+        let size = get_file_size_bytes(tmp.path());
+        assert_eq!(size, 11, "expected 11 bytes for 'hello world'");
+    }
+
+    #[test]
+    fn test_get_file_size_bytes_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("nonexistent.db");
+        let size = get_file_size_bytes(&missing);
+        assert_eq!(size, 0, "missing file should return 0");
     }
 }

@@ -425,8 +425,8 @@ describe("IPC payload shapes", () => {
 // ── TauriCommands & TauriEvents maps ─────────────────────────────
 
 describe("TAURI_COMMANDS constant", () => {
-  it("should contain all 24 IPC command names", () => {
-    expect(Object.keys(TAURI_COMMANDS)).toHaveLength(24);
+  it("should contain all 25 IPC command names", () => {
+    expect(Object.keys(TAURI_COMMANDS)).toHaveLength(25);
   });
 
   it("should include stats_personal in IPC command names", () => {

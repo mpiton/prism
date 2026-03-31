@@ -191,6 +191,7 @@ pub fn run() {
             commands::pty_write,
             commands::pty_resize,
             commands::pty_kill,
+            commands::debug_memory_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

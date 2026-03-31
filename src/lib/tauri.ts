@@ -6,6 +6,7 @@ import type {
   AuthStatus,
   DashboardData,
   DashboardStats,
+  MemoryStats,
   OpenWorkspaceRequest,
   OpenWorkspaceResponse,
   PartialAppConfig,
@@ -126,6 +127,12 @@ export async function markActivityRead(activityId: string): Promise<boolean> {
 
 export async function markAllActivityRead(): Promise<number> {
   return invoke<number>(TAURI_COMMANDS.activity_mark_all_read);
+}
+
+// ── Debug ────────────────────────────────────────────────────────
+
+export async function getMemoryUsage(): Promise<MemoryStats> {
+  return invoke<MemoryStats>(TAURI_COMMANDS.debug_memory_usage);
 }
 
 // ── Events ───────────────────────────────────────────────────────
