@@ -635,14 +635,15 @@ mod tests {
 
         let (_tmp, local, base_dir) = setup_test_repo().await;
 
-        // Create the worktrees dir, then make it non-writable so git cannot
-        // create the pr-42 subdirectory inside it.
-        let wt_parent = base_dir.join("test-repo").join("worktrees");
-        tokio::fs::create_dir_all(&wt_parent).await.unwrap();
+        // Create only the repo-level dir (not worktrees/) and make it
+        // non-writable so create_dir_all in create_worktree hits PermissionDenied
+        // when trying to create the worktrees/ subdirectory.
+        let repo_root = base_dir.join("test-repo");
+        tokio::fs::create_dir_all(&repo_root).await.unwrap();
 
-        let mut perms = tokio::fs::metadata(&wt_parent).await.unwrap().permissions();
+        let mut perms = tokio::fs::metadata(&repo_root).await.unwrap().permissions();
         perms.set_mode(0o555); // r-xr-xr-x — no write
-        tokio::fs::set_permissions(&wt_parent, perms.clone())
+        tokio::fs::set_permissions(&repo_root, perms.clone())
             .await
             .unwrap();
 
@@ -650,7 +651,7 @@ mod tests {
 
         // Restore permissions for cleanup
         perms.set_mode(0o755);
-        tokio::fs::set_permissions(&wt_parent, perms).await.unwrap();
+        tokio::fs::set_permissions(&repo_root, perms).await.unwrap();
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
