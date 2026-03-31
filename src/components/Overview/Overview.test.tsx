@@ -110,6 +110,7 @@ function setupMock(dashboard: DashboardData | null = makeDashboard()) {
     stats: null,
     isLoading: false,
     error: null,
+    authExpired: false,
     forceSync: vi.fn(),
     isSyncing: false,
   });
@@ -223,6 +224,7 @@ describe("Overview", () => {
       stats: null,
       isLoading: true,
       error: null,
+      authExpired: false,
       forceSync: vi.fn(),
       isSyncing: false,
     });
@@ -238,6 +240,7 @@ describe("Overview", () => {
       stats: null,
       isLoading: false,
       error: new Error("Network error"),
+      authExpired: false,
       forceSync: vi.fn(),
       isSyncing: false,
     });
@@ -253,6 +256,7 @@ describe("Overview", () => {
       stats: null,
       isLoading: false,
       error: new Error("Stats failed"),
+      authExpired: false,
       forceSync: vi.fn(),
       isSyncing: false,
     });

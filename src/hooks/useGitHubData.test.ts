@@ -157,10 +157,74 @@ describe("useGitHubData", () => {
     const { unmount } = renderHook(() => useGitHubData(), { wrapper });
 
     await waitFor(() => {
-      expect(onEvent).toHaveBeenCalledOnce();
+      expect(onEvent).toHaveBeenCalledTimes(2);
     });
 
     unmount();
-    expect(unlistenFn).toHaveBeenCalledOnce();
+    // Both listeners should be cleaned up
+    expect(unlistenFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("should set authExpired when auth:expired event fires", async () => {
+    (getGithubDashboard as Mock).mockResolvedValue(MOCK_DASHBOARD);
+    (getGithubStats as Mock).mockResolvedValue(MOCK_STATS);
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useGitHubData(), { wrapper });
+
+    expect(result.current.authExpired).toBe(false);
+
+    await waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "auth:expired",
+        expect.any(Function),
+      );
+    });
+
+    // Find the auth:expired callback
+    const authCall = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "auth:expired",
+    );
+    expect(authCall).toBeDefined();
+    const authCallback = authCall![1] as (payload: string) => void;
+
+    await act(() => {
+      authCallback("invalid or expired token");
+    });
+
+    expect(result.current.authExpired).toBe(true);
+  });
+
+  it("should disable queries when authExpired", async () => {
+    (getGithubDashboard as Mock).mockResolvedValue(MOCK_DASHBOARD);
+    (getGithubStats as Mock).mockResolvedValue(MOCK_STATS);
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useGitHubData(30_000), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // Clear call counts before triggering auth:expired
+    (getGithubDashboard as Mock).mockClear();
+    (getGithubStats as Mock).mockClear();
+
+    // Trigger auth:expired
+    const authCall = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "auth:expired",
+    );
+    const authCallback = authCall![1] as (payload: string) => void;
+
+    await act(() => {
+      authCallback("invalid or expired token");
+    });
+
+    expect(result.current.authExpired).toBe(true);
+
+    // Queries should not refetch after auth expiry
+    // (enabled: false prevents new fetches)
+    expect(getGithubDashboard).not.toHaveBeenCalled();
+    expect(getGithubStats).not.toHaveBeenCalled();
   });
 });
