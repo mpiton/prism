@@ -79,9 +79,7 @@ fn classify_git_error(stderr: &str, args_display: &str) -> AppError {
     }
 
     // Permission denied — English and French
-    if stderr_lower.contains("permission denied")
-        || stderr_lower.contains("permission non accord")
-        || stderr_lower.contains("unable to access")
+    if stderr_lower.contains("permission denied") || stderr_lower.contains("permission non accord")
     {
         return AppError::Git(format!(
             "Permission denied during git operation. Check file permissions. Details: {}",
@@ -170,17 +168,55 @@ pub async fn create_worktree(
     base_dir: &Path,
 ) -> Result<PathBuf, AppError> {
     // Validate that repo_local_path exists and is a git repository.
-    if !repo_local_path.exists() {
-        return Err(AppError::Git(format!(
-            "Repository path does not exist: {}",
-            repo_local_path.display()
-        )));
+    // Use tokio::fs::metadata to distinguish NotFound from PermissionDenied.
+    match tokio::fs::metadata(repo_local_path).await {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => {
+            return Err(AppError::Git(format!(
+                "Repository path is not a directory: {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::Git(format!(
+                "Repository path does not exist: {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(AppError::Git(format!(
+                "Permission denied while accessing repository path: {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) => {
+            return Err(AppError::Git(format!(
+                "Failed to access repository path {}: {e}",
+                repo_local_path.display()
+            )));
+        }
     }
-    if !repo_local_path.join(".git").exists() {
-        return Err(AppError::Git(format!(
-            "Path is not a valid git repository: {}",
-            repo_local_path.display()
-        )));
+
+    match tokio::fs::metadata(repo_local_path.join(".git")).await {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::Git(format!(
+                "Path is not a valid git repository: {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(AppError::Git(format!(
+                "Permission denied while accessing git metadata in {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) => {
+            return Err(AppError::Git(format!(
+                "Failed to inspect repository {}: {e}",
+                repo_local_path.display()
+            )));
+        }
     }
 
     let wt_path = build_worktree_path(base_dir, repo_name, pr_number)?;
@@ -597,6 +633,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_worktree_error_permission() {
         use std::os::unix::fs::PermissionsExt;
