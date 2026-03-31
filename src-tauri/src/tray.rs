@@ -1,7 +1,7 @@
-use log::warn;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tracing::warn;
 
 pub(crate) const TRAY_ID: &str = "prism_tray";
 pub(crate) const MENU_SHOW: &str = "show_prism";

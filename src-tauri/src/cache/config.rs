@@ -1,5 +1,5 @@
-use log::warn;
 use sqlx::SqlitePool;
+use tracing::warn;
 
 use crate::error::AppError;
 use crate::types::AppConfig;

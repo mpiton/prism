@@ -39,6 +39,7 @@ use crate::types::{Activity, ActivityType, DashboardStats, Repo};
 /// PRs that were merged/closed since the last sync drop out of `state:open`
 /// searches but remain in the cache with their last known state. A full
 /// reconciliation pass is deferred to a future task.
+#[tracing::instrument(skip(client, pool))]
 pub async fn sync_dashboard(
     client: &GitHubClient,
     pool: &SqlitePool,

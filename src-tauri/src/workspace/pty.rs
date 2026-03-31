@@ -67,6 +67,7 @@ impl PtyManager {
     /// Panics if called outside a Tokio runtime context (uses
     /// `tokio::task::spawn_blocking` internally).
     #[allow(dead_code)]
+    #[tracing::instrument(skip(self, on_output), fields(cwd = %cwd.display()))]
     pub fn spawn(
         &self,
         cwd: &Path,
@@ -123,7 +124,7 @@ impl PtyManager {
                     Ok(0) => break,
                     Ok(n) => on_output(&id_for_task, &buf[..n]),
                     Err(e) => {
-                        log::warn!("pty reader error for {id_for_task}: {e}");
+                        tracing::warn!("pty reader error for {id_for_task}: {e}");
                         break;
                     }
                 }
@@ -236,6 +237,7 @@ impl PtyManager {
     /// The map lock is released before performing the kill syscall.
     /// Sets the `killed` flag so `Drop` does not issue a redundant kill.
     #[allow(dead_code)]
+    #[tracing::instrument(skip(self))]
     pub fn kill(&self, pty_id: &str) -> Result<(), AppError> {
         let mut handle = {
             let mut ptys = self

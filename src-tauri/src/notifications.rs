@@ -1,9 +1,9 @@
 #![allow(dead_code)] // Call-site integration deferred to polling loop wiring task
 
-use log::{info, warn};
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::Emitter;
+use tracing::{info, warn};
 
 use crate::cache::notifications::{
     clear_notification, clear_stale_notifications, try_claim_notification,

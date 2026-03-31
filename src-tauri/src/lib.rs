@@ -12,9 +12,9 @@ mod workspace;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
-use log::info;
 use sqlx::SqlitePool;
 use tauri::Manager;
+use tracing::info;
 
 /// Guards against concurrent force-sync invocations from the tray or IPC.
 pub(crate) struct SyncInFlight(pub(crate) AtomicBool);
@@ -78,7 +78,7 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
         }
         Err(e) => {
             *e.into_inner() = Some(username.clone());
-            log::warn!("GithubUsername mutex was poisoned; recovered");
+            tracing::warn!("GithubUsername mutex was poisoned; recovered");
         }
     }
 
@@ -86,7 +86,7 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
     let client = match GitHubClient::new(&token) {
         Ok(c) => c,
         Err(e) => {
-            log::warn!("failed to create GitHub client at startup: {e}");
+            tracing::warn!("failed to create GitHub client at startup: {e}");
             return;
         }
     };
@@ -109,22 +109,59 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
                 old.abort();
                 info!("replaced existing polling task after poison recovery; aborted previous");
             }
-            log::warn!("PollingHandle mutex was poisoned; recovered");
+            tracing::warn!("PollingHandle mutex was poisoned; recovered");
         }
     }
+}
+
+/// Initialize the tracing subscriber with console output and rotating file appender.
+///
+/// - Reads `RUST_LOG` env for level filtering (defaults to `info`).
+/// - In debug builds, also logs to stdout with ANSI colors.
+/// - Always writes to a daily-rotating file in `~/.local/share/prism/logs/`.
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+    let log_dir = log_dir_path();
+    std::fs::create_dir_all(&log_dir).ok();
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "prism.log");
+
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let registry = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt::layer().with_writer(file_appender).with_ansi(false));
+
+    if cfg!(debug_assertions) {
+        registry
+            .with(fmt::layer().with_writer(std::io::stdout))
+            .init();
+    } else {
+        registry.init();
+    }
+}
+
+/// Returns the log directory path (`~/.local/share/prism/logs/` on Linux).
+fn log_dir_path() -> std::path::PathBuf {
+    if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
+        return std::path::PathBuf::from(data_home).join("prism/logs");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        #[cfg(target_os = "macos")]
+        return std::path::PathBuf::from(&home).join("Library/Application Support/prism/logs");
+        #[cfg(not(target_os = "macos"))]
+        return std::path::PathBuf::from(&home).join(".local/share/prism/logs");
+    }
+    std::path::PathBuf::from("prism-logs")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // Initialize structured logging with tracing
+            init_tracing();
 
             // Initialize SQLite database
             let data_dir = app.path().app_data_dir()?;
