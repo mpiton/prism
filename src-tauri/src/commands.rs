@@ -11,6 +11,7 @@ use crate::cache::activity::{mark_all_read, mark_read};
 use crate::cache::config::{get_config, set_config};
 use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{get_repo, list_repos, set_local_path, set_repo_enabled};
+use crate::cache::stats::compute_personal_stats;
 use crate::cache::sync::sync_dashboard;
 use crate::cache::workspaces::{
     create_workspace, get_notes, list_workspaces, update_workspace_state,
@@ -20,7 +21,8 @@ use crate::github::auth;
 use crate::github::client::GitHubClient;
 use crate::types::{
     AppConfig, DashboardData, DashboardStats, OpenWorkspaceRequest, OpenWorkspaceResponse,
-    PartialAppConfig, Repo, Workspace, WorkspaceNote, WorkspaceState, merge_partial_config,
+    PartialAppConfig, PersonalStats, Repo, Workspace, WorkspaceNote, WorkspaceState,
+    merge_partial_config,
 };
 use crate::workspace::pty::PtyManager;
 use crate::workspace::worktree;
@@ -213,6 +215,18 @@ pub async fn github_get_stats(
 ) -> Result<DashboardStats, String> {
     let username = resolve_username(&cached).await?;
     compute_dashboard_stats(&pool, &username)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Returns personal statistics for the authenticated user.
+#[tauri::command]
+pub async fn stats_personal(
+    pool: tauri::State<'_, SqlitePool>,
+    cached: tauri::State<'_, GithubUsername>,
+) -> Result<PersonalStats, String> {
+    let username = resolve_username(&cached).await?;
+    compute_personal_stats(&pool, &username)
         .await
         .map_err(|e| e.to_string())
 }

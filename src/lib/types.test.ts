@@ -20,6 +20,7 @@ import type {
   PullRequestWithReview,
   DashboardData,
   DashboardStats,
+  PersonalStats,
   OpenWorkspaceRequest,
   OpenWorkspaceResponse,
   PtyInput,
@@ -314,6 +315,18 @@ describe("Composite struct shapes", () => {
     expect(stats.pendingReviews).toBe(5);
     expect(stats.openPrs).toBe(12);
   });
+
+  it("should match PersonalStats shape", () => {
+    const json = {
+      prsMergedThisWeek: 3,
+      avgReviewResponseHours: 2.5,
+      reviewsGivenThisWeek: 7,
+      activeWorkspaceCount: 1,
+    };
+    const stats = coerceFixture<PersonalStats>(json);
+    expect(stats.prsMergedThisWeek).toBe(3);
+    expect(stats.avgReviewResponseHours).toBe(2.5);
+  });
 });
 
 // ── IPC payload shapes ───────────────────────────────────────────
@@ -412,8 +425,12 @@ describe("IPC payload shapes", () => {
 // ── TauriCommands & TauriEvents maps ─────────────────────────────
 
 describe("TAURI_COMMANDS constant", () => {
-  it("should contain all 23 IPC command names", () => {
-    expect(Object.keys(TAURI_COMMANDS)).toHaveLength(23);
+  it("should contain all 24 IPC command names", () => {
+    expect(Object.keys(TAURI_COMMANDS)).toHaveLength(24);
+  });
+
+  it("should include stats_personal in IPC command names", () => {
+    expect(TAURI_COMMANDS).toHaveProperty("stats_personal", "stats_personal");
   });
 
   it("should have matching key-value pairs", () => {

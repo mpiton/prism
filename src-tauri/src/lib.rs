@@ -172,6 +172,7 @@ pub fn run() {
             commands::auth_logout,
             commands::github_get_dashboard,
             commands::github_get_stats,
+            commands::stats_personal,
             commands::github_force_sync,
             commands::repos_list,
             commands::repos_set_enabled,

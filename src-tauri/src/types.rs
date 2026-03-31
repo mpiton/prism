@@ -248,6 +248,16 @@ pub struct DashboardStats {
     pub unread_activity: u32,
 }
 
+/// Personal statistics for the authenticated user (T-085).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonalStats {
+    pub prs_merged_this_week: u32,
+    pub avg_review_response_hours: f64,
+    pub reviews_given_this_week: u32,
+    pub active_workspace_count: u32,
+}
+
 // ── IPC payloads (T-011) ──────────────────────────────────────
 
 /// Request payload for the `workspace_open` IPC command.
@@ -934,6 +944,23 @@ mod tests {
         assert!(json.contains("\"activeWorkspaces\""));
         assert!(json.contains("\"unreadActivity\""));
         let deserialized: DashboardStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(stats, deserialized);
+    }
+
+    #[test]
+    fn test_personal_stats_json_roundtrip() {
+        let stats = PersonalStats {
+            prs_merged_this_week: 3,
+            avg_review_response_hours: 2.5,
+            reviews_given_this_week: 7,
+            active_workspace_count: 1,
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains("\"prsMergedThisWeek\""));
+        assert!(json.contains("\"avgReviewResponseHours\""));
+        assert!(json.contains("\"reviewsGivenThisWeek\""));
+        assert!(json.contains("\"activeWorkspaceCount\""));
+        let deserialized: PersonalStats = serde_json::from_str(&json).unwrap();
         assert_eq!(stats, deserialized);
     }
 

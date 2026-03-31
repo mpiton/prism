@@ -9,6 +9,7 @@ import type {
   OpenWorkspaceRequest,
   OpenWorkspaceResponse,
   PartialAppConfig,
+  PersonalStats,
   PtyInput,
   PtyResize,
   Repo,
@@ -39,6 +40,10 @@ export async function getGithubDashboard(): Promise<DashboardData> {
 
 export async function getGithubStats(): Promise<DashboardStats> {
   return invoke<DashboardStats>(TAURI_COMMANDS.github_get_stats);
+}
+
+export async function getPersonalStats(): Promise<PersonalStats> {
+  return invoke<PersonalStats>(TAURI_COMMANDS.stats_personal);
 }
 
 export async function forceGithubSync(): Promise<void> {

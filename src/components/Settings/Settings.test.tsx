@@ -3,7 +3,7 @@ import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { AppConfig, AuthStatus, Repo } from "../../lib/types";
+import type { AppConfig, AuthStatus, PersonalStats, Repo } from "../../lib/types";
 
 vi.mock("../../lib/tauri", () => ({
   getConfig: vi.fn(),
@@ -11,6 +11,7 @@ vi.mock("../../lib/tauri", () => ({
   listRepos: vi.fn(),
   setRepoEnabled: vi.fn(),
   authGetStatus: vi.fn(),
+  getPersonalStats: vi.fn(),
 }));
 
 import {
@@ -19,6 +20,7 @@ import {
   listRepos,
   setRepoEnabled,
   authGetStatus,
+  getPersonalStats,
 } from "../../lib/tauri";
 
 const mockedGetConfig = vi.mocked(getConfig);
@@ -26,6 +28,7 @@ const mockedSetConfig = vi.mocked(setConfig);
 const mockedListRepos = vi.mocked(listRepos);
 const mockedSetRepoEnabled = vi.mocked(setRepoEnabled);
 const mockedAuthGetStatus = vi.mocked(authGetStatus);
+const mockedGetPersonalStats = vi.mocked(getPersonalStats);
 
 function renderWithProviders(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -73,15 +76,27 @@ function makeRepo(n: number, overrides: Partial<Repo> = {}): Repo {
   };
 }
 
+function makePersonalStats(overrides: Partial<PersonalStats> = {}): PersonalStats {
+  return {
+    prsMergedThisWeek: 3,
+    avgReviewResponseHours: 2.5,
+    reviewsGivenThisWeek: 7,
+    activeWorkspaceCount: 1,
+    ...overrides,
+  };
+}
+
 function setupMocks(
   config: AppConfig = makeConfig(),
   repos: Repo[] = [makeRepo(1), makeRepo(2)],
   auth: AuthStatus = makeAuthStatus(),
+  stats: PersonalStats = makePersonalStats(),
 ) {
   mockedGetConfig.mockResolvedValue(config);
   mockedListRepos.mockResolvedValue(repos);
   mockedAuthGetStatus.mockResolvedValue(auth);
   mockedSetConfig.mockResolvedValue(config);
+  mockedGetPersonalStats.mockResolvedValue(stats);
 }
 
 // Lazy import so mocks are set up before module loads
@@ -305,5 +320,50 @@ describe("Settings", () => {
 
     await screen.findByRole("alert");
     await waitFor(() => expect(input).toHaveValue(300));
+  });
+
+  it("should render stats section", async () => {
+    setupMocks(
+      makeConfig(),
+      [],
+      makeAuthStatus(),
+      makePersonalStats({
+        prsMergedThisWeek: 5,
+        avgReviewResponseHours: 3.2,
+        reviewsGivenThisWeek: 12,
+        activeWorkspaceCount: 2,
+      }),
+    );
+
+    renderWithProviders(<Settings />);
+
+    // Wait for stats data to load (the section renders immediately in loading state)
+    expect(await screen.findByText("3.2h")).toBeInTheDocument();
+    const statsSection = screen.getByTestId("settings-stats");
+    expect(within(statsSection).getByText(/^5$/)).toBeInTheDocument();
+    expect(within(statsSection).getByText(/^12$/)).toBeInTheDocument();
+    expect(within(statsSection).getByText(/^2$/)).toBeInTheDocument();
+  });
+
+  it("should show stats unavailable when stats fetch fails", async () => {
+    setupMocks();
+    mockedGetPersonalStats.mockRejectedValue(new Error("DB error"));
+
+    renderWithProviders(<Settings />);
+
+    expect(await screen.findByText(/stats unavailable/i)).toBeInTheDocument();
+  });
+
+  it("should show N/A for non-finite avg review response hours", async () => {
+    setupMocks(
+      makeConfig(),
+      [],
+      makeAuthStatus(),
+      makePersonalStats({ avgReviewResponseHours: Infinity }),
+    );
+
+    renderWithProviders(<Settings />);
+
+    expect(await screen.findByText("N/A")).toBeInTheDocument();
   });
 });
