@@ -179,4 +179,22 @@ describe("Sidebar", () => {
     renderSidebar();
     expect(screen.getByText(/⌘K/)).toBeInTheDocument();
   });
+
+  it("should have aria-label on nav items with counts", () => {
+    renderSidebar();
+    const reviewButton = screen.getByRole("button", { name: /to review \(3\)/i });
+    expect(reviewButton).toBeInTheDocument();
+  });
+
+  it("should have aria-label on workspaces section", () => {
+    renderSidebar();
+    const section = screen.getByRole("region", { name: /workspaces/i });
+    expect(section).toBeInTheDocument();
+  });
+
+  it("should have aria-label on repos section", async () => {
+    renderSidebar();
+    const section = await screen.findByRole("region", { name: /repos/i });
+    expect(section).toBeInTheDocument();
+  });
 });

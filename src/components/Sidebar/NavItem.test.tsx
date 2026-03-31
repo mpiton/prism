@@ -49,4 +49,28 @@ describe("NavItem", () => {
     await userEvent.click(screen.getByRole("button", { name: /reviews/i }));
     expect(handleClick).toHaveBeenCalledWith("reviews");
   });
+
+  it("should have aria-label including count when present", () => {
+    render(
+      <NavItem label="To Review" view="reviews" count={5} isActive={false} onClick={vi.fn()} />,
+    );
+    const button = screen.getByRole("button");
+    expect(button).toHaveAttribute("aria-label", "To Review (5)");
+  });
+
+  it("should not have aria-label when count is absent", () => {
+    render(
+      <NavItem label="Overview" view="overview" isActive={false} onClick={vi.fn()} />,
+    );
+    const button = screen.getByRole("button");
+    expect(button).not.toHaveAttribute("aria-label");
+  });
+
+  it("should not have aria-label when count is zero", () => {
+    render(
+      <NavItem label="Issues" view="issues" count={0} isActive={false} onClick={vi.fn()} />,
+    );
+    const button = screen.getByRole("button");
+    expect(button).not.toHaveAttribute("aria-label");
+  });
 });

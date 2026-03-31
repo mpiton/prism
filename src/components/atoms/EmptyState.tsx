@@ -6,7 +6,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ message }: EmptyStateProps): ReactElement {
   return (
-    <div className="flex items-center justify-center py-12 text-center text-sm text-dim">
+    <div role="status" className="flex items-center justify-center py-12 text-center text-sm text-dim">
       {message}
     </div>
   );

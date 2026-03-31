@@ -83,4 +83,16 @@ describe("IssueCard", () => {
       "https://github.com/org/repo/issues/42",
     );
   });
+
+  it("should have aria-label on link describing the issue", () => {
+    render(<IssueCard issue={makeIssue()} onOpen={vi.fn()} />);
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("aria-label", "Issue #42: Fix login bug (open)");
+  });
+
+  it("should mark state dot as aria-hidden", () => {
+    render(<IssueCard issue={makeIssue()} onOpen={vi.fn()} />);
+    const dot = screen.getByTestId("issue-state-dot");
+    expect(dot).toHaveAttribute("aria-hidden", "true");
+  });
 });

@@ -64,10 +64,12 @@ export function MyPrCard({
       <a
         href={pr.url}
         onClick={handleClick}
+        aria-label={`PR #${pr.number}: ${pr.title}`}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
       >
         <span
           data-testid="ci-dot"
+          aria-hidden="true"
           className={`h-2.5 w-2.5 shrink-0 rounded-full ${CI_DOT_COLOR[pr.ciStatus]}`}
         />
 
@@ -90,6 +92,7 @@ export function MyPrCard({
             <span
               key={dot.key}
               data-testid="review-dot"
+              aria-hidden="true"
               className={`h-2 w-2 rounded-full ${dot.color}`}
             />
           ))}

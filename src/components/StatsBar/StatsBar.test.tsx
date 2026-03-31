@@ -177,4 +177,19 @@ describe("StatsBar", () => {
 
     expect(screen.getByText(/never synced/i)).toBeInTheDocument();
   });
+
+  it("should have role=region and aria-label on stats container", () => {
+    (useGitHubData as Mock).mockReturnValue({
+      stats: MOCK_STATS,
+      dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<StatsBar />, { wrapper: createWrapper() });
+
+    const statsBar = screen.getByTestId("stats-bar");
+    expect(statsBar).toHaveAttribute("role", "region");
+    expect(statsBar).toHaveAttribute("aria-label", "Statistics");
+  });
 });

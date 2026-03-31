@@ -102,4 +102,10 @@ describe("ReviewCard", () => {
     await userEvent.click(screen.getByRole("button"));
     expect(handleWs).toHaveBeenCalledWith("ws-1");
   });
+
+  it("should have aria-label on link describing the PR", () => {
+    render(<ReviewCard data={mockData} onOpen={vi.fn()} />);
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("aria-label", "PR #42: Fix login bug by alice");
+  });
 });
