@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 function ProblemChild(): never {
@@ -10,6 +11,10 @@ function ProblemChild(): never {
 describe("ErrorBoundary", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("should render children when no error", () => {
@@ -46,7 +51,7 @@ describe("ErrorBoundary", () => {
   it("should retry on button click", async () => {
     let shouldThrow = true;
 
-    function MaybeThrow(): JSX.Element {
+    function MaybeThrow(): ReactNode {
       if (shouldThrow) {
         throw new Error("Test error");
       }
