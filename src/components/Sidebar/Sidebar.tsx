@@ -98,8 +98,8 @@ export function Sidebar(): ReactElement {
 
       {/* Workspaces section */}
       {workspaces.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <h3 className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim">
+        <div role="region" aria-labelledby="sidebar-workspaces-heading" className="flex flex-col gap-1">
+          <h3 id="sidebar-workspaces-heading" className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim">
             Workspaces
           </h3>
           <WorkspaceList
@@ -111,8 +111,8 @@ export function Sidebar(): ReactElement {
 
       {/* Repos section */}
       {repos.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <h3 className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim">
+        <div role="region" aria-labelledby="sidebar-repos-heading" className="flex flex-col gap-1">
+          <h3 id="sidebar-repos-heading" className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim">
             Repos
           </h3>
           <RepoList repos={repos} onToggleRepo={handleToggleRepo} />

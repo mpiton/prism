@@ -198,4 +198,24 @@ describe("MyPrCard", () => {
     expect(timeElement).toHaveTextContent("2h");
     vi.useRealTimers();
   });
+
+  it("should have aria-label on link describing the PR", () => {
+    render(<MyPrCard data={basePr} onOpen={vi.fn()} />);
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("aria-label", "PR #99: Add dashboard feature");
+  });
+
+  it("should mark CI dot as aria-hidden", () => {
+    render(<MyPrCard data={basePr} onOpen={vi.fn()} />);
+    const ciDot = screen.getByTestId("ci-dot");
+    expect(ciDot).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("should mark review dots as aria-hidden", () => {
+    render(<MyPrCard data={basePr} onOpen={vi.fn()} />);
+    const dots = screen.getAllByTestId("review-dot");
+    for (const dot of dots) {
+      expect(dot).toHaveAttribute("aria-hidden", "true");
+    }
+  });
 });

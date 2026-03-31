@@ -56,6 +56,8 @@ export function StatsBar(): ReactElement {
   return (
     <div
       data-testid="stats-bar"
+      role="region"
+      aria-label="Statistics"
       className="flex items-center justify-between border-b border-border px-4 py-2"
     >
       <div className="flex items-center gap-6">

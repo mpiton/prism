@@ -27,10 +27,12 @@ export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
       <a
         href={issue.url}
         onClick={handleClick}
+        aria-label={`Issue #${issue.number}: ${issue.title}`}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
       >
         <span
           data-testid="issue-state-dot"
+          aria-hidden="true"
           className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATE_DOT_COLOR[issue.state]}`}
         />
 

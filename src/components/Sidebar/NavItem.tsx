@@ -21,6 +21,7 @@ export function NavItem({
       type="button"
       onClick={() => onClick(view)}
       aria-current={isActive ? "page" : undefined}
+      aria-label={count !== undefined && count > 0 ? `${label} (${count})` : undefined}
       className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm ${
         isActive
           ? "bg-surface text-white"

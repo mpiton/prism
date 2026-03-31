@@ -29,6 +29,7 @@ export function ReviewCard({
       <a
         href={pr.url}
         onClick={handleClick}
+        aria-label={`PR #${pr.number}: ${pr.title} by ${pr.author}`}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
       >
         <PriorityBar priority={pr.priority} />

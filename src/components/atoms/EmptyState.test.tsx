@@ -12,4 +12,9 @@ describe("EmptyState", () => {
     const { container } = render(<EmptyState message="Empty" />);
     expect(container.firstChild).toHaveClass("text-center");
   });
+
+  it("should have role=status for screen readers", () => {
+    render(<EmptyState message="No reviews pending" />);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
 });
