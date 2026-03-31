@@ -114,24 +114,30 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
     }
 }
 
-/// Initialize the tracing subscriber with console output and rotating file appender.
+/// Initialize the tracing subscriber with console output and non-blocking rotating file appender.
 ///
 /// - Reads `RUST_LOG` env for level filtering (defaults to `info`).
 /// - In debug builds, also logs to stdout with ANSI colors.
-/// - Always writes to a daily-rotating file in `~/.local/share/prism/logs/`.
-fn init_tracing() {
+/// - Always writes to a daily-rotating file in the platform-specific data dir.
+///
+/// Returns a [`WorkerGuard`] that **must** be held for the process lifetime;
+/// dropping it flushes and stops the background writer thread.
+fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
     let log_dir = log_dir_path();
-    std::fs::create_dir_all(&log_dir).ok();
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!("failed to create log directory {}: {e}", log_dir.display());
+    }
 
     let file_appender = tracing_appender::rolling::daily(&log_dir, "prism.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let registry = tracing_subscriber::registry()
         .with(env_filter)
-        .with(fmt::layer().with_writer(file_appender).with_ansi(false));
+        .with(fmt::layer().with_writer(non_blocking).with_ansi(false));
 
     if cfg!(debug_assertions) {
         registry
@@ -140,17 +146,27 @@ fn init_tracing() {
     } else {
         registry.init();
     }
+
+    guard
 }
 
-/// Returns the log directory path (`~/.local/share/prism/logs/` on Linux).
+/// Returns the platform-specific log directory path.
+///
+/// - Linux: `$XDG_DATA_HOME/prism/logs` or `~/.local/share/prism/logs`
+/// - macOS: `~/Library/Application Support/prism/logs`
+/// - Windows: `%APPDATA%/prism/logs`
 fn log_dir_path() -> std::path::PathBuf {
     if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
         return std::path::PathBuf::from(data_home).join("prism/logs");
     }
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        return std::path::PathBuf::from(appdata).join("prism\\logs");
+    }
     if let Ok(home) = std::env::var("HOME") {
         #[cfg(target_os = "macos")]
         return std::path::PathBuf::from(&home).join("Library/Application Support/prism/logs");
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         return std::path::PathBuf::from(&home).join(".local/share/prism/logs");
     }
     std::path::PathBuf::from("prism-logs")
@@ -160,8 +176,9 @@ fn log_dir_path() -> std::path::PathBuf {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            // Initialize structured logging with tracing
-            init_tracing();
+            // Initialize structured logging with tracing.
+            // The guard must live for the process lifetime to flush pending log events.
+            let _log_guard = init_tracing();
 
             // Initialize SQLite database
             let data_dir = app.path().app_data_dir()?;

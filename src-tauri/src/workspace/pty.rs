@@ -67,7 +67,7 @@ impl PtyManager {
     /// Panics if called outside a Tokio runtime context (uses
     /// `tokio::task::spawn_blocking` internally).
     #[allow(dead_code)]
-    #[tracing::instrument(skip(self, on_output), fields(cwd = %cwd.display()))]
+    #[tracing::instrument(skip(self, on_output, cwd))]
     pub fn spawn(
         &self,
         cwd: &Path,
