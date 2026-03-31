@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use tokio::process::Command;
 use tokio::time::timeout;
+use tracing::warn;
 
 use crate::error::AppError;
 
@@ -81,10 +82,10 @@ fn classify_git_error(stderr: &str, args_display: &str) -> AppError {
     // Permission denied — English and French
     if stderr_lower.contains("permission denied") || stderr_lower.contains("permission non accord")
     {
-        return AppError::Git(format!(
-            "Permission denied during git operation. Check file permissions. Details: {}",
-            stderr.trim()
-        ));
+        warn!(stderr = stderr.trim(), "git permission denied");
+        return AppError::Git(
+            "Permission denied during git operation. Check file and directory permissions.".into(),
+        );
     }
 
     // Worktree already checked out / locked — English and French
@@ -92,23 +93,28 @@ fn classify_git_error(stderr: &str, args_display: &str) -> AppError {
         || stderr_lower.contains("already locked")
         || stderr_lower.contains("est d\u{00e9}j\u{00e0}")
     {
-        return AppError::Workspace(format!(
-            "Worktree is already in use by another working copy. Details: {}",
-            stderr.trim()
-        ));
+        warn!(stderr = stderr.trim(), "git worktree already in use");
+        return AppError::Workspace("Worktree is already in use by another working copy.".into());
     }
 
     // Not a git repository — English and French
     if stderr_lower.contains("not a git repository")
-        || stderr_lower.contains("pas un d\u{00e9}p\u{00f4}t git")
+        || stderr_lower.contains("d\u{00e9}p\u{00f4}t git")
     {
         return AppError::Git(
             "Path is not a valid git repository. Check the repository configuration.".into(),
         );
     }
 
-    // Default: generic git error with original stderr
-    AppError::Git(format!("git {} failed: {}", args_display, stderr.trim()))
+    // Default: generic git error — log stderr for debugging, keep user message clean.
+    warn!(
+        command = args_display,
+        stderr = stderr.trim(),
+        "git command failed"
+    );
+    AppError::Git(format!(
+        "git {args_display} failed. Check the logs for details."
+    ))
 }
 
 /// Runs a git command in the given directory and returns stdout on success.
@@ -199,14 +205,8 @@ pub async fn create_worktree(
 
     // Use `git rev-parse --git-dir` to validate the repo. This works for both
     // regular and bare repositories (bare repos have no `.git` subdirectory).
-    run_git(&["rev-parse".into(), "--git-dir".into()], repo_local_path)
-        .await
-        .map_err(|_| {
-            AppError::Git(format!(
-                "Path is not a valid git repository: {}",
-                repo_local_path.display()
-            ))
-        })?;
+    // Let the classified error from run_git propagate (timeout, permission, etc.).
+    run_git(&["rev-parse".into(), "--git-dir".into()], repo_local_path).await?;
 
     let wt_path = build_worktree_path(base_dir, repo_name, pr_number)?;
 
@@ -578,6 +578,11 @@ mod tests {
         assert!(
             msg.contains("git status failed"),
             "expected generic fallback, got: {msg}"
+        );
+        // Ensure raw stderr is NOT leaked in the user-facing message
+        assert!(
+            !msg.contains("some unknown git problem"),
+            "raw stderr should not appear in user-facing message: {msg}"
         );
     }
 
