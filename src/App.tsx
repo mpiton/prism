@@ -69,14 +69,18 @@ class ChunkErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="flex h-full flex-col items-center justify-center gap-3 text-fg-muted">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex h-full flex-col items-center justify-center gap-3 text-fg-muted"
+        >
           <p>Failed to load this view.</p>
           <button
             type="button"
             className="rounded border border-border px-3 py-1 text-sm hover:bg-bg-hover"
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() => window.location.reload()}
           >
-            Retry
+            Reload
           </button>
         </div>
       );
@@ -168,7 +172,7 @@ function App(): ReactElement {
       </aside>
 
       <main className={isWorkspace ? "flex-1" : "min-w-0 flex-1"}>
-        <ChunkErrorBoundary>
+        <ChunkErrorBoundary key={currentView}>
           <Suspense fallback={<LazyFallback />}>
             <MainContent view={currentView} onBackToDashboard={handleEscape} />
           </Suspense>
