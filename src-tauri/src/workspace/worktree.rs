@@ -99,7 +99,8 @@ fn classify_git_error(stderr: &str, args_display: &str) -> AppError {
 
     // Not a git repository — English and French
     if stderr_lower.contains("not a git repository")
-        || stderr_lower.contains("d\u{00e9}p\u{00f4}t git")
+        || stderr_lower.contains("n'est un d\u{00e9}p\u{00f4}t git")
+        || stderr_lower.contains("pas un d\u{00e9}p\u{00f4}t git")
     {
         return AppError::Git(
             "Path is not a valid git repository. Check the repository configuration.".into(),
