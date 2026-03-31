@@ -1,7 +1,7 @@
 use chrono::{Duration, SecondsFormat, Utc};
-use log::{info, warn};
 use sqlx::SqlitePool;
 use tauri::Manager;
+use tracing::{info, warn};
 
 use crate::commands::{PtyManagerState, workspace_cleanup_inner, workspace_suspend_inner};
 use crate::error::AppError;
@@ -110,6 +110,7 @@ pub(crate) async fn enforce_max_active(
 /// workspaces whose PRs have been merged/closed past the configured delay.
 ///
 /// Returns `(suspended_ids, archived_ids)`.
+#[tracing::instrument(skip(pool, pty_state))]
 pub(crate) async fn run_lifecycle_tick(
     pool: &SqlitePool,
     pty_state: &PtyManagerState,

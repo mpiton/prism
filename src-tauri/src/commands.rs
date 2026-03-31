@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use log::warn;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
+use tracing::warn;
 
 use crate::cache::activity::{mark_all_read, mark_read};
 use crate::cache::config::{get_config, set_config};
@@ -630,7 +630,7 @@ pub(crate) async fn workspace_open_inner(
     )
     .await
     {
-        log::warn!("LRU eviction failed: {e}");
+        warn!("LRU eviction failed: {e}");
     }
 
     Ok(OpenWorkspaceResponse {
@@ -660,7 +660,7 @@ fn spawn_suspension_note(pool: &SqlitePool, ws: &Workspace) {
             )
             .await
             {
-                log::warn!("failed to generate suspension note for '{ws_id}': {e}");
+                warn!("failed to generate suspension note for '{ws_id}': {e}");
             }
         });
     }
@@ -679,7 +679,7 @@ pub(crate) async fn workspace_suspend_inner(
     if let Some(pty_id) = pty_state.unregister(workspace_id)
         && let Err(e) = pty_state.manager.kill(&pty_id)
     {
-        log::warn!("failed to kill PTY {pty_id} during suspend: {e}");
+        warn!("failed to kill PTY {pty_id} during suspend: {e}");
     }
 
     // Atomic transition: WHERE state = 'active' prevents TOCTOU races
@@ -749,7 +749,7 @@ pub(crate) async fn workspace_resume_inner(
         Ok(ws) => ws,
         Err(e) => {
             if let Err(kill_err) = pty_state.manager.kill(&pty_id) {
-                log::warn!("failed to kill orphaned PTY {pty_id} after DB error: {kill_err}");
+                warn!("failed to kill orphaned PTY {pty_id} after DB error: {kill_err}");
             }
             return Err(e);
         }
@@ -788,7 +788,7 @@ pub(crate) async fn workspace_archive_inner(
     if let Some(pty_id) = pty_state.unregister(&ws.id)
         && let Err(e) = pty_state.manager.kill(&pty_id)
     {
-        log::warn!("failed to kill PTY {pty_id} during archive: {e}");
+        warn!("failed to kill PTY {pty_id} during archive: {e}");
     }
 
     // Remove worktree from disk.
@@ -800,10 +800,10 @@ pub(crate) async fn workspace_archive_inner(
         if wt_path.exists()
             && let Err(e) = worktree::remove_worktree(repo_path, &wt_path).await
         {
-            log::warn!("failed to remove worktree during archive: {e}");
+            warn!("failed to remove worktree during archive: {e}");
         }
     } else if ws.worktree_path.is_some() && repo_local_path.is_none() {
-        log::warn!(
+        warn!(
             "repo has no local_path — worktree for workspace '{}' will not be removed from disk",
             ws.id
         );
@@ -834,7 +834,7 @@ pub async fn workspace_open(
             data: String::from_utf8_lossy(data).to_string(),
         };
         if let Err(e) = handle.emit("workspace:stdout", &payload) {
-            log::warn!("failed to emit workspace:stdout: {e}");
+            warn!("failed to emit workspace:stdout: {e}");
         }
     };
 
@@ -862,7 +862,7 @@ pub async fn workspace_suspend(
         new_state: ws.state,
     };
     if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
-        log::warn!("failed to emit workspace:state_changed: {e}");
+        warn!("failed to emit workspace:state_changed: {e}");
     }
     Ok(())
 }
@@ -887,7 +887,7 @@ pub async fn workspace_resume(
             data: String::from_utf8_lossy(data).to_string(),
         };
         if let Err(e) = handle.emit("workspace:stdout", &payload) {
-            log::warn!("failed to emit workspace:stdout: {e}");
+            warn!("failed to emit workspace:stdout: {e}");
         }
     };
 
@@ -900,7 +900,7 @@ pub async fn workspace_resume(
         new_state: WorkspaceState::Active,
     };
     if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
-        log::warn!("failed to emit workspace:state_changed: {e}");
+        warn!("failed to emit workspace:state_changed: {e}");
     }
 
     Ok(resp)
@@ -929,7 +929,7 @@ pub async fn workspace_archive(
     {
         Ok(repo) => repo.local_path.as_deref().map(PathBuf::from),
         Err(e) => {
-            log::warn!(
+            warn!(
                 "could not fetch repo '{}' for worktree removal — skipping: {e}",
                 ws.repo_id
             );
@@ -946,7 +946,7 @@ pub async fn workspace_archive(
         new_state: archived.state,
     };
     if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
-        log::warn!("failed to emit workspace:state_changed: {e}");
+        warn!("failed to emit workspace:state_changed: {e}");
     }
     Ok(())
 }
@@ -1007,14 +1007,14 @@ pub(crate) async fn workspace_cleanup_inner(
             match crate::cache::repos::get_repo(pool, &ws.repo_id).await {
                 Ok(repo) => repo.local_path.as_deref().map(PathBuf::from),
                 Err(e) => {
-                    log::warn!("cleanup: could not fetch repo '{}': {e}", ws.repo_id);
+                    warn!("cleanup: could not fetch repo '{}': {e}", ws.repo_id);
                     None
                 }
             };
 
         match workspace_archive_inner(pool, pty_state, &ws, local_path.as_deref()).await {
             Ok(_) => archived_ids.push(ws.id.clone()),
-            Err(e) => log::warn!("cleanup: failed to archive workspace '{}': {e}", ws.id),
+            Err(e) => warn!("cleanup: failed to archive workspace '{}': {e}", ws.id),
         }
     }
 
@@ -1048,7 +1048,7 @@ pub async fn workspace_cleanup(
             new_state: WorkspaceState::Archived,
         };
         if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
-            log::warn!("cleanup: failed to emit workspace:state_changed for '{ws_id}': {e}");
+            warn!("cleanup: failed to emit workspace:state_changed for '{ws_id}': {e}");
         }
     }
 
@@ -1076,7 +1076,7 @@ pub async fn pty_write(
         && pty_state.should_touch_last_active(&ws_id)
         && let Err(e) = crate::cache::workspaces::update_last_active(&pool, &ws_id).await
     {
-        log::warn!("pty_write: failed to touch last_active_at for workspace '{ws_id}': {e}");
+        warn!("pty_write: failed to touch last_active_at for workspace '{ws_id}': {e}");
     }
 
     Ok(())

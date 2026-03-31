@@ -12,9 +12,9 @@ mod workspace;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
-use log::info;
 use sqlx::SqlitePool;
 use tauri::Manager;
+use tracing::info;
 
 /// Guards against concurrent force-sync invocations from the tray or IPC.
 pub(crate) struct SyncInFlight(pub(crate) AtomicBool);
@@ -78,7 +78,7 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
         }
         Err(e) => {
             *e.into_inner() = Some(username.clone());
-            log::warn!("GithubUsername mutex was poisoned; recovered");
+            tracing::warn!("GithubUsername mutex was poisoned; recovered");
         }
     }
 
@@ -86,7 +86,7 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
     let client = match GitHubClient::new(&token) {
         Ok(c) => c,
         Err(e) => {
-            log::warn!("failed to create GitHub client at startup: {e}");
+            tracing::warn!("failed to create GitHub client at startup: {e}");
             return;
         }
     };
@@ -109,23 +109,77 @@ async fn try_start_polling(app_handle: tauri::AppHandle, pool: sqlx::SqlitePool)
                 old.abort();
                 info!("replaced existing polling task after poison recovery; aborted previous");
             }
-            log::warn!("PollingHandle mutex was poisoned; recovered");
+            tracing::warn!("PollingHandle mutex was poisoned; recovered");
         }
     }
 }
 
+/// Initialize the tracing subscriber with console output and non-blocking rotating file appender.
+///
+/// - Reads `RUST_LOG` env for level filtering (defaults to `info`).
+/// - In debug builds, also logs to stdout with ANSI colors.
+/// - Always writes to a daily-rotating file in the platform-specific data dir.
+///
+/// Returns a [`WorkerGuard`] that **must** be held for the process lifetime;
+/// dropping it flushes and stops the background writer thread.
+fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
+    use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+    let log_dir = log_dir_path();
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!("failed to create log directory {}: {e}", log_dir.display());
+    }
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "prism.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let registry = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt::layer().with_writer(non_blocking).with_ansi(false));
+
+    if cfg!(debug_assertions) {
+        registry
+            .with(fmt::layer().with_writer(std::io::stdout))
+            .init();
+    } else {
+        registry.init();
+    }
+
+    guard
+}
+
+/// Returns the platform-specific log directory path.
+///
+/// - Linux: `$XDG_DATA_HOME/prism/logs` or `~/.local/share/prism/logs`
+/// - macOS: `~/Library/Application Support/prism/logs`
+/// - Windows: `%APPDATA%/prism/logs`
+fn log_dir_path() -> std::path::PathBuf {
+    if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
+        return std::path::PathBuf::from(data_home).join("prism/logs");
+    }
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        return std::path::PathBuf::from(appdata).join("prism\\logs");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        #[cfg(target_os = "macos")]
+        return std::path::PathBuf::from(&home).join("Library/Application Support/prism/logs");
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        return std::path::PathBuf::from(&home).join(".local/share/prism/logs");
+    }
+    std::path::PathBuf::from("prism-logs")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize structured logging before Tauri setup.
+    // The guard must live for the full process lifetime to flush pending log events.
+    let _log_guard = init_tracing();
+
     tauri::Builder::default()
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
             // Initialize SQLite database
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;

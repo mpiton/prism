@@ -7,9 +7,9 @@
 
 use std::time::Duration;
 
-use log::{info, warn};
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter};
+use tracing::{info, warn};
 
 use crate::cache::config::get_config;
 use crate::cache::sync::sync_dashboard;
