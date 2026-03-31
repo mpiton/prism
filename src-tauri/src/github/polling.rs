@@ -81,6 +81,7 @@ impl PollingContext for RealPollingContext {
 // ── Core loop ────────────────────────────────────────────────────
 
 /// Result of a single polling iteration.
+#[derive(Debug)]
 pub(crate) enum PollOutcome {
     /// Sync succeeded.
     Ok,
@@ -350,5 +351,69 @@ mod tests {
             60,
             "unparseable timestamp should fall back to 60s"
         );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_triggers_backoff() {
+        let reset_at = (chrono::Utc::now() + chrono::Duration::seconds(90)).to_rfc3339();
+        let err = AppError::RateLimit {
+            reset_at: reset_at.clone(),
+        };
+        let (ctx, recorder) = MockCtx::new(vec![Err(err)]);
+
+        let outcome = poll_once(&ctx).await;
+
+        // poll_once returns RateLimited with the correct reset_at
+        let returned_reset = match outcome {
+            PollOutcome::RateLimited { reset_at } => reset_at,
+            other => panic!("expected RateLimited, got {other:?}"),
+        };
+        assert_eq!(returned_reset, reset_at, "reset_at should be forwarded");
+
+        // rate_limit_backoff computes a duration close to the reset window
+        let backoff = rate_limit_backoff(&returned_reset);
+        assert!(
+            backoff.as_secs() > 80 && backoff.as_secs() <= 90,
+            "backoff should be ~90s, got {}s",
+            backoff.as_secs()
+        );
+
+        // sync_error event was emitted with rate limit message
+        let errors = recorder.errors.lock().unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].contains("rate limited"),
+            "error should mention rate limiting"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_recovery() {
+        let stats = make_stats(4);
+        let err = AppError::RateLimit {
+            reset_at: "2026-03-31T12:00:00Z".into(),
+        };
+        let (ctx, recorder) = MockCtx::new(vec![Err(err), Ok(stats.clone())]);
+
+        // First poll: rate limited
+        let first = poll_once(&ctx).await;
+        assert!(
+            matches!(first, PollOutcome::RateLimited { .. }),
+            "first poll should be rate limited"
+        );
+
+        // Second poll: recovered
+        let second = poll_once(&ctx).await;
+        assert!(
+            matches!(second, PollOutcome::Ok),
+            "second poll should succeed after recovery"
+        );
+
+        // Verify events: one error then one update
+        let errors = recorder.errors.lock().unwrap();
+        assert_eq!(errors.len(), 1, "only one error event");
+        let updates = recorder.updates.lock().unwrap();
+        assert_eq!(updates.len(), 1, "one successful update after recovery");
+        assert_eq!(updates[0], stats, "recovered stats should match");
     }
 }
