@@ -355,7 +355,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limit_triggers_backoff() {
-        let reset_at = (chrono::Utc::now() + chrono::Duration::seconds(90)).to_rfc3339();
+        let reset_at = (chrono::Utc::now() + chrono::Duration::seconds(300)).to_rfc3339();
         let err = AppError::RateLimit {
             reset_at: reset_at.clone(),
         };
@@ -373,8 +373,8 @@ mod tests {
         // rate_limit_backoff computes a duration close to the reset window
         let backoff = rate_limit_backoff(&returned_reset);
         assert!(
-            backoff.as_secs() > 80 && backoff.as_secs() <= 90,
-            "backoff should be ~90s, got {}s",
+            backoff.as_secs() > 250 && backoff.as_secs() <= 300,
+            "backoff should be ~300s, got {}s",
             backoff.as_secs()
         );
 
@@ -390,9 +390,8 @@ mod tests {
     #[tokio::test]
     async fn test_rate_limit_recovery() {
         let stats = make_stats(4);
-        let err = AppError::RateLimit {
-            reset_at: "2026-03-31T12:00:00Z".into(),
-        };
+        let reset_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let err = AppError::RateLimit { reset_at };
         let (ctx, recorder) = MockCtx::new(vec![Err(err), Ok(stats.clone())]);
 
         // First poll: rate limited
