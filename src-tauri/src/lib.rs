@@ -174,12 +174,12 @@ fn log_dir_path() -> std::path::PathBuf {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize structured logging before Tauri setup.
+    // The guard must live for the full process lifetime to flush pending log events.
+    let _log_guard = init_tracing();
+
     tauri::Builder::default()
         .setup(|app| {
-            // Initialize structured logging with tracing.
-            // The guard must live for the process lifetime to flush pending log events.
-            let _log_guard = init_tracing();
-
             // Initialize SQLite database
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
