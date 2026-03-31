@@ -71,14 +71,18 @@ pub fn update_tray_badge(app_handle: &tauri::AppHandle, pending_count: u32) -> R
 #[allow(clippy::needless_pass_by_value)] // Signature imposed by Tauri on_menu_event callback
 fn handle_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
-        MENU_SHOW => if let Some(window) = app.get_webview_window("main") {
-            if let Err(e) = window.show() {
-                warn!("tray: failed to show window: {e}");
+        MENU_SHOW => {
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.show() {
+                    warn!("tray: failed to show window: {e}");
+                }
+                if let Err(e) = window.set_focus() {
+                    warn!("tray: failed to focus window: {e}");
+                }
+            } else {
+                warn!("tray: main window not found for MENU_SHOW");
             }
-            if let Err(e) = window.set_focus() {
-                warn!("tray: failed to focus window: {e}");
-            }
-        } else { warn!("tray: main window not found for MENU_SHOW") },
+        }
         MENU_FORCE_SYNC => {
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -126,7 +130,9 @@ fn handle_tray_icon_event(tray: &tauri::tray::TrayIcon, event: TrayIconEvent) {
                     warn!("tray: failed to focus window: {e}");
                 }
             }
-        } else { warn!("tray: main window not found for tray icon click") }
+        } else {
+            warn!("tray: main window not found for tray icon click");
+        }
     }
 }
 

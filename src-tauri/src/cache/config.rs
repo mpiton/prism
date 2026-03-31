@@ -77,26 +77,56 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
 
     for row in rows {
         match row.key.as_str() {
-            KEY_POLL_INTERVAL => if let Ok(v) = row.value.parse::<u64>() { config.poll_interval_secs = clamp_poll_interval(v) } else { warn!(
-                "ignoring non-parseable config value for '{}': '{}', using default",
-                KEY_POLL_INTERVAL, row.value
-            ); },
-            KEY_MAX_WORKSPACES => if let Ok(v) = row.value.parse::<u32>() { config.max_active_workspaces = clamp_max_workspaces(v) } else { warn!(
-                "ignoring non-parseable config value for '{}': '{}', using default",
-                KEY_MAX_WORKSPACES, row.value
-            ); },
-            KEY_ARCHIVE_DELAY => if let Ok(v) = row.value.parse::<u64>() { config.archive_delay_hours = v } else { warn!(
-                "ignoring non-parseable config value for '{}': '{}', using default",
-                KEY_ARCHIVE_DELAY, row.value
-            ); },
-            KEY_ARCHIVE_DELAY_CLOSED => if let Ok(v) = row.value.parse::<u64>() { config.archive_delay_closed_hours = v } else { warn!(
-                "ignoring non-parseable config value for '{}': '{}', using default",
-                KEY_ARCHIVE_DELAY_CLOSED, row.value
-            ); },
-            KEY_AUTO_SUSPEND => if let Ok(v) = row.value.parse::<u64>() { config.auto_suspend_minutes = clamp_auto_suspend(v) } else { warn!(
-                "ignoring non-parseable config value for '{}': '{}', using default",
-                KEY_AUTO_SUSPEND, row.value
-            ); },
+            KEY_POLL_INTERVAL => {
+                if let Ok(v) = row.value.parse::<u64>() {
+                    config.poll_interval_secs = clamp_poll_interval(v);
+                } else {
+                    warn!(
+                        "ignoring non-parseable config value for '{}': '{}', using default",
+                        KEY_POLL_INTERVAL, row.value
+                    );
+                }
+            }
+            KEY_MAX_WORKSPACES => {
+                if let Ok(v) = row.value.parse::<u32>() {
+                    config.max_active_workspaces = clamp_max_workspaces(v);
+                } else {
+                    warn!(
+                        "ignoring non-parseable config value for '{}': '{}', using default",
+                        KEY_MAX_WORKSPACES, row.value
+                    );
+                }
+            }
+            KEY_ARCHIVE_DELAY => {
+                if let Ok(v) = row.value.parse::<u64>() {
+                    config.archive_delay_hours = v;
+                } else {
+                    warn!(
+                        "ignoring non-parseable config value for '{}': '{}', using default",
+                        KEY_ARCHIVE_DELAY, row.value
+                    );
+                }
+            }
+            KEY_ARCHIVE_DELAY_CLOSED => {
+                if let Ok(v) = row.value.parse::<u64>() {
+                    config.archive_delay_closed_hours = v;
+                } else {
+                    warn!(
+                        "ignoring non-parseable config value for '{}': '{}', using default",
+                        KEY_ARCHIVE_DELAY_CLOSED, row.value
+                    );
+                }
+            }
+            KEY_AUTO_SUSPEND => {
+                if let Ok(v) = row.value.parse::<u64>() {
+                    config.auto_suspend_minutes = clamp_auto_suspend(v);
+                } else {
+                    warn!(
+                        "ignoring non-parseable config value for '{}': '{}', using default",
+                        KEY_AUTO_SUSPEND, row.value
+                    );
+                }
+            }
             KEY_GITHUB_TOKEN => {
                 config.github_token = Some(row.value);
             }
