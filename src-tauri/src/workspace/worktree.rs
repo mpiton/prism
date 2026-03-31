@@ -197,27 +197,16 @@ pub async fn create_worktree(
         }
     }
 
-    match tokio::fs::metadata(repo_local_path.join(".git")).await {
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(AppError::Git(format!(
+    // Use `git rev-parse --git-dir` to validate the repo. This works for both
+    // regular and bare repositories (bare repos have no `.git` subdirectory).
+    run_git(&["rev-parse".into(), "--git-dir".into()], repo_local_path)
+        .await
+        .map_err(|_| {
+            AppError::Git(format!(
                 "Path is not a valid git repository: {}",
                 repo_local_path.display()
-            )));
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            return Err(AppError::Git(format!(
-                "Permission denied while accessing git metadata in {}",
-                repo_local_path.display()
-            )));
-        }
-        Err(e) => {
-            return Err(AppError::Git(format!(
-                "Failed to inspect repository {}: {e}",
-                repo_local_path.display()
-            )));
-        }
-    }
+            ))
+        })?;
 
     let wt_path = build_worktree_path(base_dir, repo_name, pr_number)?;
 
