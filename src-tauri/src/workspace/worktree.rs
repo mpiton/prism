@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use tokio::process::Command;
 use tokio::time::timeout;
+use tracing::warn;
 
 use crate::error::AppError;
 
@@ -52,6 +53,71 @@ pub fn build_worktree_path(
         .join(format!("pr-{pr_number}")))
 }
 
+/// Classifies git stderr output into a specific, user-friendly [`AppError`].
+///
+/// Parses known error patterns from git output and returns a descriptive error
+/// instead of raw stderr. Unknown patterns fall back to a generic git error.
+fn classify_git_error(stderr: &str, args_display: &str) -> AppError {
+    let stderr_lower = stderr.to_lowercase();
+
+    // Branch not found (during fetch) — handles English and French git locales.
+    if stderr_lower.contains("couldn't find remote ref")
+        || stderr_lower.contains("remote ref does not exist")
+        || stderr_lower.contains("impossible de trouver la r\u{00e9}f\u{00e9}rence distante")
+    {
+        // Extract the ref name from the last word of the matching line.
+        let branch = stderr
+            .lines()
+            .find(|l| {
+                let low = l.to_lowercase();
+                low.contains("remote ref") || low.contains("r\u{00e9}f\u{00e9}rence distante")
+            })
+            .and_then(|l| l.rsplit_once(' '))
+            .map_or("unknown", |(_, name)| name.trim());
+        return AppError::Git(format!(
+            "Branch '{branch}' not found on remote. Verify the branch exists and try again."
+        ));
+    }
+
+    // Permission denied — English and French
+    if stderr_lower.contains("permission denied") || stderr_lower.contains("permission non accord")
+    {
+        warn!(stderr = stderr.trim(), "git permission denied");
+        return AppError::Git(
+            "Permission denied during git operation. Check file and directory permissions.".into(),
+        );
+    }
+
+    // Worktree already checked out / locked — English and French
+    if stderr_lower.contains("is already checked out")
+        || stderr_lower.contains("already locked")
+        || stderr_lower.contains("est d\u{00e9}j\u{00e0}")
+    {
+        warn!(stderr = stderr.trim(), "git worktree already in use");
+        return AppError::Workspace("Worktree is already in use by another working copy.".into());
+    }
+
+    // Not a git repository — English and French
+    if stderr_lower.contains("not a git repository")
+        || stderr_lower.contains("n'est un d\u{00e9}p\u{00f4}t git")
+        || stderr_lower.contains("pas un d\u{00e9}p\u{00f4}t git")
+    {
+        return AppError::Git(
+            "Path is not a valid git repository. Check the repository configuration.".into(),
+        );
+    }
+
+    // Default: generic git error — log stderr for debugging, keep user message clean.
+    warn!(
+        command = args_display,
+        stderr = stderr.trim(),
+        "git command failed"
+    );
+    AppError::Git(format!(
+        "git {args_display} failed. Check the logs for details."
+    ))
+}
+
 /// Runs a git command in the given directory and returns stdout on success.
 ///
 /// Times out after [`GIT_TIMEOUT`] to prevent indefinite hangs on network operations.
@@ -83,11 +149,7 @@ async fn run_git(args: &[OsString], cwd: &Path) -> Result<String, AppError> {
             .map(|s| s.to_string_lossy())
             .collect::<Vec<_>>()
             .join(" ");
-        return Err(AppError::Git(format!(
-            "git {} failed: {}",
-            args_display,
-            stderr.trim()
-        )));
+        return Err(classify_git_error(&stderr, &args_display));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -112,6 +174,41 @@ pub async fn create_worktree(
     repo_name: &str,
     base_dir: &Path,
 ) -> Result<PathBuf, AppError> {
+    // Validate that repo_local_path exists and is a git repository.
+    // Use tokio::fs::metadata to distinguish NotFound from PermissionDenied.
+    match tokio::fs::metadata(repo_local_path).await {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => {
+            return Err(AppError::Git(format!(
+                "Repository path is not a directory: {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::Git(format!(
+                "Repository path does not exist: {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(AppError::Git(format!(
+                "Permission denied while accessing repository path: {}",
+                repo_local_path.display()
+            )));
+        }
+        Err(e) => {
+            return Err(AppError::Git(format!(
+                "Failed to access repository path {}: {e}",
+                repo_local_path.display()
+            )));
+        }
+    }
+
+    // Use `git rev-parse --git-dir` to validate the repo. This works for both
+    // regular and bare repositories (bare repos have no `.git` subdirectory).
+    // Let the classified error from run_git propagate (timeout, permission, etc.).
+    run_git(&["rev-parse".into(), "--git-dir".into()], repo_local_path).await?;
+
     let wt_path = build_worktree_path(base_dir, repo_name, pr_number)?;
 
     if wt_path.exists() {
@@ -124,7 +221,14 @@ pub async fn create_worktree(
     // Ensure parent directories exist before running git commands.
     if let Some(parent) = wt_path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(|e| {
-            AppError::Workspace(format!("failed to create worktree directory: {e}"))
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                AppError::Workspace(format!(
+                    "Permission denied: cannot create worktree directory at {}. Check folder permissions.",
+                    parent.display()
+                ))
+            } else {
+                AppError::Workspace(format!("failed to create worktree directory: {e}"))
+            }
         })?;
     }
 
@@ -352,6 +456,11 @@ mod tests {
             matches!(err, AppError::Git(_)),
             "expected Git error, got: {err}"
         );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not found") && msg.contains("nonexistent-branch"),
+            "expected user-friendly branch-not-found message, got: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -407,6 +516,148 @@ mod tests {
         assert!(
             matches!(err, AppError::Git(_)),
             "expected Git error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_classify_git_error_branch_not_found() {
+        let stderr = "fatal: couldn't find remote ref nonexistent-branch\n";
+        let err = classify_git_error(stderr, "fetch origin -- nonexistent-branch");
+        assert!(matches!(err, AppError::Git(_)), "expected Git, got: {err}");
+        let msg = err.to_string();
+        assert!(msg.contains("not found"), "missing 'not found' in: {msg}");
+        assert!(
+            msg.contains("nonexistent-branch"),
+            "missing branch name in: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_classify_git_error_permission_denied() {
+        let stderr = "fatal: could not create work tree dir '/tmp/wt/pr-42': Permission denied\n";
+        let err = classify_git_error(stderr, "worktree add /tmp/wt/pr-42 origin/main");
+        assert!(matches!(err, AppError::Git(_)), "expected Git, got: {err}");
+        let msg = err.to_string();
+        assert!(
+            msg.to_lowercase().contains("permission denied"),
+            "missing 'permission denied' in: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_classify_git_error_not_a_repo() {
+        let stderr = "fatal: not a git repository (or any of the parent directories): .git\n";
+        let err = classify_git_error(stderr, "fetch origin -- main");
+        assert!(matches!(err, AppError::Git(_)), "expected Git, got: {err}");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not a valid git repository"),
+            "missing 'not a valid git repository' in: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_classify_git_error_already_checked_out() {
+        let stderr = "fatal: 'feature-42' is already checked out at '/path/to/other'\n";
+        let err = classify_git_error(stderr, "worktree add /tmp/wt feature-42");
+        assert!(
+            matches!(err, AppError::Workspace(_)),
+            "expected Workspace, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("already in use"),
+            "missing 'already in use' in: {err}"
+        );
+    }
+
+    #[test]
+    fn test_classify_git_error_generic_fallback() {
+        let stderr = "error: some unknown git problem\n";
+        let err = classify_git_error(stderr, "status");
+        assert!(matches!(err, AppError::Git(_)), "expected Git, got: {err}");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("git status failed"),
+            "expected generic fallback, got: {msg}"
+        );
+        // Ensure raw stderr is NOT leaked in the user-facing message
+        assert!(
+            !msg.contains("some unknown git problem"),
+            "raw stderr should not appear in user-facing message: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_worktree_invalid_repo_path() {
+        let tmp = TempDir::new().unwrap();
+        let fake_repo = tmp.path().join("not-a-repo");
+        tokio::fs::create_dir_all(&fake_repo).await.unwrap();
+        let base_dir = tmp.path().join("workspaces");
+
+        let result = create_worktree(&fake_repo, "main", 1, "test-repo", &base_dir).await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, AppError::Git(_)),
+            "expected Git error, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("not a valid git repository"),
+            "expected repo validation error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_worktree_repo_path_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let missing_path = tmp.path().join("does-not-exist");
+        let base_dir = tmp.path().join("workspaces");
+
+        let result = create_worktree(&missing_path, "main", 1, "test-repo", &base_dir).await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, AppError::Git(_)),
+            "expected Git error, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("does not exist"),
+            "expected path-not-found error, got: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_worktree_error_permission() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (_tmp, local, base_dir) = setup_test_repo().await;
+
+        // Create only the repo-level dir (not worktrees/) and make it
+        // non-writable so create_dir_all in create_worktree hits PermissionDenied
+        // when trying to create the worktrees/ subdirectory.
+        let repo_root = base_dir.join("test-repo");
+        tokio::fs::create_dir_all(&repo_root).await.unwrap();
+
+        let mut perms = tokio::fs::metadata(&repo_root).await.unwrap().permissions();
+        perms.set_mode(0o555); // r-xr-xr-x — no write
+        tokio::fs::set_permissions(&repo_root, perms.clone())
+            .await
+            .unwrap();
+
+        let result = create_worktree(&local, "feature-42", 42, "test-repo", &base_dir).await;
+
+        // Restore permissions for cleanup
+        perms.set_mode(0o755);
+        tokio::fs::set_permissions(&repo_root, perms).await.unwrap();
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.to_lowercase().contains("permission"),
+            "expected permission-related error, got: {err_msg}"
         );
     }
 
