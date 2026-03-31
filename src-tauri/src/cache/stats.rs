@@ -19,9 +19,10 @@ pub async fn compute_personal_stats(
     username: &str,
 ) -> Result<PersonalStats, AppError> {
     // Week boundary: Monday 00:00:00 UTC of the current ISO week.
-    // `weekday 1` advances to next Monday, `-7 days` rolls back to the most recent Monday.
-    // This is correct for all days of the week including Sunday (unlike `weekday 0, -6 days`).
-    let monday = "date('now', 'weekday 1', '-7 days')";
+    // `-6 days` first, then `weekday 1` advances to the next Monday.
+    // This correctly returns today on Mondays (unlike `weekday 1, -7 days`
+    // which overshoots to the previous Monday).
+    let monday = "date('now', '-6 days', 'weekday 1')";
 
     // The avg review response sub-query uses an inner aggregation to avoid
     // M×N cross-products when a reviewer has multiple review_requests or reviews
