@@ -47,7 +47,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
           onClick={() => setTab("open")}
           className={`rounded px-2 py-0.5 text-xs transition-colors ${
             tab === "open"
-              ? "bg-accent text-white"
+              ? "bg-accent text-bg font-semibold"
               : "text-dim hover:text-foreground"
           }`}
         >
@@ -59,7 +59,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
           onClick={() => setTab("closed")}
           className={`rounded px-2 py-0.5 text-xs transition-colors ${
             tab === "closed"
-              ? "bg-accent text-white"
+              ? "bg-accent text-bg font-semibold"
               : "text-dim hover:text-foreground"
           }`}
         >

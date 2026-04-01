@@ -109,7 +109,7 @@ export function ReviewQueue({
               }
               className={`rounded px-2 py-0.5 text-xs transition-colors ${
                 priorityFilter === f
-                  ? "bg-accent text-white"
+                  ? "bg-accent text-bg font-semibold"
                   : "text-dim hover:text-foreground"
               }`}
             >
