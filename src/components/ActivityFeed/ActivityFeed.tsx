@@ -39,8 +39,8 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
     <section data-testid="activity-feed" className="flex flex-col gap-2">
       <SectionHead title="Activity" count={visible.length} />
 
-      <div className="flex items-center gap-1">
-        <div className="flex gap-1" role="group" aria-label="Filter by type">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by type">
           {FILTER_LABELS.map((f) => (
             <button
               key={f}

@@ -59,7 +59,7 @@ export function Overview(): ReactElement {
         <MyPRs prs={prs} onOpen={openUrl} />
       </div>
 
-      <div className="flex w-[340px] shrink-0 flex-col gap-6">
+      <div className="flex w-[300px] min-w-0 flex-col gap-6">
         <Issues issues={issues} onOpen={openUrl} />
         <ActivityFeed activities={activities} onMarkAllRead={() => markAllRead.mutate()} />
       </div>
