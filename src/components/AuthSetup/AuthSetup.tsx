@@ -22,7 +22,6 @@ export function AuthSetup() {
   const setTokenMutation = useMutation({
     mutationFn: authSetToken,
     onSuccess: async (username) => {
-      console.info("[AuthSetup] token accepted, user:", username);
       setToken("");
       await queryClient.cancelQueries({ queryKey: ["auth", "status"] });
       queryClient.setQueryData(["auth", "status"], {
@@ -30,10 +29,6 @@ export function AuthSetup() {
         username,
         error: null,
       });
-      console.info("[AuthSetup] cache updated to connected:true");
-    },
-    onError: (err) => {
-      console.error("[AuthSetup] token error:", err);
     },
   });
 
@@ -123,7 +118,7 @@ export function AuthSetup() {
         <p className="text-xs text-muted">
           <button
             type="button"
-            onClick={() => openUrl("https://github.com/settings/tokens/new?scopes=repo,read:org&description=PRism")}
+            onClick={() => { openUrl("https://github.com/settings/tokens/new?scopes=repo,read:org&description=PRism").catch(() => {}); }}
             className="text-accent underline hover:opacity-80"
           >
             Create a token

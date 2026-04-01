@@ -149,8 +149,6 @@ function App(): ReactElement {
     refetchOnWindowFocus: false,
   });
 
-  console.info("[App] auth:", authQuery.status, JSON.stringify(authQuery.data));
-
   const currentView = useDashboardStore((s) => s.currentView);
   const isWorkspace = currentView === "workspaces";
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -195,6 +193,14 @@ function App(): ReactElement {
     return (
       <div className="flex h-screen items-center justify-center bg-bg text-fg-muted">
         Checking authentication…
+      </div>
+    );
+  }
+
+  if (authQuery.isError) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg text-fg-muted">
+        Failed to check authentication — please restart the app.
       </div>
     );
   }

@@ -23,7 +23,7 @@ thiserror = "2.0.18"
 sqlx = { version = "0.8.6", features = ["migrate", "runtime-tokio", "sqlite"] }
 chrono = "0.4.44"
 uuid = { version = "1.22.0", features = ["v4"] }
-keyring = { version = "3.6.3", features = ["linux-native"] }
+keyring = "3.6.3"
 reqwest = { version = "0.13.2", features = ["json"] }
 tokio = { version = "1.50.0", features = ["rt", "time", "process", "fs"] }
 graphql_client = { version = "0.16.0", features = ["graphql_query_derive"] }
@@ -37,6 +37,7 @@ tauri-plugin-opener = "2.5.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 page_size = "0.6.0"
+keyring = { version = "3.6.3", features = ["linux-native"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
