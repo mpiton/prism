@@ -88,8 +88,7 @@ pub async fn sync_repos(client: &GitHubClient, pool: &SqlitePool) -> Result<usiz
                 url: node.url,
                 default_branch: node
                     .default_branch_ref
-                    .map(|r| r.name)
-                    .unwrap_or_else(|| "main".to_string()),
+                    .map_or_else(|| "main".to_string(), |r| r.name),
                 is_archived: node.is_archived,
                 // Bound on INSERT; ON CONFLICT preserves existing user choice.
                 enabled: true,
@@ -101,12 +100,11 @@ pub async fn sync_repos(client: &GitHubClient, pool: &SqlitePool) -> Result<usiz
         }
 
         if repos_connection.page_info.has_next_page {
-            match repos_connection.page_info.end_cursor {
-                Some(c) => cursor = Some(c),
-                None => {
-                    tracing::warn!("hasNextPage=true but endCursor is null — stopping pagination");
-                    break;
-                }
+            if let Some(c) = repos_connection.page_info.end_cursor {
+                cursor = Some(c);
+            } else {
+                tracing::warn!("hasNextPage=true but endCursor is null — stopping pagination");
+                break;
             }
         } else {
             break;
@@ -118,7 +116,7 @@ pub async fn sync_repos(client: &GitHubClient, pool: &SqlitePool) -> Result<usiz
 
 /// Synchronize dashboard data from GitHub API into the local cache.
 ///
-/// 1. Discover/update repos from GitHub (sync_repos)
+/// 1. Discover/update repos from GitHub (`sync_repos`)
 /// 2. Read enabled repos from DB
 /// 3. Build GitHub search query variables
 /// 4. Execute GraphQL `DashboardData` query
