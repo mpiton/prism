@@ -179,6 +179,7 @@ pub fn run() {
     let _log_guard = init_tracing();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Initialize SQLite database
             let data_dir = app.path().app_data_dir()?;

@@ -11,6 +11,8 @@ vi.mock("../../lib/tauri", () => ({
   listRepos: vi.fn(),
   setRepoEnabled: vi.fn(),
   authGetStatus: vi.fn(),
+  authSetToken: vi.fn(),
+  authLogout: vi.fn(),
   getPersonalStats: vi.fn(),
   getMemoryUsage: vi.fn(),
 }));
@@ -176,7 +178,8 @@ describe("Settings", () => {
 
     renderWithProviders(<Settings />);
 
-    expect(await screen.findByText(/not connected/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /connect/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("ghp_...")).toBeInTheDocument();
   });
 
   it("should show checking state while auth is loading", async () => {

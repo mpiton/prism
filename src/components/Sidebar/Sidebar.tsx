@@ -42,6 +42,8 @@ export function Sidebar(): ReactElement {
   const authQuery = useQuery({
     queryKey: ["auth", "status"],
     queryFn: authGetStatus,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
   const toggleRepoMutation = useMutation({

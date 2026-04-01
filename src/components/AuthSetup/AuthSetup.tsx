@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { authSetToken, authGetStatus, authLogout } from "../../lib/tauri";
 
 function extractErrorMessage(error: unknown): string {
@@ -14,21 +15,37 @@ export function AuthSetup() {
   const statusQuery = useQuery({
     queryKey: ["auth", "status"],
     queryFn: authGetStatus,
-    staleTime: 60_000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
   const setTokenMutation = useMutation({
     mutationFn: authSetToken,
-    onSuccess: () => {
+    onSuccess: async (username) => {
+      console.info("[AuthSetup] token accepted, user:", username);
       setToken("");
-      queryClient.invalidateQueries({ queryKey: ["auth", "status"] });
+      await queryClient.cancelQueries({ queryKey: ["auth", "status"] });
+      queryClient.setQueryData(["auth", "status"], {
+        connected: true,
+        username,
+        error: null,
+      });
+      console.info("[AuthSetup] cache updated to connected:true");
+    },
+    onError: (err) => {
+      console.error("[AuthSetup] token error:", err);
     },
   });
 
   const logoutMutation = useMutation({
     mutationFn: authLogout,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth", "status"] });
+    onSuccess: async () => {
+      await queryClient.cancelQueries({ queryKey: ["auth", "status"] });
+      queryClient.setQueryData(["auth", "status"], {
+        connected: false,
+        username: null,
+        error: null,
+      });
     },
   });
 
@@ -99,9 +116,25 @@ export function AuthSetup() {
       onSubmit={handleSubmit}
       className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-6"
     >
-      <label htmlFor="auth-token" className="text-sm font-medium text-fg">
-        GitHub Token
-      </label>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="auth-token" className="text-sm font-medium text-fg">
+          GitHub Personal Access Token
+        </label>
+        <p className="text-xs text-muted">
+          <button
+            type="button"
+            onClick={() => openUrl("https://github.com/settings/tokens/new?scopes=repo,read:org&description=PRism")}
+            className="text-accent underline hover:opacity-80"
+          >
+            Create a token
+          </button>
+          {" with "}
+          <code className="rounded bg-bg px-1 py-0.5 text-xs">repo</code>
+          {" and "}
+          <code className="rounded bg-bg px-1 py-0.5 text-xs">read:org</code>
+          {" scopes."}
+        </p>
+      </div>
       <input
         id="auth-token"
         type="password"
@@ -123,7 +156,7 @@ export function AuthSetup() {
         disabled={!token.trim() || setTokenMutation.isPending}
         className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-bg transition-colors hover:opacity-90 disabled:opacity-50"
       >
-        Connect
+        {setTokenMutation.isPending ? "Connecting…" : "Connect"}
       </button>
     </form>
   );
