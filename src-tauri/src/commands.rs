@@ -21,8 +21,8 @@ use crate::github::auth;
 use crate::github::client::GitHubClient;
 use crate::types::{
     AppConfig, DashboardData, DashboardStats, MemoryStats, OpenWorkspaceRequest,
-    OpenWorkspaceResponse, PartialAppConfig, PersonalStats, Repo, Workspace, WorkspaceNote,
-    WorkspaceState, merge_partial_config,
+    OpenWorkspaceResponse, PartialAppConfig, PersonalStats, Repo, Workspace, WorkspaceListEntry,
+    WorkspaceNote, WorkspaceState, merge_partial_config,
 };
 use crate::workspace::pty::PtyManager;
 use crate::workspace::worktree;
@@ -438,6 +438,16 @@ pub async fn activity_mark_all_read(pool: tauri::State<'_, SqlitePool>) -> Resul
 #[tauri::command]
 pub async fn workspace_list(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<Workspace>, String> {
     list_workspaces(&pool, None)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Returns enriched workspace list entries with git status, CI, notes (query).
+#[tauri::command]
+pub async fn workspace_list_enriched(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<Vec<WorkspaceListEntry>, String> {
+    crate::cache::workspace_enrichment::assemble_workspace_list_entries(&pool)
         .await
         .map_err(|e| e.to_string())
 }

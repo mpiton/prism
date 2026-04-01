@@ -23,6 +23,20 @@ pub enum CiStatus {
     Cancelled,
 }
 
+impl CiStatus {
+    /// Parse a CI status string. Returns `None` for unrecognised values.
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s {
+            "pending" => Some(Self::Pending),
+            "running" => Some(Self::Running),
+            "success" => Some(Self::Success),
+            "failure" => Some(Self::Failure),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+
 /// Priority level. `Critical` is the highest priority (`Critical > High > Medium > Low`).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -200,6 +214,25 @@ pub struct WorkspaceNote {
     pub workspace_id: String,
     pub content: String,
     pub created_at: String,
+}
+
+// ── Workspace list entry (T-097) ─────────────────────────────────
+
+/// Enriched workspace entry with git status, CI, and notes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceListEntry {
+    pub workspace: Workspace,
+    pub branch: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    pub ci_status: Option<CiStatus>,
+    pub github_url: Option<String>,
+    /// Currently 0 or 1 — derived from the single `session_id` column.
+    /// Will become a real count when multi-session support is added.
+    pub session_count: u32,
+    pub disk_usage_mb: Option<u64>,
+    pub last_note: Option<String>,
 }
 
 // ── Composite structs (T-010) ─────────────────────────────────────

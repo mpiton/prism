@@ -53,14 +53,7 @@ fn ci_status_to_str(s: &CiStatus) -> &'static str {
 }
 
 fn ci_status_from_str(s: &str) -> Result<CiStatus, AppError> {
-    match s {
-        "pending" => Ok(CiStatus::Pending),
-        "running" => Ok(CiStatus::Running),
-        "success" => Ok(CiStatus::Success),
-        "failure" => Ok(CiStatus::Failure),
-        "cancelled" => Ok(CiStatus::Cancelled),
-        _ => Err(AppError::Config(format!("unknown CiStatus: {s}"))),
-    }
+    CiStatus::from_str_opt(s).ok_or_else(|| AppError::Config(format!("unknown CiStatus: {s}")))
 }
 
 fn priority_to_str(p: &Priority) -> &'static str {

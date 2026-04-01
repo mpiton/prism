@@ -8,7 +8,7 @@ interface WorkspaceStatusBarProps {
   readonly branch: string;
   readonly ahead: number;
   readonly behind: number;
-  readonly ciStatus: CiStatus;
+  readonly ciStatus: CiStatus | null;
   readonly sessionName: string | null;
   readonly sessionCount: number;
   readonly githubUrl: string;
@@ -54,9 +54,11 @@ export function WorkspaceStatusBar({
           </span>
         )}
 
-        <span data-testid="status-ci">
-          <CI status={ciStatus} />
-        </span>
+        {ciStatus !== null && (
+          <span data-testid="status-ci">
+            <CI status={ciStatus} />
+          </span>
+        )}
 
         {sessionName !== null && (
           <>

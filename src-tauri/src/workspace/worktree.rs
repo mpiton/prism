@@ -123,7 +123,7 @@ fn classify_git_error(stderr: &str, args_display: &str) -> AppError {
 /// Times out after [`GIT_TIMEOUT`] to prevent indefinite hangs on network operations.
 /// The spawned child process is killed when the timeout fires (`kill_on_drop`).
 /// Accepts [`OsString`] args so paths with non-UTF-8 bytes are passed verbatim to git.
-async fn run_git(args: &[OsString], cwd: &Path) -> Result<String, AppError> {
+pub(crate) async fn run_git(args: &[OsString], cwd: &Path) -> Result<String, AppError> {
     let cmd_label = args
         .first()
         .map(|s| s.to_string_lossy().into_owned())
@@ -153,6 +153,76 @@ async fn run_git(args: &[OsString], cwd: &Path) -> Result<String, AppError> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Returns the current branch name for a worktree directory.
+///
+/// Returns `"HEAD"` (literal) for detached HEAD states (git's native behavior).
+/// Returns `Err` if the path is not a git repository or `run_git` fails.
+pub(crate) async fn get_branch_name(worktree_path: &Path) -> Result<String, AppError> {
+    let output = run_git(
+        &["rev-parse".into(), "--abbrev-ref".into(), "HEAD".into()],
+        worktree_path,
+    )
+    .await?;
+    Ok(output.trim().to_string())
+}
+
+/// Returns (ahead, behind) counts relative to the upstream tracking branch.
+///
+/// Returns `(0, 0)` when there is no upstream (detached HEAD, no tracking branch).
+pub(crate) async fn get_ahead_behind(worktree_path: &Path) -> (u32, u32) {
+    let result = run_git(
+        &[
+            "rev-list".into(),
+            "--count".into(),
+            "--left-right".into(),
+            "HEAD...@{upstream}".into(),
+        ],
+        worktree_path,
+    )
+    .await;
+
+    match result {
+        Ok(output) => {
+            let parts: Vec<&str> = output.trim().split('\t').collect();
+            if parts.len() == 2 {
+                let ahead = parts[0].parse().unwrap_or(0);
+                let behind = parts[1].parse().unwrap_or(0);
+                (ahead, behind)
+            } else {
+                (0, 0)
+            }
+        }
+        Err(_) => (0, 0),
+    }
+}
+
+/// Best-effort disk usage of a worktree in megabytes.
+///
+/// Uses `du -sk` on Unix. Returns `None` on Windows or on any error.
+pub(crate) async fn get_disk_usage_mb(worktree_path: &Path) -> Option<u64> {
+    #[cfg(not(windows))]
+    {
+        const DU_TIMEOUT: Duration = Duration::from_secs(10);
+
+        let mut cmd = Command::new("du");
+        cmd.args(["-sk"]).arg(worktree_path).kill_on_drop(true);
+
+        let output = timeout(DU_TIMEOUT, cmd.output()).await.ok()?.ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let kb: u64 = stdout.split_whitespace().next()?.parse().ok()?;
+        Some(kb / 1024)
+    }
+    #[cfg(windows)]
+    {
+        let _ = worktree_path;
+        None
+    }
 }
 
 /// Creates a git worktree for reviewing a pull request.

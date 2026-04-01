@@ -9,4 +9,5 @@ pub mod repos;
 pub mod reviews;
 pub mod stats;
 pub mod sync;
+pub mod workspace_enrichment;
 pub mod workspaces;

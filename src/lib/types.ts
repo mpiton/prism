@@ -119,7 +119,7 @@ export interface WorkspaceStatusInfo {
   readonly branch: string;
   readonly ahead: number;
   readonly behind: number;
-  readonly ciStatus: CiStatus;
+  readonly ciStatus: CiStatus | null;
   readonly sessionName: string | null;
   readonly sessionCount: number;
   readonly githubUrl: string;
@@ -133,6 +133,7 @@ export interface WorkspaceListEntry {
   readonly ahead: number;
   readonly behind: number;
   readonly ciStatus: CiStatus | null;
+  readonly githubUrl: string | null;
   readonly sessionCount: number;
   readonly diskUsageMb: number | null;
   readonly lastNote: string | null;
@@ -277,6 +278,7 @@ export type TauriCommandName =
   | "auth_set_token"
   | "auth_get_status"
   | "auth_logout"
+  | "workspace_list_enriched"
   | "debug_memory_usage";
 
 export const TAURI_COMMANDS = {
@@ -293,6 +295,7 @@ export const TAURI_COMMANDS = {
   workspace_list: "workspace_list",
   workspace_get_notes: "workspace_get_notes",
   workspace_cleanup: "workspace_cleanup",
+  workspace_list_enriched: "workspace_list_enriched",
   pty_write: "pty_write",
   pty_resize: "pty_resize",
   pty_kill: "pty_kill",
