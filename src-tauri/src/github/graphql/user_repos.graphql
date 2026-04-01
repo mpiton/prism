@@ -1,0 +1,24 @@
+query UserRepos($first: Int!, $after: String) {
+  viewer {
+    repositories(first: $first, after: $after, ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        id
+        name
+        nameWithOwner
+        url
+        defaultBranchRef {
+          name
+        }
+        isArchived
+        owner {
+          __typename
+          login
+        }
+      }
+    }
+  }
+}

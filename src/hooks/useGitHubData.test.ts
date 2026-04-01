@@ -117,6 +117,9 @@ describe("useGitHubData", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["github", "stats"],
     });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["repos"],
+    });
   });
 
   it("should force sync via mutation", async () => {
@@ -146,6 +149,9 @@ describe("useGitHubData", () => {
     });
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["github", "stats"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["repos"],
     });
   });
 
@@ -277,6 +283,9 @@ describe("useGitHubData", () => {
     });
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["github", "stats"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["repos"],
     });
   });
 });
