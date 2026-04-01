@@ -20,6 +20,17 @@ use crate::types::WorkspaceNote;
 static SESSION_ID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:session(?:\s+id)?)[:\s=]+([a-zA-Z0-9_-]{8,})").unwrap());
 
+/// Matches session errors in Claude Code output (not found, corrupted, etc.).
+///
+/// The `.jsonl` arm is anchored with `session` to avoid false positives when
+/// Claude discusses arbitrary `.jsonl` files during normal work.
+static SESSION_ERROR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)(?:session\s+(?:not\s+found|expired|invalid|corrupted)|(?:could\s+not|cannot|failed\s+to)\s+(?:find|load|resume)\s+session|no\s+session\s+(?:with|found)|error\s+loading\s+session|session\S*\.jsonl\s+(?:is\s+)?(?:corrupt|invalid|missing))",
+    )
+    .unwrap()
+});
+
 /// Matches auth / 401 errors in Claude Code output.
 static AUTH_ERROR_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -32,8 +43,13 @@ static AUTH_ERROR_RE: LazyLock<Regex> = LazyLock::new(|| {
 ///
 /// Returns `Some(id)` if a session-id pattern is found, `None` otherwise.
 /// Rejects plain words (must contain at least one digit, dash, or underscore).
+/// Also rejects lines that match a session error pattern to avoid
+/// re-persisting broken session IDs from error messages.
 #[allow(dead_code)]
 pub fn detect_session_id(stdout_line: &str) -> Option<String> {
+    if detect_session_error(stdout_line).is_some() {
+        return None;
+    }
     SESSION_ID_RE
         .captures(stdout_line)
         .map(|caps| caps[1].to_string())
@@ -41,6 +57,17 @@ pub fn detect_session_id(stdout_line: &str) -> Option<String> {
             id.bytes()
                 .any(|b| b == b'-' || b == b'_' || b.is_ascii_digit())
         })
+}
+
+/// Detects a session error from a Claude Code stdout line.
+///
+/// Returns `Some(reason)` if the line indicates the session could not be
+/// resumed (not found, corrupted `.jsonl`, expired, etc.), `None` otherwise.
+#[allow(dead_code)]
+pub fn detect_session_error(stdout_line: &str) -> Option<String> {
+    SESSION_ERROR_RE
+        .find(stdout_line)
+        .map(|m| m.as_str().to_string())
 }
 
 /// Returns `true` if the stdout line contains an auth/401 error indicator.
@@ -97,6 +124,52 @@ pub fn rename_claude_session(
     reject_control_chars(name, "session name")?;
     let cmd = format!("/session rename {name}\n");
     pty_manager.write_pty(pty_id, cmd.as_bytes())
+}
+
+// ── Session recovery ────────────────────────────────────────────
+
+/// Recovers from a failed `claude --resume` by starting a fresh session.
+///
+/// Launches a new Claude instance in the PTY first, then clears the stale
+/// `session_id` in the database (only if it still matches `stale_session_id`,
+/// preventing races with concurrent session updates). This ordering ensures
+/// the workspace is never left without both a session ID and a running
+/// process. The caller should watch stdout for the new session ID (via
+/// [`detect_session_id`]) and persist it with
+/// [`crate::cache::workspaces::update_claude_session`].
+///
+/// **Integration note**: not yet wired into the PTY resume flow. When
+/// integrated, the caller must line-buffer PTY stdout before calling
+/// [`detect_session_error`] to avoid split-chunk misses.
+#[allow(dead_code)]
+pub async fn handle_session_recovery(
+    pty_manager: &PtyManager,
+    pty_id: &str,
+    pool: &SqlitePool,
+    workspace_id: &str,
+    stale_session_id: Option<&str>,
+    error_reason: &str,
+) -> Result<(), AppError> {
+    tracing::warn!(
+        workspace_id = workspace_id,
+        reason = error_reason,
+        "Claude session resume failed, starting new session"
+    );
+
+    // Launch a fresh Claude instance first so the workspace is never left
+    // without a running process.
+    launch_claude(pty_manager, pty_id)?;
+
+    // Clear the stale session_id only if it still matches (compare-and-swap),
+    // avoiding races where another task already stored a fresh ID.
+    crate::cache::workspaces::clear_stale_session(pool, workspace_id, stale_session_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(workspace_id = workspace_id, error = %e, "failed to clear session during recovery");
+            e
+        })?;
+
+    Ok(())
 }
 
 // ── CLAUDE.md generation ─────────────────────────────────────────
@@ -1150,6 +1223,190 @@ mod tests {
         let err = store_suspension_note(&pool, "ws-1", "   \n  ".to_string()).await;
         assert!(err.is_err(), "should reject whitespace-only content");
 
+        pool.close().await;
+    }
+
+    // ── Session recovery tests ──────────────────────────────────────
+
+    #[test]
+    fn test_resume_session_not_found() {
+        // Session-not-found patterns
+        assert!(
+            detect_session_error("Error: session not found").is_some(),
+            "should detect 'session not found'"
+        );
+        assert!(
+            detect_session_error("Could not find session abc-123").is_some(),
+            "should detect 'could not find session'"
+        );
+        assert!(
+            detect_session_error("Failed to resume session").is_some(),
+            "should detect 'failed to resume session'"
+        );
+        assert!(
+            detect_session_error("Session expired, please start a new one").is_some(),
+            "should detect 'session expired'"
+        );
+        assert!(
+            detect_session_error("Cannot find session with that ID").is_some(),
+            "should detect 'cannot find session'"
+        );
+        assert!(
+            detect_session_error("Error loading session data").is_some(),
+            "should detect 'error loading session'"
+        );
+
+        // "no session" patterns (Fix: P2 branch coverage)
+        assert!(
+            detect_session_error("No session found for this workspace").is_some(),
+            "should detect 'no session found'"
+        );
+        assert!(
+            detect_session_error("no session with that ID").is_some(),
+            "should detect 'no session with'"
+        );
+
+        // Corrupted session patterns
+        assert!(
+            detect_session_error("Session corrupted").is_some(),
+            "should detect 'session corrupted'"
+        );
+        assert!(
+            detect_session_error("session.jsonl is corrupt or invalid").is_some(),
+            "should detect 'session.jsonl corrupt'"
+        );
+        assert!(
+            detect_session_error("session.jsonl missing").is_some(),
+            "should detect 'session.jsonl missing'"
+        );
+        assert!(
+            detect_session_error("Session invalid, cannot resume").is_some(),
+            "should detect 'session invalid'"
+        );
+
+        // .jsonl false positives — must NOT trigger on general .jsonl mentions
+        assert!(
+            detect_session_error("I'll scan data.jsonl for invalid JSON entries").is_none(),
+            "should not match generic .jsonl discussion"
+        );
+        assert!(
+            detect_session_error("The export.jsonl output is missing 3 fields").is_none(),
+            "should not match unrelated .jsonl file"
+        );
+
+        // Regression: detect_session_id must not match error lines
+        assert_eq!(
+            detect_session_id("Could not find session a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
+            None,
+            "error lines must not be treated as successful session IDs"
+        );
+        assert_eq!(
+            detect_session_id("Failed to resume session test-session-12345678"),
+            None,
+            "failed resume must not extract a session ID"
+        );
+
+        // Normal output — should NOT trigger
+        assert!(
+            detect_session_error("Session started successfully").is_none(),
+            "should not match normal session start"
+        );
+        assert!(
+            detect_session_error("Resuming session abc-123").is_none(),
+            "should not match successful resume"
+        );
+        assert!(
+            detect_session_error("Session: a1b2c3d4").is_none(),
+            "should not match session ID display"
+        );
+        assert!(
+            detect_session_error("").is_none(),
+            "should not match empty string"
+        );
+        assert!(
+            detect_session_error("Hello, world!").is_none(),
+            "should not match unrelated output"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_fallback_new_session() {
+        use crate::cache::db::init_db;
+        use crate::cache::repos::upsert_repo;
+        use crate::cache::workspaces::{create_workspace, get_workspace};
+        use crate::types::{Repo, Workspace, WorkspaceState};
+
+        // Setup: DB with a workspace that has a stale session_id
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = init_db(&tmp.path().join("test.db")).await.unwrap();
+
+        let repo = Repo {
+            id: "repo-1".to_string(),
+            org: "mpiton".to_string(),
+            name: "prism".to_string(),
+            full_name: "mpiton/prism".to_string(),
+            url: "https://github.com/mpiton/prism".to_string(),
+            default_branch: "main".to_string(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        upsert_repo(&pool, &repo).await.unwrap();
+
+        let ws = Workspace {
+            id: "ws-recover".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 99,
+            state: WorkspaceState::Active,
+            worktree_path: Some("/tmp/worktree".to_string()),
+            session_id: Some("old-broken-session".to_string()),
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        create_workspace(&pool, &ws).await.unwrap();
+
+        // Verify the workspace starts with a session_id
+        let before = get_workspace(&pool, "ws-recover")
+            .await
+            .unwrap()
+            .expect("workspace should exist");
+        assert_eq!(
+            before.session_id.as_deref(),
+            Some("old-broken-session"),
+            "workspace should start with a stale session_id"
+        );
+
+        // Setup: PTY for handle_session_recovery to write to
+        let pty_manager = PtyManager::new();
+        let (pty_id, _rx) = spawn_test_pty(&pty_manager);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Act: call handle_session_recovery end-to-end (with stale session ID)
+        let result = handle_session_recovery(
+            &pty_manager,
+            &pty_id,
+            &pool,
+            "ws-recover",
+            Some("old-broken-session"),
+            "session not found",
+        )
+        .await;
+        assert!(result.is_ok(), "recovery should succeed: {result:?}");
+
+        // Verify: session_id was cleared in DB
+        let after = get_workspace(&pool, "ws-recover")
+            .await
+            .unwrap()
+            .expect("workspace should exist");
+        assert!(
+            after.session_id.is_none(),
+            "session_id should be cleared after recovery"
+        );
+
+        // PTY output ("claude\n") is verified by test_launch_claude_command.
+
+        pty_manager.kill(&pty_id).unwrap();
         pool.close().await;
     }
 }
