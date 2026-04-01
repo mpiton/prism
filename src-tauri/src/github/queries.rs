@@ -33,6 +33,15 @@ pub struct RecentActivity;
 )]
 pub struct PullRequestDetail;
 
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/github/graphql/schema.graphql",
+    query_path = "src/github/graphql/user_repos.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug"
+)]
+pub struct UserRepos;
+
 #[cfg(test)]
 mod tests {
     use super::*;

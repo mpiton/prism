@@ -39,17 +39,17 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
     <section data-testid="activity-feed" className="flex flex-col gap-2">
       <SectionHead title="Activity" count={visible.length} />
 
-      <div className="flex items-center gap-1">
-        <div className="flex gap-1" role="group" aria-label="Filter by type">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by type">
           {FILTER_LABELS.map((f) => (
             <button
               key={f}
               type="button"
               aria-pressed={filter === f}
               onClick={() => setFilter(f)}
-              className={`rounded px-2 py-0.5 text-xs capitalize ${
+              className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${
                 filter === f
-                  ? "bg-accent text-white"
+                  ? "bg-accent text-bg font-semibold"
                   : "text-dim hover:text-foreground"
               }`}
             >
@@ -68,7 +68,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
       </div>
 
       {visible.length === 0 ? (
-        <EmptyState message="No activity to display" />
+        <EmptyState icon="◌" message="No activity to display" />
       ) : (
         <div className="flex flex-col gap-1">
           {visible.map((activity) => (

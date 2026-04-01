@@ -46,8 +46,8 @@ const REPO_COLS: &str =
 #[allow(dead_code)]
 pub async fn upsert_repo(pool: &SqlitePool, repo: &Repo) -> Result<Repo, AppError> {
     let sql = format!(
-        "INSERT INTO repos (id, org, name, full_name, url, default_branch, is_archived)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "INSERT INTO repos (id, org, name, full_name, url, default_branch, is_archived, enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT(id) DO UPDATE SET
              org = excluded.org,
              name = excluded.name,
@@ -66,6 +66,7 @@ pub async fn upsert_repo(pool: &SqlitePool, repo: &Repo) -> Result<Repo, AppErro
         .bind(&repo.url)
         .bind(&repo.default_branch)
         .bind(repo.is_archived)
+        .bind(repo.enabled)
         .fetch_one(pool)
         .await?;
 

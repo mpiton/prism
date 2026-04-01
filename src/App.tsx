@@ -8,8 +8,9 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { authGetStatus } from "./lib/tauri";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { authGetStatus, markAllActivityRead } from "./lib/tauri";
+import { useGitHubData } from "./hooks/useGitHubData";
 import { AuthSetup } from "./components/AuthSetup/AuthSetup";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
@@ -98,22 +99,37 @@ interface MainContentProps {
 }
 
 function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElement {
+  const { dashboard } = useGitHubData();
+  const queryClient = useQueryClient();
+
+  const markAllRead = useMutation({
+    mutationFn: markAllActivityRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["github", "stats"] });
+    },
+  });
+
   switch (view) {
     case "overview":
       return <Overview />;
     case "reviews":
-      return <ReviewQueue reviews={[]} onOpen={openUrl} />;
+      return <ReviewQueue reviews={dashboard?.reviewRequests ?? []} onOpen={openUrl} />;
     case "mine":
-      return <MyPRs prs={[]} onOpen={openUrl} />;
+      return <MyPRs prs={dashboard?.myPullRequests ?? []} onOpen={openUrl} />;
     case "issues":
-      return <Issues issues={[]} onOpen={openUrl} />;
+      return <Issues issues={dashboard?.assignedIssues ?? []} onOpen={openUrl} />;
     case "feed":
-      return <ActivityFeed activities={[]} onMarkAllRead={() => {}} />;
+      return (
+        <ActivityFeed
+          activities={dashboard?.recentActivity ?? []}
+          onMarkAllRead={() => markAllRead.mutate()}
+        />
+      );
     case "workspaces":
-      // TODO(T-082): wire real workspace data from TanStack Query
       return (
         <WorkspaceView
-          workspaces={[]}
+          workspaces={dashboard?.workspaces ?? []}
           statusInfo={{}}
           onBackToDashboard={onBackToDashboard}
         />

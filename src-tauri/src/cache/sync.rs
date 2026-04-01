@@ -12,39 +12,138 @@ use crate::cache::activity::upsert_activity;
 use crate::cache::dashboard::compute_dashboard_stats;
 use crate::cache::issues::upsert_issue;
 use crate::cache::pull_requests::upsert_pull_request;
-use crate::cache::repos::list_repos;
+use crate::cache::repos::{list_repos, upsert_repo};
 use crate::cache::reviews::upsert_review;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::models::{map_issue, map_pr, map_review};
 use crate::github::queries::dashboard_data::{self, IssueFields, PrFields};
 use crate::github::queries::recent_activity;
-use crate::github::queries::{DashboardData, RecentActivity};
+use crate::github::queries::user_repos;
+use crate::github::queries::{DashboardData, RecentActivity, UserRepos};
 use crate::types::{Activity, ActivityType, DashboardStats, Repo};
+
+/// Minimum interval between repo discovery runs (1 hour).
+const REPO_SYNC_INTERVAL_SECS: i64 = 3600;
+const REPO_SYNC_KEY: &str = "last_repo_sync_at";
+
+/// Check if enough time has elapsed since the last repo discovery run.
+async fn should_sync_repos(pool: &SqlitePool) -> bool {
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM config WHERE key = $1")
+        .bind(REPO_SYNC_KEY)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+
+    let Some((ts,)) = row else { return true };
+    let Ok(last) = chrono::DateTime::parse_from_rfc3339(&ts) else {
+        return true;
+    };
+    chrono::Utc::now().signed_duration_since(last).num_seconds() > REPO_SYNC_INTERVAL_SECS
+}
+
+/// Record a repo-sync timestamp. On failure, advances the clock by a shorter
+/// cooldown (5 min) to avoid hammering the API on every poll tick while still
+/// retrying sooner than the full 1-hour interval.
+async fn mark_repo_sync_done(pool: &SqlitePool, failed: bool) {
+    let ts = if failed {
+        (chrono::Utc::now() - chrono::Duration::seconds(REPO_SYNC_INTERVAL_SECS - 300)).to_rfc3339()
+    } else {
+        chrono::Utc::now().to_rfc3339()
+    };
+    let now = ts;
+    let _ = sqlx::query(
+        "INSERT INTO config (key, value) VALUES ($1, $2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(REPO_SYNC_KEY)
+    .bind(&now)
+    .execute(pool)
+    .await;
+}
+
+/// Fetch all repositories the viewer has access to from GitHub and upsert them
+/// into the local cache. Returns the number of repos processed.
+pub async fn sync_repos(client: &GitHubClient, pool: &SqlitePool) -> Result<usize, AppError> {
+    let mut count = 0usize;
+    let mut cursor: Option<String> = None;
+
+    loop {
+        let variables = user_repos::Variables {
+            first: 100,
+            after: cursor.clone(),
+        };
+        let data = client.execute_graphql::<UserRepos>(variables).await?;
+        let repos_connection = data.viewer.repositories;
+
+        for node in repos_connection.nodes.into_iter().flatten().flatten() {
+            let repo = Repo {
+                // Use name_with_owner as ID to match the convention used by
+                // map_pr/map_issue (which set repo_id = repository.nameWithOwner).
+                id: node.name_with_owner.clone(),
+                org: node.owner.login,
+                name: node.name,
+                full_name: node.name_with_owner,
+                url: node.url,
+                default_branch: node
+                    .default_branch_ref
+                    .map_or_else(|| "main".to_string(), |r| r.name),
+                is_archived: node.is_archived,
+                // Bound on INSERT; ON CONFLICT preserves existing user choice.
+                enabled: true,
+                local_path: None,
+                last_sync_at: None,
+            };
+            upsert_repo(pool, &repo).await?;
+            count += 1;
+        }
+
+        if repos_connection.page_info.has_next_page {
+            if let Some(c) = repos_connection.page_info.end_cursor {
+                cursor = Some(c);
+            } else {
+                tracing::warn!("hasNextPage=true but endCursor is null — stopping pagination");
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(count)
+}
 
 /// Synchronize dashboard data from GitHub API into the local cache.
 ///
-/// 1. Read enabled repos from DB
-/// 2. Build GitHub search query variables
-/// 3. Execute GraphQL `DashboardData` query
-/// 4. Persist all data atomically in a single transaction
-/// 5. Update `last_sync_at` per repo (same transaction)
-/// 6. Return dashboard stats
-///
-/// Note: the `first: 100` page size may truncate results for users with
-/// very large dashboards. Pagination support is deferred to a future task
-/// (requires adding `after` cursor variables to the GraphQL query).
-///
-/// Note: this sync only upserts data present in the current API response.
-/// PRs that were merged/closed since the last sync drop out of `state:open`
-/// searches but remain in the cache with their last known state. A full
-/// reconciliation pass is deferred to a future task.
+/// 1. Discover/update repos from GitHub (`sync_repos`)
+/// 2. Read enabled repos from DB
+/// 3. Build GitHub search query variables
+/// 4. Execute GraphQL `DashboardData` query
+/// 5. Persist all data atomically in a single transaction
+/// 6. Update `last_sync_at` per repo (same transaction)
+/// 7. Return dashboard stats
 #[tracing::instrument(skip(client, pool, username))]
 pub async fn sync_dashboard(
     client: &GitHubClient,
     pool: &SqlitePool,
     username: &str,
 ) -> Result<DashboardStats, AppError> {
+    // Discover/update repos from GitHub — non-blocking so dashboard sync
+    // continues even if repo discovery fails (network error, rate limit, etc.)
+    let should_sync = should_sync_repos(pool).await;
+    if should_sync {
+        match sync_repos(client, pool).await {
+            Ok(n) => {
+                tracing::info!("repo discovery: {n} repos synced");
+                mark_repo_sync_done(pool, false).await;
+            }
+            Err(e) => {
+                tracing::warn!("repo discovery failed, using cached repos: {e}");
+                mark_repo_sync_done(pool, true).await;
+            }
+        }
+    }
     let repos = list_repos(pool).await?;
     let enabled: Vec<&Repo> = repos.iter().filter(|r| r.enabled).collect();
 
@@ -467,6 +566,18 @@ mod tests {
         (pool, tmp)
     }
 
+    /// Pre-mark repo sync as done so `should_sync_repos` returns false.
+    /// Use in dashboard tests to avoid unrelated sync_repos GraphQL calls.
+    async fn skip_repo_sync(pool: &SqlitePool) {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+            .bind(REPO_SYNC_KEY)
+            .bind(&now)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
     fn sample_repo() -> Repo {
         Repo {
             id: "org/repo".to_string(),
@@ -678,6 +789,7 @@ mod tests {
             .await;
 
         let (pool, _tmp) = test_pool().await;
+        skip_repo_sync(&pool).await; // avoid sync_repos making extra requests
         let repo = sample_repo();
         upsert_repo(&pool, &repo).await.unwrap();
 
@@ -1142,5 +1254,233 @@ mod tests {
             validate_since("2026-03-01T10:00:00Z extra").is_err(),
             "space in value"
         );
+    }
+
+    // ── sync_repos tests ─────────────────────────────────────────────
+
+    fn user_repos_response(
+        nodes: serde_json::Value,
+        has_next_page: bool,
+        end_cursor: Option<&str>,
+    ) -> String {
+        serde_json::json!({
+            "data": {
+                "viewer": {
+                    "repositories": {
+                        "pageInfo": {
+                            "hasNextPage": has_next_page,
+                            "endCursor": end_cursor
+                        },
+                        "nodes": nodes
+                    }
+                }
+            }
+        })
+        .to_string()
+    }
+
+    fn repo_node(id: &str, name: &str, org: &str, archived: bool) -> serde_json::Value {
+        serde_json::json!({
+            "id": id,
+            "name": name,
+            "nameWithOwner": format!("{org}/{name}"),
+            "url": format!("https://github.com/{org}/{name}"),
+            "defaultBranchRef": { "name": "main" },
+            "isArchived": archived,
+            "owner": { "__typename": "Organization", "login": org }
+        })
+    }
+
+    #[tokio::test]
+    async fn test_sync_repos_inserts_new_repos() {
+        let mut server = mockito::Server::new_async().await;
+        let body = user_repos_response(
+            serde_json::json!([repo_node("R_1", "alpha", "acme", false)]),
+            false,
+            None,
+        );
+        let mock = server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let (pool, _tmp) = test_pool().await;
+        let client =
+            GitHubClient::with_url("ghp_test_token", format!("{}/graphql", server.url())).unwrap();
+
+        let count = sync_repos(&client, &pool).await.unwrap();
+
+        assert_eq!(count, 1);
+        let repos = crate::cache::repos::list_repos(&pool).await.unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "acme/alpha");
+        assert_eq!(repos[0].name, "alpha");
+        assert_eq!(repos[0].org, "acme");
+        assert_eq!(repos[0].full_name, "acme/alpha");
+        assert_eq!(repos[0].default_branch, "main");
+        assert!(!repos[0].is_archived);
+        assert!(repos[0].enabled, "new repos should default to enabled");
+        mock.assert_async().await;
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_repos_preserves_enabled_state() {
+        let mut server = mockito::Server::new_async().await;
+
+        // Pre-insert the repo, then explicitly disable it
+        let (pool, _tmp) = test_pool().await;
+        let existing = Repo {
+            id: "acme/alpha".to_string(),
+            org: "acme".to_string(),
+            name: "alpha".to_string(),
+            full_name: "acme/alpha".to_string(),
+            url: "https://github.com/acme/alpha".to_string(),
+            default_branch: "main".to_string(),
+            is_archived: false,
+            enabled: true,
+            local_path: None,
+            last_sync_at: None,
+        };
+        upsert_repo(&pool, &existing).await.unwrap();
+        // Disable it — simulating a user choosing not to track this repo
+        crate::cache::repos::set_repo_enabled(&pool, "acme/alpha", false)
+            .await
+            .unwrap();
+
+        let body = user_repos_response(
+            serde_json::json!([repo_node("R_1", "alpha", "acme", false)]),
+            false,
+            None,
+        );
+        let _mock = server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let client =
+            GitHubClient::with_url("ghp_test_token", format!("{}/graphql", server.url())).unwrap();
+        sync_repos(&client, &pool).await.unwrap();
+
+        let repos = crate::cache::repos::list_repos(&pool).await.unwrap();
+        assert_eq!(repos.len(), 1);
+        assert!(
+            !repos[0].enabled,
+            "upsert should preserve local enabled=false state"
+        );
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_repos_pagination() {
+        let mut server = mockito::Server::new_async().await;
+
+        // First page: hasNextPage=true, endCursor="cursor1"
+        let page1 = user_repos_response(
+            serde_json::json!([repo_node("R_1", "alpha", "acme", false)]),
+            true,
+            Some("cursor1"),
+        );
+        // Second page: hasNextPage=false
+        let page2 = user_repos_response(
+            serde_json::json!([repo_node("R_2", "beta", "acme", false)]),
+            false,
+            None,
+        );
+
+        // Both pages hit the same endpoint — mockito sequences them
+        let mock1 = server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(page1)
+            .create_async()
+            .await;
+        let mock2 = server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(page2)
+            .create_async()
+            .await;
+
+        let (pool, _tmp) = test_pool().await;
+        let client =
+            GitHubClient::with_url("ghp_test_token", format!("{}/graphql", server.url())).unwrap();
+
+        let count = sync_repos(&client, &pool).await.unwrap();
+
+        assert_eq!(count, 2, "both pages should be fetched");
+        let repos = crate::cache::repos::list_repos(&pool).await.unwrap();
+        assert_eq!(repos.len(), 2);
+        mock1.assert_async().await;
+        mock2.assert_async().await;
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_repos_missing_default_branch_falls_back_to_main() {
+        let mut server = mockito::Server::new_async().await;
+        let node = serde_json::json!({
+            "id": "R_1",
+            "name": "noBranch",
+            "nameWithOwner": "acme/noBranch",
+            "url": "https://github.com/acme/noBranch",
+            "defaultBranchRef": null,
+            "isArchived": false,
+            "owner": { "__typename": "Organization", "login": "acme" }
+        });
+        let body = user_repos_response(serde_json::json!([node]), false, None);
+        let _mock = server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let (pool, _tmp) = test_pool().await;
+        let client =
+            GitHubClient::with_url("ghp_test_token", format!("{}/graphql", server.url())).unwrap();
+        sync_repos(&client, &pool).await.unwrap();
+
+        let repos = crate::cache::repos::list_repos(&pool).await.unwrap();
+        assert_eq!(repos[0].default_branch, "main");
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_repos_stops_on_null_cursor_with_has_next_page() {
+        let mut server = mockito::Server::new_async().await;
+        // hasNextPage=true but endCursor=null — should stop, not loop forever
+        let body = user_repos_response(
+            serde_json::json!([repo_node("R_1", "alpha", "acme", false)]),
+            true,
+            None,
+        );
+        let mock = server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let (pool, _tmp) = test_pool().await;
+        let client =
+            GitHubClient::with_url("ghp_test_token", format!("{}/graphql", server.url())).unwrap();
+
+        let count = sync_repos(&client, &pool).await.unwrap();
+
+        assert_eq!(count, 1);
+        mock.assert_async().await;
+        pool.close().await;
     }
 }

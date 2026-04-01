@@ -97,11 +97,23 @@ interface Actor {
   avatarUrl: URI
 }
 
+enum RepositoryAffiliation {
+  OWNER
+  COLLABORATOR
+  ORGANIZATION_MEMBER
+}
+
+type RepositoryConnection {
+  pageInfo: PageInfo!
+  nodes: [Repository]
+}
+
 type User implements Node & Actor {
   id: ID!
   login: String!
   avatarUrl: URI
   name: String
+  repositories(first: Int, after: String, ownerAffiliations: [RepositoryAffiliation]): RepositoryConnection!
 }
 
 type Bot implements Node & Actor {

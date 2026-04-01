@@ -20,42 +20,38 @@ export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
   }
 
   return (
-    <div
+    <a
       data-testid="issue-card"
-      className="flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover"
+      href={issue.url}
+      onClick={handleClick}
+      aria-label={`Issue #${issue.number}: ${issue.title} (${issue.state})`}
+      className="flex min-w-0 cursor-pointer flex-col gap-1 rounded border border-border px-3 py-2 no-underline hover:bg-surface-hover"
     >
-      <a
-        href={issue.url}
-        onClick={handleClick}
-        aria-label={`Issue #${issue.number}: ${issue.title} (${issue.state})`}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
-      >
+      <div className="flex min-w-0 items-center gap-2">
         <span
           data-testid="issue-state-dot"
           aria-hidden="true"
           className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATE_DOT_COLOR[issue.state]}`}
         />
-
+        <span className="shrink-0 text-xs text-dim">#{issue.number}</span>
         <span className="min-w-0 truncate text-sm font-medium text-foreground">
           {issue.title}
         </span>
+      </div>
 
-        <span className="shrink-0 text-xs text-dim">#{issue.number}</span>
-
-        <span className="shrink-0 text-xs text-dim">{issue.repoId}</span>
-
+      <div className="flex min-w-0 items-center gap-2 pl-[18px]">
+        <span className="shrink-0 truncate text-xs text-dim">{issue.repoId}</span>
         {issue.labels.length > 0 && (
-          <span className="flex items-center gap-1">
-            {issue.labels.map((label, idx) => (
-              <LabelTag key={`${label}-${idx}`} name={label} />
+          <span className="flex min-w-0 items-center gap-1 overflow-hidden">
+            {issue.labels.map((label) => (
+              <LabelTag key={`${issue.id}:${label}`} name={label} />
             ))}
           </span>
         )}
-
-        <span data-testid="time-ago" className="shrink-0 text-xs text-dim">
+        <span data-testid="time-ago" className="ml-auto shrink-0 text-xs text-dim">
           {timeAgo(issue.updatedAt)}
         </span>
-      </a>
-    </div>
+      </div>
+    </a>
   );
 }

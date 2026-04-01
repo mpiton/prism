@@ -85,7 +85,7 @@ export function StatsBar(): ReactElement {
       </div>
       <div className="flex items-center gap-3">
         {focusMode && (
-          <span className="rounded bg-accent px-2 py-0.5 text-xs font-bold text-white">
+          <span className="rounded bg-accent px-2 py-0.5 text-xs font-bold text-bg">
             FOCUS MODE
           </span>
         )}
