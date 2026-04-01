@@ -47,7 +47,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
               type="button"
               aria-pressed={filter === f}
               onClick={() => setFilter(f)}
-              className={`rounded px-2 py-0.5 text-xs capitalize ${
+              className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${
                 filter === f
                   ? "bg-accent text-white"
                   : "text-dim hover:text-foreground"
@@ -68,7 +68,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
       </div>
 
       {visible.length === 0 ? (
-        <EmptyState message="No activity to display" />
+        <EmptyState icon="◌" message="No activity to display" />
       ) : (
         <div className="flex flex-col gap-1">
           {visible.map((activity) => (

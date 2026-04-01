@@ -111,13 +111,16 @@ export function Sidebar(): ReactElement {
         </div>
       )}
 
-      {/* Repos section */}
-      {repos.length > 0 && (
-        <div role="region" aria-labelledby="sidebar-repos-heading" className="flex flex-col gap-1">
+      {/* Repos section — enabled repos only; full management in Settings */}
+      {repos.filter((r) => r.enabled).length > 0 && (
+        <div role="region" aria-labelledby="sidebar-repos-heading" className="flex min-h-0 flex-col gap-1">
           <h3 id="sidebar-repos-heading" className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim">
             Repos
+            <span className="ml-1 text-dim/60">{repos.filter((r) => r.enabled).length}</span>
           </h3>
-          <RepoList repos={repos} onToggleRepo={handleToggleRepo} />
+          <div className="max-h-[200px] overflow-y-auto">
+            <RepoList repos={repos.filter((r) => r.enabled)} onToggleRepo={handleToggleRepo} />
+          </div>
         </div>
       )}
 

@@ -107,7 +107,7 @@ export function ReviewQueue({
               onClick={() =>
                 setFilter({ priority: f === "all" ? undefined : f })
               }
-              className={`rounded px-2 py-0.5 text-xs ${
+              className={`rounded px-2 py-0.5 text-xs transition-colors ${
                 priorityFilter === f
                   ? "bg-accent text-white"
                   : "text-dim hover:text-foreground"
@@ -138,7 +138,7 @@ export function ReviewQueue({
       </div>
 
       {sorted.length === 0 ? (
-        <EmptyState message="No reviews to display" />
+        <EmptyState icon="✓" message="No pending reviews — you're all caught up!" />
       ) : (
         <div className="flex flex-col gap-1">
           {sorted.map((review) => (

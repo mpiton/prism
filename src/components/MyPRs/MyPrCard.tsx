@@ -73,40 +73,41 @@ export function MyPrCard({
           className={`h-2.5 w-2.5 shrink-0 rounded-full ${CI_DOT_COLOR[pr.ciStatus]}`}
         />
 
-        <span
-          className={`min-w-0 truncate text-sm font-medium text-foreground${merged ? " line-through" : ""}`}
-        >
-          {pr.title}
-        </span>
-
-        <span className="shrink-0 text-xs text-dim">#{pr.number}</span>
-
-        {pr.additions !== undefined && pr.deletions !== undefined && (
-          <Diff additions={pr.additions} deletions={pr.deletions} />
-        )}
-
-        <CI status={pr.ciStatus} />
-
-        <span className="flex items-center gap-0.5">
-          {reviewDots.map((dot) => (
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
             <span
-              key={dot.key}
-              data-testid="review-dot"
-              aria-hidden="true"
-              className={`h-2 w-2 rounded-full ${dot.color}`}
-            />
-          ))}
-        </span>
+              className={`min-w-0 truncate text-sm font-medium text-foreground${merged ? " line-through" : ""}`}
+            >
+              {pr.title}
+            </span>
+            <span className="shrink-0 text-xs text-dim">#{pr.number}</span>
+            {isMergeable(data) && (
+              <span className="shrink-0 rounded bg-green/20 px-1.5 py-0.5 text-xs font-semibold text-green">
+                MERGEABLE
+              </span>
+            )}
+          </div>
 
-        {isMergeable(data) && (
-          <span className="shrink-0 rounded bg-green/20 px-1.5 py-0.5 text-xs font-semibold text-green">
-            MERGEABLE
-          </span>
-        )}
-
-        <span data-testid="time-ago" className="shrink-0 text-xs text-dim">
-          {timeAgo(pr.updatedAt)}
-        </span>
+          <div className="flex items-center gap-2 text-xs text-dim">
+            {pr.additions !== undefined && pr.deletions !== undefined && (
+              <Diff additions={pr.additions} deletions={pr.deletions} />
+            )}
+            <CI status={pr.ciStatus} />
+            <span className="flex items-center gap-0.5">
+              {reviewDots.map((dot) => (
+                <span
+                  key={dot.key}
+                  data-testid="review-dot"
+                  aria-hidden="true"
+                  className={`h-2 w-2 rounded-full ${dot.color}`}
+                />
+              ))}
+            </span>
+            <span data-testid="time-ago" className="ml-auto shrink-0">
+              {timeAgo(pr.updatedAt)}
+            </span>
+          </div>
+        </div>
       </a>
 
       {workspace && (

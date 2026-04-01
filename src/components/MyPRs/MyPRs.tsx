@@ -51,7 +51,7 @@ export function MyPRs({
           type="button"
           aria-pressed={tab === "open"}
           onClick={() => setTab("open")}
-          className={`rounded px-2 py-0.5 text-xs ${
+          className={`rounded px-2 py-0.5 text-xs transition-colors ${
             tab === "open"
               ? "bg-accent text-white"
               : "text-dim hover:text-foreground"
@@ -63,7 +63,7 @@ export function MyPRs({
           type="button"
           aria-pressed={tab === "merged"}
           onClick={() => setTab("merged")}
-          className={`rounded px-2 py-0.5 text-xs ${
+          className={`rounded px-2 py-0.5 text-xs transition-colors ${
             tab === "merged"
               ? "bg-accent text-white"
               : "text-dim hover:text-foreground"
@@ -74,7 +74,7 @@ export function MyPRs({
       </div>
 
       {visible.length === 0 ? (
-        <EmptyState message="No pull requests to display" />
+        <EmptyState icon="↗" message="No pull requests to display" />
       ) : (
         <div className="flex flex-col gap-1">
           {visible.map((pr) => (
