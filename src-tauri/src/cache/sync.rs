@@ -48,7 +48,7 @@ async fn should_sync_repos(pool: &SqlitePool) -> bool {
 /// retrying sooner than the full 1-hour interval.
 async fn mark_repo_sync_done(pool: &SqlitePool, failed: bool) {
     let ts = if failed {
-        (chrono::Utc::now() + chrono::Duration::seconds(REPO_SYNC_INTERVAL_SECS - 300)).to_rfc3339()
+        (chrono::Utc::now() - chrono::Duration::seconds(REPO_SYNC_INTERVAL_SECS - 300)).to_rfc3339()
     } else {
         chrono::Utc::now().to_rfc3339()
     };
@@ -91,8 +91,7 @@ pub async fn sync_repos(client: &GitHubClient, pool: &SqlitePool) -> Result<usiz
                     .map(|r| r.name)
                     .unwrap_or_else(|| "main".to_string()),
                 is_archived: node.is_archived,
-                // Not bound by upsert_repo — schema DEFAULT 1 applies on insert,
-                // ON CONFLICT preserves existing user choice.
+                // Bound on INSERT; ON CONFLICT preserves existing user choice.
                 enabled: true,
                 local_path: None,
                 last_sync_at: None,

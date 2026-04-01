@@ -43,8 +43,8 @@ export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
         <span className="shrink-0 truncate text-xs text-dim">{issue.repoId}</span>
         {issue.labels.length > 0 && (
           <span className="flex min-w-0 items-center gap-1 overflow-hidden">
-            {issue.labels.map((label, idx) => (
-              <LabelTag key={`${label}-${idx}`} name={label} />
+            {issue.labels.map((label) => (
+              <LabelTag key={`${issue.id}:${label}`} name={label} />
             ))}
           </span>
         )}
