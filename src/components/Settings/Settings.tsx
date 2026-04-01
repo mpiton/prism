@@ -5,9 +5,9 @@ import {
   setConfig,
   listRepos,
   setRepoEnabled,
-  authGetStatus,
 } from "../../lib/tauri";
 import type { PartialAppConfig, Repo } from "../../lib/types";
+import { AuthSetup } from "../AuthSetup/AuthSetup";
 import { Stats } from "./Stats";
 import { DebugInfo } from "./DebugInfo";
 
@@ -19,9 +19,6 @@ function useReposQuery() {
   return useQuery({ queryKey: ["repos"], queryFn: listRepos });
 }
 
-function useAuthQuery() {
-  return useQuery({ queryKey: ["auth", "status"], queryFn: authGetStatus });
-}
 
 interface NumberFieldProps {
   readonly label: string;
@@ -88,7 +85,6 @@ export function Settings(): ReactElement {
   const queryClient = useQueryClient();
   const configQuery = useConfigQuery();
   const reposQuery = useReposQuery();
-  const authQuery = useAuthQuery();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
 
@@ -148,22 +144,13 @@ export function Settings(): ReactElement {
 
       <div data-testid="settings-github" className="flex flex-col gap-3">
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">GitHub</h2>
+        <AuthSetup />
         <NumberField
           label="Poll interval (seconds)"
           value={config.pollIntervalSecs}
           resetKey={resetKey}
           onCommit={(v) => configMutation.mutate({ pollIntervalSecs: v })}
         />
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-dim">Auth status</span>
-          {authQuery.isLoading ? (
-            <span className="text-dim">Checking...</span>
-          ) : authQuery.data?.connected ? (
-            <span className="text-green-400">Connected — {authQuery.data.username}</span>
-          ) : (
-            <span className="text-red-400">Not connected</span>
-          )}
-        </div>
       </div>
 
       <div data-testid="settings-workspaces" className="flex flex-col gap-3">

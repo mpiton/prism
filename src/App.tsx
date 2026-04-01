@@ -8,6 +8,9 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { authGetStatus } from "./lib/tauri";
+import { AuthSetup } from "./components/AuthSetup/AuthSetup";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
 import { ReviewQueue } from "./components/ReviewQueue";
@@ -124,7 +127,28 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
   }
 }
 
+function AuthGate(): ReactElement {
+  return (
+    <div className="flex h-screen items-center justify-center bg-bg text-fg">
+      <div className="flex w-full max-w-md flex-col gap-6 px-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white">PRism</h1>
+          <p className="mt-1 text-sm text-fg-muted">Connect your GitHub account to get started</p>
+        </div>
+        <AuthSetup />
+      </div>
+    </div>
+  );
+}
+
 function App(): ReactElement {
+  const authQuery = useQuery({
+    queryKey: ["auth", "status"],
+    queryFn: authGetStatus,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+
   const currentView = useDashboardStore((s) => s.currentView);
   const isWorkspace = currentView === "workspaces";
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -164,6 +188,26 @@ function App(): ReactElement {
     onEscape: handleEscape,
     onCommandPalette: handleCommandPalette,
   });
+
+  if (authQuery.isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg text-fg-muted">
+        Checking authentication…
+      </div>
+    );
+  }
+
+  if (authQuery.isError) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg text-fg-muted">
+        Failed to check authentication — please restart the app.
+      </div>
+    );
+  }
+
+  if (!authQuery.data?.connected) {
+    return <AuthGate />;
+  }
 
   return (
     <div className="flex h-screen bg-bg text-fg">

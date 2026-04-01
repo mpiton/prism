@@ -153,10 +153,10 @@ const LIFECYCLE_INTERVAL_SECS: u64 = 60;
 pub fn start_workspace_lifecycle(
     app_handle: tauri::AppHandle,
     pool: SqlitePool,
-) -> tokio::task::JoinHandle<()> {
+) -> tauri::async_runtime::JoinHandle<()> {
     use tauri::Emitter;
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut interval =
             tokio::time::interval(std::time::Duration::from_secs(LIFECYCLE_INTERVAL_SECS));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

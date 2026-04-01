@@ -4,6 +4,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { useDashboardStore } from "./stores/dashboard";
 
+vi.mock("./lib/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/tauri")>();
+  return {
+    ...actual,
+    authGetStatus: vi.fn().mockResolvedValue({ connected: true, username: "test-user", error: null }),
+  };
+});
+
 function renderApp() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -23,49 +31,49 @@ describe("App layout", () => {
     });
   });
 
-  it("should render sidebar", () => {
+  it("should render sidebar", async () => {
     renderApp();
-    expect(screen.getByTestId("sidebar")).toBeInTheDocument();
+    expect(await screen.findByTestId("sidebar")).toBeInTheDocument();
   });
 
-  it("should render main content area", () => {
+  it("should render main content area", async () => {
     renderApp();
-    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(await screen.findByRole("main")).toBeInTheDocument();
   });
 
-  it("should switch views based on store", () => {
+  it("should switch views based on store", async () => {
     useDashboardStore.setState({ currentView: "mine" });
     renderApp();
-    expect(screen.getByTestId("my-prs")).toBeInTheDocument();
+    expect(await screen.findByTestId("my-prs")).toBeInTheDocument();
 
     act(() => {
       useDashboardStore.setState({ currentView: "issues" });
     });
-    expect(screen.getByTestId("issues")).toBeInTheDocument();
+    expect(await screen.findByTestId("issues")).toBeInTheDocument();
     expect(screen.queryByTestId("my-prs")).not.toBeInTheDocument();
   });
 
-  it("should render overview for default view", () => {
+  it("should render overview for default view", async () => {
     renderApp();
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(await screen.findByText(/loading/i)).toBeInTheDocument();
   });
 
-  it("should render my-prs view", () => {
+  it("should render my-prs view", async () => {
     useDashboardStore.setState({ currentView: "mine" });
     renderApp();
-    expect(screen.getByTestId("my-prs")).toBeInTheDocument();
+    expect(await screen.findByTestId("my-prs")).toBeInTheDocument();
   });
 
-  it("should render issues view", () => {
+  it("should render issues view", async () => {
     useDashboardStore.setState({ currentView: "issues" });
     renderApp();
-    expect(screen.getByTestId("issues")).toBeInTheDocument();
+    expect(await screen.findByTestId("issues")).toBeInTheDocument();
   });
 
-  it("should render activity feed view", () => {
+  it("should render activity feed view", async () => {
     useDashboardStore.setState({ currentView: "feed" });
     renderApp();
-    expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
+    expect(await screen.findByTestId("activity-feed")).toBeInTheDocument();
   });
 
   it("should render settings view", async () => {
@@ -83,7 +91,7 @@ describe("App layout", () => {
   it("should keep sidebar visible in workspace mode", async () => {
     useDashboardStore.setState({ currentView: "workspaces" });
     renderApp();
-    expect(screen.getByTestId("sidebar")).toBeInTheDocument();
+    expect(await screen.findByTestId("sidebar")).toBeInTheDocument();
     expect(await screen.findByTestId("workspace-view")).toBeInTheDocument();
   });
 });
@@ -119,8 +127,9 @@ describe("App keyboard shortcuts", () => {
     openSpy.mockRestore();
   });
 
-  it("should navigate list with j/k", () => {
+  it("should navigate list with j/k", async () => {
     renderApp();
+    await screen.findByTestId("activity-feed");
 
     act(() => fireKey("j"));
     expect(useDashboardStore.getState().selectedIndex).toBe(0);
@@ -132,9 +141,10 @@ describe("App keyboard shortcuts", () => {
     expect(useDashboardStore.getState().selectedIndex).toBe(0);
   });
 
-  it("should open item with Enter", () => {
+  it("should open item with Enter", async () => {
     useDashboardStore.setState({ selectedIndex: 1 });
     renderApp();
+    await screen.findByTestId("activity-feed");
 
     act(() => fireKey("Enter"));
     expect(openSpy).toHaveBeenCalledWith(
@@ -144,22 +154,25 @@ describe("App keyboard shortcuts", () => {
     );
   });
 
-  it("should not open when no item is selected", () => {
+  it("should not open when no item is selected", async () => {
     renderApp();
+    await screen.findByTestId("activity-feed");
 
     act(() => fireKey("Enter"));
     expect(openSpy).not.toHaveBeenCalled();
   });
 
-  it("should return to overview on Escape", () => {
+  it("should return to overview on Escape", async () => {
     renderApp();
+    await screen.findByTestId("activity-feed");
 
     act(() => fireKey("Escape"));
     expect(useDashboardStore.getState().currentView).toBe("overview");
   });
 
-  it("should not capture keys when terminal is focused", () => {
+  it("should not capture keys when terminal is focused", async () => {
     renderApp();
+    await screen.findByTestId("activity-feed");
 
     const textarea = document.createElement("textarea");
     document.body.appendChild(textarea);
@@ -173,9 +186,10 @@ describe("App keyboard shortcuts", () => {
     }
   });
 
-  it("should reset selection when navigating to a different view", () => {
+  it("should reset selection when navigating to a different view", async () => {
     useDashboardStore.setState({ selectedIndex: 2 });
     renderApp();
+    await screen.findByTestId("activity-feed");
 
     act(() => fireKey("Escape"));
     expect(useDashboardStore.getState().selectedIndex).toBe(-1);
