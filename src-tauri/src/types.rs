@@ -202,6 +202,24 @@ pub struct WorkspaceNote {
     pub created_at: String,
 }
 
+// ── Workspace list entry (T-097) ─────────────────────────────────
+
+/// Enriched workspace entry with git status, CI, and notes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceListEntry {
+    pub workspace: Workspace,
+    pub branch: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    pub ci_status: Option<CiStatus>,
+    /// Currently 0 or 1 — derived from the single `session_id` column.
+    /// Will become a real count when multi-session support is added.
+    pub session_count: u32,
+    pub disk_usage_mb: Option<u64>,
+    pub last_note: Option<String>,
+}
+
 // ── Composite structs (T-010) ─────────────────────────────────────
 
 /// Projection of [`Workspace`] for embedding in dashboard views.

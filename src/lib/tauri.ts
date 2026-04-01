@@ -16,6 +16,7 @@ import type {
   Repo,
   TauriEventName,
   Workspace,
+  WorkspaceListEntry,
   WorkspaceNote,
 } from "./types";
 
@@ -93,6 +94,10 @@ export async function getWorkspaceNotes(workspaceId: string): Promise<WorkspaceN
 
 export async function cleanupWorkspaces(): Promise<number> {
   return invoke<number>(TAURI_COMMANDS.workspace_cleanup);
+}
+
+export async function listWorkspacesEnriched(): Promise<WorkspaceListEntry[]> {
+  return invoke<WorkspaceListEntry[]>(TAURI_COMMANDS.workspace_list_enriched);
 }
 
 // ── PTY ──────────────────────────────────────────────────────────

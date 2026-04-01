@@ -237,6 +237,7 @@ pub fn run() {
             commands::activity_mark_read,
             commands::activity_mark_all_read,
             commands::workspace_list,
+            commands::workspace_list_enriched,
             commands::workspace_get_notes,
             commands::workspace_open,
             commands::workspace_suspend,

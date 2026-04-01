@@ -22,6 +22,7 @@ import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { useDashboardStore } from "./stores/dashboard";
+import { useWorkspaceEnriched } from "./hooks/useWorkspaceEnriched";
 import { useWorkspacesStore } from "./stores/workspaces";
 import type { DashboardView } from "./stores/dashboard";
 
@@ -100,6 +101,7 @@ interface MainContentProps {
 
 function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElement {
   const { dashboard } = useGitHubData();
+  const { statusInfo } = useWorkspaceEnriched(view === "workspaces");
   const queryClient = useQueryClient();
 
   const markAllRead = useMutation({
@@ -130,7 +132,7 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
       return (
         <WorkspaceView
           workspaces={dashboard?.workspaces ?? []}
-          statusInfo={{}}
+          statusInfo={statusInfo}
           onBackToDashboard={onBackToDashboard}
         />
       );
