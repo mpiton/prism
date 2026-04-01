@@ -236,6 +236,42 @@ pub async fn update_claude_session(
     require_workspace(row, id)
 }
 
+/// Clears the `session_id` only if it still matches `expected` (compare-and-swap).
+///
+/// If `expected` is `None`, clears unconditionally (any current value).
+/// Returns `true` if a row was updated, `false` if the `session_id` had
+/// already changed (no-op in that case).
+#[allow(dead_code)]
+pub async fn clear_stale_session(
+    pool: &SqlitePool,
+    id: &str,
+    expected: Option<&str>,
+) -> Result<bool, AppError> {
+    let now = now_utc_millis();
+    let result = match expected {
+        Some(stale_id) => {
+            sqlx::query(
+                "UPDATE workspaces SET session_id = NULL, updated_at = $1 WHERE id = $2 AND session_id = $3",
+            )
+            .bind(&now)
+            .bind(id)
+            .bind(stale_id)
+            .execute(pool)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                "UPDATE workspaces SET session_id = NULL, updated_at = $1 WHERE id = $2",
+            )
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?
+        }
+    };
+    Ok(result.rows_affected() > 0)
+}
+
 /// Touch the `last_active_at` DB-internal timestamp. Returns `true` if updated.
 #[allow(dead_code)]
 pub async fn update_last_active(pool: &SqlitePool, id: &str) -> Result<bool, AppError> {

@@ -21,9 +21,12 @@ static SESSION_ID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:session(?:\s+id)?)[:\s=]+([a-zA-Z0-9_-]{8,})").unwrap());
 
 /// Matches session errors in Claude Code output (not found, corrupted, etc.).
+///
+/// The `.jsonl` arm is anchored with `session` to avoid false positives when
+/// Claude discusses arbitrary `.jsonl` files during normal work.
 static SESSION_ERROR_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)(?:session\s+(?:not\s+found|expired|invalid|corrupted)|(?:could\s+not|cannot|failed\s+to)\s+(?:find|load|resume)\s+session|no\s+session\s+(?:with|found)|error\s+loading\s+session|\.jsonl.*(?:corrupt|invalid|missing))",
+        r"(?i)(?:session\s+(?:not\s+found|expired|invalid|corrupted)|(?:could\s+not|cannot|failed\s+to)\s+(?:find|load|resume)\s+session|no\s+session\s+(?:with|found)|error\s+loading\s+session|session\S*\.jsonl\s+(?:is\s+)?(?:corrupt|invalid|missing))",
     )
     .unwrap()
 });
@@ -40,8 +43,13 @@ static AUTH_ERROR_RE: LazyLock<Regex> = LazyLock::new(|| {
 ///
 /// Returns `Some(id)` if a session-id pattern is found, `None` otherwise.
 /// Rejects plain words (must contain at least one digit, dash, or underscore).
+/// Also rejects lines that match a session error pattern to avoid
+/// re-persisting broken session IDs from error messages.
 #[allow(dead_code)]
 pub fn detect_session_id(stdout_line: &str) -> Option<String> {
+    if detect_session_error(stdout_line).is_some() {
+        return None;
+    }
     SESSION_ID_RE
         .captures(stdout_line)
         .map(|caps| caps[1].to_string())
@@ -122,16 +130,24 @@ pub fn rename_claude_session(
 
 /// Recovers from a failed `claude --resume` by starting a fresh session.
 ///
-/// Clears the old `session_id` in the database and launches a new Claude
-/// instance in the PTY. The caller should watch stdout for the new session
-/// ID (via [`detect_session_id`]) and persist it with
+/// Launches a new Claude instance in the PTY first, then clears the stale
+/// `session_id` in the database (only if it still matches `stale_session_id`,
+/// preventing races with concurrent session updates). This ordering ensures
+/// the workspace is never left without both a session ID and a running
+/// process. The caller should watch stdout for the new session ID (via
+/// [`detect_session_id`]) and persist it with
 /// [`crate::cache::workspaces::update_claude_session`].
+///
+/// **Integration note**: not yet wired into the PTY resume flow. When
+/// integrated, the caller must line-buffer PTY stdout before calling
+/// [`detect_session_error`] to avoid split-chunk misses.
 #[allow(dead_code)]
 pub async fn handle_session_recovery(
     pty_manager: &PtyManager,
     pty_id: &str,
     pool: &SqlitePool,
     workspace_id: &str,
+    stale_session_id: Option<&str>,
     error_reason: &str,
 ) -> Result<(), AppError> {
     tracing::warn!(
@@ -140,17 +156,18 @@ pub async fn handle_session_recovery(
         "Claude session resume failed, starting new session"
     );
 
-    // Clear the stale session_id so the workspace no longer references
-    // the broken session.
-    crate::cache::workspaces::update_claude_session(pool, workspace_id, None)
+    // Launch a fresh Claude instance first so the workspace is never left
+    // without a running process.
+    launch_claude(pty_manager, pty_id)?;
+
+    // Clear the stale session_id only if it still matches (compare-and-swap),
+    // avoiding races where another task already stored a fresh ID.
+    crate::cache::workspaces::clear_stale_session(pool, workspace_id, stale_session_id)
         .await
         .map_err(|e| {
             tracing::error!(workspace_id = workspace_id, error = %e, "failed to clear session during recovery");
             e
         })?;
-
-    // Launch a fresh Claude instance in the PTY.
-    launch_claude(pty_manager, pty_id)?;
 
     Ok(())
 }
@@ -1239,6 +1256,16 @@ mod tests {
             "should detect 'error loading session'"
         );
 
+        // "no session" patterns (Fix: P2 branch coverage)
+        assert!(
+            detect_session_error("No session found for this workspace").is_some(),
+            "should detect 'no session found'"
+        );
+        assert!(
+            detect_session_error("no session with that ID").is_some(),
+            "should detect 'no session with'"
+        );
+
         // Corrupted session patterns
         assert!(
             detect_session_error("Session corrupted").is_some(),
@@ -1246,15 +1273,37 @@ mod tests {
         );
         assert!(
             detect_session_error("session.jsonl is corrupt or invalid").is_some(),
-            "should detect '.jsonl corrupt'"
+            "should detect 'session.jsonl corrupt'"
         );
         assert!(
-            detect_session_error("data.jsonl file missing or inaccessible").is_some(),
-            "should detect '.jsonl missing'"
+            detect_session_error("session.jsonl missing").is_some(),
+            "should detect 'session.jsonl missing'"
         );
         assert!(
             detect_session_error("Session invalid, cannot resume").is_some(),
             "should detect 'session invalid'"
+        );
+
+        // .jsonl false positives — must NOT trigger on general .jsonl mentions
+        assert!(
+            detect_session_error("I'll scan data.jsonl for invalid JSON entries").is_none(),
+            "should not match generic .jsonl discussion"
+        );
+        assert!(
+            detect_session_error("The export.jsonl output is missing 3 fields").is_none(),
+            "should not match unrelated .jsonl file"
+        );
+
+        // Regression: detect_session_id must not match error lines
+        assert_eq!(
+            detect_session_id("Could not find session a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
+            None,
+            "error lines must not be treated as successful session IDs"
+        );
+        assert_eq!(
+            detect_session_id("Failed to resume session test-session-12345678"),
+            None,
+            "failed resume must not extract a session ID"
         );
 
         // Normal output — should NOT trigger
@@ -1333,12 +1382,13 @@ mod tests {
         let (pty_id, _rx) = spawn_test_pty(&pty_manager);
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        // Act: call handle_session_recovery end-to-end
+        // Act: call handle_session_recovery end-to-end (with stale session ID)
         let result = handle_session_recovery(
             &pty_manager,
             &pty_id,
             &pool,
             "ws-recover",
+            Some("old-broken-session"),
             "session not found",
         )
         .await;
