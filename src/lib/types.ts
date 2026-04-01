@@ -119,7 +119,7 @@ export interface WorkspaceStatusInfo {
   readonly branch: string;
   readonly ahead: number;
   readonly behind: number;
-  readonly ciStatus: CiStatus;
+  readonly ciStatus: CiStatus | null;
   readonly sessionName: string | null;
   readonly sessionCount: number;
   readonly githubUrl: string;
@@ -133,6 +133,7 @@ export interface WorkspaceListEntry {
   readonly ahead: number;
   readonly behind: number;
   readonly ciStatus: CiStatus | null;
+  readonly githubUrl: string | null;
   readonly sessionCount: number;
   readonly diskUsageMb: number | null;
   readonly lastNote: string | null;

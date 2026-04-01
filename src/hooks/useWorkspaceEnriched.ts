@@ -52,10 +52,10 @@ export function useWorkspaceEnriched(enabled = true) {
         branch: entry.branch ?? "",
         ahead: entry.ahead,
         behind: entry.behind,
-        ciStatus: entry.ciStatus ?? "pending",
+        ciStatus: entry.ciStatus,
         sessionName: entry.workspace.sessionId,
         sessionCount: entry.sessionCount,
-        githubUrl: "",
+        githubUrl: entry.githubUrl ?? "",
       };
     }
     return map;

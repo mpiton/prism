@@ -52,7 +52,7 @@ fi
 # ── Rust MSRV check (1.85+) ─────────────────────────────────────
 
 if command -v rustc &>/dev/null; then
-    RUST_VER=$(rustc --version | grep -oP '\d+\.\d+' | head -1)
+    RUST_VER=$(rustc --version | awk 'match($0, /[0-9]+\.[0-9]+/) { print substr($0, RSTART, RLENGTH) }')
     RUST_MAJOR=$(echo "$RUST_VER" | cut -d. -f1)
     RUST_MINOR=$(echo "$RUST_VER" | cut -d. -f2)
     if [ "$RUST_MAJOR" -eq 1 ] && [ "$RUST_MINOR" -lt 85 ]; then

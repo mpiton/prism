@@ -157,7 +157,8 @@ pub(crate) async fn run_git(args: &[OsString], cwd: &Path) -> Result<String, App
 
 /// Returns the current branch name for a worktree directory.
 ///
-/// Falls back to `"HEAD"` for detached HEAD states.
+/// Returns `"HEAD"` (literal) for detached HEAD states (git's native behavior).
+/// Returns `Err` if the path is not a git repository or `run_git` fails.
 pub(crate) async fn get_branch_name(worktree_path: &Path) -> Result<String, AppError> {
     let output = run_git(
         &["rev-parse".into(), "--abbrev-ref".into(), "HEAD".into()],
@@ -203,7 +204,6 @@ pub(crate) async fn get_ahead_behind(worktree_path: &Path) -> (u32, u32) {
 pub(crate) async fn get_disk_usage_mb(worktree_path: &Path) -> Option<u64> {
     #[cfg(not(windows))]
     {
-        use tokio::time::timeout;
         const DU_TIMEOUT: Duration = Duration::from_secs(10);
 
         let mut cmd = Command::new("du");

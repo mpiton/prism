@@ -8,11 +8,12 @@ use crate::error::AppError;
 use crate::types::{CiStatus, Workspace, WorkspaceListEntry};
 use crate::workspace::worktree::{get_ahead_behind, get_branch_name, get_disk_usage_mb};
 
-/// Row for batch CI status lookup by joining workspaces to `pull_requests`.
+/// Row for batch CI status + PR URL lookup by joining workspaces to `pull_requests`.
 #[derive(sqlx::FromRow)]
 struct CiStatusRow {
     workspace_id: String,
     ci_status: String,
+    url: String,
 }
 
 /// Row for batch last-note lookup.
@@ -20,20 +21,6 @@ struct CiStatusRow {
 struct LastNoteRow {
     workspace_id: String,
     content: String,
-}
-
-fn parse_ci_status(s: &str) -> Option<CiStatus> {
-    match s {
-        "pending" => Some(CiStatus::Pending),
-        "running" => Some(CiStatus::Running),
-        "success" => Some(CiStatus::Success),
-        "failure" => Some(CiStatus::Failure),
-        "cancelled" => Some(CiStatus::Cancelled),
-        unknown => {
-            warn!(value = unknown, "unrecognised ci_status in DB");
-            None
-        }
-    }
 }
 
 /// Enrich a single workspace with git/filesystem info.
@@ -69,18 +56,24 @@ pub async fn assemble_workspace_list_entries(
         return Ok(Vec::new());
     }
 
-    // Batch: CI status from pull_requests table
+    // Batch: CI status + PR URL from pull_requests table
     let ci_rows: Vec<CiStatusRow> = sqlx::query_as(
-        "SELECT w.id AS workspace_id, p.ci_status
+        "SELECT w.id AS workspace_id, p.ci_status, p.url
          FROM workspaces w
          JOIN pull_requests p ON p.repo_id = w.repo_id AND p.number = w.pull_request_number",
     )
     .fetch_all(pool)
     .await?;
 
-    let ci_map: std::collections::HashMap<String, Option<CiStatus>> = ci_rows
+    let ci_map: std::collections::HashMap<String, (Option<CiStatus>, String)> = ci_rows
         .into_iter()
-        .map(|r| (r.workspace_id, parse_ci_status(&r.ci_status)))
+        .map(|r| {
+            let ci = CiStatus::from_str_opt(&r.ci_status);
+            if ci.is_none() {
+                warn!(value = r.ci_status, "unrecognised ci_status in DB");
+            }
+            (r.workspace_id, (ci, r.url))
+        })
         .collect();
 
     // Batch: latest note per workspace (SQLite window function)
@@ -107,7 +100,9 @@ pub async fn assemble_workspace_list_entries(
         .into_iter()
         .zip(git_results)
         .map(|(ws, (branch, ahead, behind, disk_usage_mb))| {
-            let ci_status = ci_map.get(&ws.id).cloned().flatten();
+            let (ci_status, github_url) = ci_map
+                .get(&ws.id)
+                .map_or((None, None), |(ci, url)| (ci.clone(), Some(url.clone())));
             // Currently 0 or 1 — derived from the single `session_id` column.
             let session_count = u32::from(ws.session_id.is_some());
             let last_note = note_map.get(&ws.id).cloned();
@@ -118,6 +113,7 @@ pub async fn assemble_workspace_list_entries(
                 ahead,
                 behind,
                 ci_status,
+                github_url,
                 session_count,
                 disk_usage_mb,
                 last_note,
