@@ -12,6 +12,18 @@ vi.mock("./lib/tauri", async (importOriginal) => {
   };
 });
 
+vi.mock("./hooks/useGitHubData", () => ({
+  useGitHubData: vi.fn().mockReturnValue({
+    dashboard: { syncedAt: "2026-03-28T10:00:00Z", reviewRequests: [], myPullRequests: [], assignedIssues: [], recentActivity: [], workspaces: [] },
+    stats: { pendingReviews: 3, openPrs: 5, openIssues: 2, activeWorkspaces: 1, unreadActivity: 0 },
+    isLoading: false,
+    error: null,
+    authExpired: false,
+    forceSync: vi.fn(),
+    isSyncing: false,
+  }),
+}));
+
 function renderApp() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -55,7 +67,7 @@ describe("App layout", () => {
 
   it("should render overview for default view", async () => {
     renderApp();
-    expect(await screen.findByText(/loading/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("overview")).toBeInTheDocument();
   });
 
   it("should render my-prs view", async () => {
@@ -93,6 +105,19 @@ describe("App layout", () => {
     renderApp();
     expect(await screen.findByTestId("sidebar")).toBeInTheDocument();
     expect(await screen.findByTestId("workspace-view")).toBeInTheDocument();
+  });
+
+  it("should render stats bar on dashboard views", async () => {
+    useDashboardStore.setState({ currentView: "reviews" });
+    renderApp();
+    expect(await screen.findByTestId("stats-bar")).toBeInTheDocument();
+  });
+
+  it("should not render stats bar in workspace mode", async () => {
+    useDashboardStore.setState({ currentView: "workspaces" });
+    renderApp();
+    await screen.findByTestId("workspace-view");
+    expect(screen.queryByTestId("stats-bar")).not.toBeInTheDocument();
   });
 });
 

@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authGetStatus, markAllActivityRead } from "./lib/tauri";
 import { useGitHubData } from "./hooks/useGitHubData";
 import { AuthSetup } from "./components/AuthSetup/AuthSetup";
+import { StatsBar } from "./components/StatsBar";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
 import { ReviewQueue } from "./components/ReviewQueue";
@@ -233,12 +234,15 @@ function App(): ReactElement {
         <Sidebar />
       </aside>
 
-      <main className={isWorkspace ? "flex-1" : "min-w-0 flex-1"}>
-        <ChunkErrorBoundary key={currentView}>
-          <Suspense fallback={<LazyFallback />}>
-            <MainContent view={currentView} onBackToDashboard={handleEscape} />
-          </Suspense>
-        </ChunkErrorBoundary>
+      <main className={isWorkspace ? "flex-1" : "flex min-w-0 flex-1 flex-col"}>
+        {!isWorkspace && <StatsBar />}
+        <div className={isWorkspace ? "h-full" : "min-h-0 flex-1 overflow-y-auto"}>
+          <ChunkErrorBoundary key={currentView}>
+            <Suspense fallback={<LazyFallback />}>
+              <MainContent view={currentView} onBackToDashboard={handleEscape} />
+            </Suspense>
+          </ChunkErrorBoundary>
+        </div>
       </main>
 
       <Toast />
