@@ -178,8 +178,14 @@ pub fn run() {
     // The guard must live for the full process lifetime to flush pending log events.
     let _log_guard = init_tracing();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(tauri_plugin_pilot::init());
+    }
+
+    builder
         .setup(|app| {
             // Initialize SQLite database
             let data_dir = app.path().app_data_dir()?;
