@@ -71,6 +71,7 @@ docs/
 # Claude Code local config
 # ──────────────────────────────────────
 .claude/
+skills-lock.json
 
 # ──────────────────────────────────────
 # Audit / telemetry
