@@ -1126,7 +1126,8 @@ pub async fn pty_resize(
 
 /// Kills a PTY process and removes it from the manager.
 ///
-/// Also cleans up the workspace→pty mapping to prevent stale entries.
+/// Idempotent: succeeds even if the PTY was already cleaned up by the
+/// reader task (EOF), since `AppError::NotFound` is treated as success.
 /// Tauri 2 renames `workspace_id` → `workspaceId` for the JS caller.
 #[tauri::command]
 pub async fn pty_kill(
@@ -1134,10 +1135,16 @@ pub async fn pty_kill(
     workspace_id: String,
 ) -> Result<(), String> {
     let pty_id = pty_state
-        .unregister(&workspace_id)
+        .lookup_pty_by_workspace(&workspace_id)
         .ok_or_else(|| format!("no PTY for workspace '{workspace_id}'"))?;
 
-    pty_state.manager.kill(&pty_id).map_err(|e| e.to_string())
+    match pty_state.manager.kill(&pty_id) {
+        Ok(()) | Err(AppError::NotFound(_)) => {
+            let _ = pty_state.unregister(&workspace_id);
+            Ok(())
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 // ── Debug / Memory monitoring (T-087) ───────────────────────────
