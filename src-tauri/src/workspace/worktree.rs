@@ -129,11 +129,17 @@ pub async fn clone_repo(
 ) -> Result<PathBuf, AppError> {
     let clone_path = base_dir.join(repo_name);
 
-    if clone_path.exists() {
-        // Already cloned — just fetch latest
+    if clone_path.join(".git").exists() {
+        // Valid clone — just fetch latest
         tracing::info!("repo already cloned at {}, fetching", clone_path.display());
         run_git(&["fetch".into(), "--all".into()], &clone_path).await?;
         return Ok(clone_path);
+    } else if clone_path.exists() {
+        // Directory exists but isn't a git repo — likely a failed previous clone
+        return Err(AppError::Workspace(format!(
+            "clone path '{}' exists but is not a git repository; please remove it and try again",
+            clone_path.display()
+        )));
     }
 
     if let Some(parent) = clone_path.parent() {

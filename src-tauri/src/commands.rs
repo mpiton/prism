@@ -13,9 +13,7 @@ use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{get_repo, list_repos, set_local_path, set_repo_enabled};
 use crate::cache::stats::compute_personal_stats;
 use crate::cache::sync::sync_dashboard;
-use crate::cache::workspaces::{
-    create_workspace, get_notes, list_workspaces, update_workspace_state,
-};
+use crate::cache::workspaces::{get_notes, list_workspaces, update_workspace_state};
 use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
@@ -610,17 +608,7 @@ pub(crate) async fn workspace_open_inner(
         clone_path
     };
 
-    // 3. Delete any archived workspace for this PR (UNIQUE constraint on repo_id + pr_number)
-    //    Done before worktree/PTY creation to avoid resource leaks on SQL failure.
-    sqlx::query(
-        "DELETE FROM workspaces WHERE repo_id = $1 AND pull_request_number = $2 AND state = 'archived'",
-    )
-    .bind(&req.repo_id)
-    .bind(req.pull_request_number)
-    .execute(pool)
-    .await?;
-
-    // 4. Create worktree
+    // 3. Create worktree
     let wt_path = worktree::create_worktree(
         &local_path,
         &req.branch,
@@ -639,19 +627,37 @@ pub(crate) async fn workspace_open_inner(
         }
     };
 
-    // 7. Create workspace in DB
+    // 5. Atomic DELETE archived + INSERT new workspace (transaction prevents
+    //    data loss if INSERT fails, and avoids resource leaks if DELETE fails).
     let now = chrono::Utc::now().to_rfc3339();
-    let ws = Workspace {
-        id: workspace_id.to_string(),
-        repo_id: req.repo_id.clone(),
-        pull_request_number: req.pull_request_number,
-        state: WorkspaceState::Active,
-        worktree_path: Some(wt_path.to_string_lossy().to_string()),
-        session_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-    if let Err(e) = create_workspace(pool, &ws).await {
+    let insert_result: Result<(), AppError> = async {
+        let mut tx = pool.begin().await?;
+        sqlx::query(
+            "DELETE FROM workspaces WHERE repo_id = $1 AND pull_request_number = $2 AND state = 'archived'",
+        )
+        .bind(&req.repo_id)
+        .bind(req.pull_request_number)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO workspaces (id, repo_id, pull_request_number, state, worktree_path, session_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(workspace_id)
+        .bind(&req.repo_id)
+        .bind(req.pull_request_number)
+        .bind("active")
+        .bind(wt_path.to_string_lossy().as_ref())
+        .bind(Option::<&str>::None)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+    .await;
+    if let Err(e) = insert_result {
         let _ = pty_state.manager.kill(&pty_id);
         let _ = worktree::remove_worktree(&local_path, &wt_path).await;
         return Err(e);
@@ -2007,8 +2013,8 @@ mod tests {
         // The error should be a Git error from the clone/worktree attempt,
         // not the old "no local_path" Workspace error.
         assert!(
-            !err.to_string().contains("no local_path"),
-            "should not get old 'no local_path' error, got: {err}"
+            matches!(err, AppError::Git(_)),
+            "expected Git error from clone/worktree path, got: {err}"
         );
 
         pool.close().await;
