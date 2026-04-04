@@ -391,6 +391,10 @@ pub struct AppConfig {
     pub data_dir: Option<String>,
     /// Override for the workspaces root directory (`~/.prism/workspaces/` by default).
     pub workspaces_dir: Option<String>,
+    /// Claude Code authentication mode: "oauth" or "api_key" (default: "oauth").
+    pub claude_auth_mode: String,
+    /// Whether to auto-generate CLAUDE.md files in workspaces (default: false).
+    pub claude_auto_generate_md: bool,
 }
 
 impl fmt::Debug for AppConfig {
@@ -410,6 +414,8 @@ impl fmt::Debug for AppConfig {
             )
             .field("data_dir", &self.data_dir)
             .field("workspaces_dir", &self.workspaces_dir)
+            .field("claude_auth_mode", &self.claude_auth_mode)
+            .field("claude_auto_generate_md", &self.claude_auto_generate_md)
             .finish()
     }
 }
@@ -425,6 +431,8 @@ impl Default for AppConfig {
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
+            claude_auth_mode: "oauth".to_string(),
+            claude_auto_generate_md: false,
         }
     }
 }
@@ -474,6 +482,8 @@ pub struct PartialAppConfig {
     pub data_dir: Option<Option<String>>,
     #[serde(deserialize_with = "deserialize_double_option", default)]
     pub workspaces_dir: Option<Option<String>>,
+    pub claude_auth_mode: Option<String>,
+    pub claude_auto_generate_md: Option<bool>,
 }
 
 /// Merge a partial update into a base config, returning a new config.
@@ -508,6 +518,13 @@ pub fn merge_partial_config(base: &AppConfig, partial: &PartialAppConfig) -> App
             Some(v) => v.clone(),
             None => base.workspaces_dir.clone(),
         },
+        claude_auth_mode: partial
+            .claude_auth_mode
+            .clone()
+            .unwrap_or_else(|| base.claude_auth_mode.clone()),
+        claude_auto_generate_md: partial
+            .claude_auto_generate_md
+            .unwrap_or(base.claude_auto_generate_md),
     }
 }
 
@@ -1117,6 +1134,8 @@ mod tests {
             github_token: Some("test-token".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: None,
+            claude_auth_mode: "oauth".to_string(),
+            claude_auto_generate_md: false,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"pollIntervalSecs\""));

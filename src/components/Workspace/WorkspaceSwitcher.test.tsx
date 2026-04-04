@@ -61,6 +61,8 @@ function resetStores() {
       githubToken: null,
       dataDir: null,
       workspacesDir: null,
+      claudeAuthMode: "oauth",
+      claudeAutoGenerateMd: false,
     },
   });
 }
@@ -152,6 +154,8 @@ describe("WorkspaceSwitcher", () => {
         githubToken: null,
         dataDir: null,
         workspacesDir: null,
+        claudeAuthMode: "oauth",
+        claudeAutoGenerateMd: false,
       },
     });
 
@@ -206,6 +210,8 @@ describe("WorkspaceSwitcher", () => {
         githubToken: null,
         dataDir: null,
         workspacesDir: null,
+        claudeAuthMode: "oauth",
+        claudeAutoGenerateMd: false,
       },
     });
 

@@ -227,6 +227,8 @@ export interface AppConfig {
   readonly githubToken: string | null;
   readonly dataDir: string | null;
   readonly workspacesDir: string | null;
+  readonly claudeAuthMode: string;
+  readonly claudeAutoGenerateMd: boolean;
 }
 
 /** Partial update payload for `config_set`. Mirrors Rust `PartialAppConfig`.
@@ -244,6 +246,8 @@ export interface PartialAppConfig {
   readonly githubToken?: string | null;
   readonly dataDir?: string | null;
   readonly workspacesDir?: string | null;
+  readonly claudeAuthMode?: string;
+  readonly claudeAutoGenerateMd?: boolean;
 }
 
 // ── Debug (T-087) ───────────────────────────────────────────────

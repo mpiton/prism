@@ -9,6 +9,8 @@ const fakeConfig: AppConfig = {
   githubToken: "FAKE_TOKEN_FOR_TESTING",
   dataDir: "/home/user/.local/share/prism",
   workspacesDir: "/home/user/.prism/workspaces",
+  claudeAuthMode: "oauth",
+  claudeAutoGenerateMd: false,
 };
 
 describe("useSettingsStore", () => {
@@ -35,6 +37,8 @@ describe("useSettingsStore", () => {
       githubToken: null,
       dataDir: null,
       workspacesDir: null,
+      claudeAuthMode: "oauth",
+      claudeAutoGenerateMd: false,
     };
     useSettingsStore.getState().setConfig(minimal);
     expect(useSettingsStore.getState().config).toEqual(minimal);
