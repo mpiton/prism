@@ -128,6 +128,8 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
         if (params.workspaceId && params.workspaceState !== "archived") {
           if (params.workspaceState === "suspended") {
             await resumeWorkspace(params.workspaceId);
+            await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+            await queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
           }
           setActiveWorkspace(params.workspaceId);
           setView("workspaces");

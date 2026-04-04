@@ -603,16 +603,24 @@ pub(crate) async fn workspace_open_inner(
         let repos_dir = base_dir.join(&repo.name);
         let clone_path = worktree::clone_repo(&repo.url, "repo", &repos_dir).await?;
         // Persist local_path so future opens skip the clone
-        crate::cache::repos::set_local_path(
-            pool,
-            &repo.id,
-            Some(clone_path.to_str().unwrap_or("")),
-        )
-        .await?;
+        let clone_str = clone_path
+            .to_str()
+            .ok_or_else(|| AppError::Workspace("clone path is not valid UTF-8".into()))?;
+        crate::cache::repos::set_local_path(pool, &repo.id, Some(clone_str)).await?;
         clone_path
     };
 
-    // 3. Create worktree
+    // 3. Delete any archived workspace for this PR (UNIQUE constraint on repo_id + pr_number)
+    //    Done before worktree/PTY creation to avoid resource leaks on SQL failure.
+    sqlx::query(
+        "DELETE FROM workspaces WHERE repo_id = $1 AND pull_request_number = $2 AND state = 'archived'",
+    )
+    .bind(&req.repo_id)
+    .bind(req.pull_request_number)
+    .execute(pool)
+    .await?;
+
+    // 4. Create worktree
     let wt_path = worktree::create_worktree(
         &local_path,
         &req.branch,
@@ -631,16 +639,7 @@ pub(crate) async fn workspace_open_inner(
         }
     };
 
-    // 5. Delete any archived workspace for this PR (UNIQUE constraint on repo_id + pr_number)
-    sqlx::query(
-        "DELETE FROM workspaces WHERE repo_id = $1 AND pull_request_number = $2 AND state = 'archived'",
-    )
-    .bind(&req.repo_id)
-    .bind(req.pull_request_number)
-    .execute(pool)
-    .await?;
-
-    // 6. Create workspace in DB
+    // 7. Create workspace in DB
     let now = chrono::Utc::now().to_rfc3339();
     let ws = Workspace {
         id: workspace_id.to_string(),

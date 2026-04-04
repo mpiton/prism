@@ -49,6 +49,8 @@ export function Overview(): ReactElement {
           // Existing workspace — resume if suspended, then navigate
           if (params.workspaceState === "suspended") {
             await resumeWorkspace(params.workspaceId);
+            await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+            await queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
           }
           setActiveWorkspace(params.workspaceId);
           setView("workspaces");

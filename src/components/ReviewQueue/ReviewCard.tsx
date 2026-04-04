@@ -74,11 +74,11 @@ export function ReviewCard({
         </div>
       </a>
 
-      {((workspace && workspace.state !== "archived") || (pr.state === "open" && pr.headRefName)) && (
+      {onWorkspaceAction && ((workspace && workspace.state !== "archived") || (pr.state === "open" && pr.headRefName)) && (
         <WsBadge
           state={workspace?.state === "archived" ? undefined : workspace?.state}
           loading={loading}
-          onClick={onWorkspaceAction ? handleWorkspace : undefined}
+          onClick={handleWorkspace}
           ariaLabel={`${workspace?.state === "active" ? "Resume" : workspace?.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
         />
       )}

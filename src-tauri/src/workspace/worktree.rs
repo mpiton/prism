@@ -132,7 +132,7 @@ pub async fn clone_repo(
     if clone_path.exists() {
         // Already cloned — just fetch latest
         tracing::info!("repo already cloned at {}, fetching", clone_path.display());
-        let _ = run_git(&["fetch".into(), "--all".into()], &clone_path).await;
+        run_git(&["fetch".into(), "--all".into()], &clone_path).await?;
         return Ok(clone_path);
     }
 
