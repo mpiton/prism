@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PullRequestWithReview } from "../../lib/types";
@@ -18,6 +18,7 @@ function makePr(
       priority: "medium",
       repoId: "repo-1",
       url: "https://github.com/org/repo/pull/1",
+      headRefName: "fix/test",
       labels: [],
       additions: 10,
       deletions: 2,
@@ -76,11 +77,13 @@ describe("MyPRs", () => {
   it("should show correct counts", () => {
     render(<MyPRs prs={allPrs} onOpen={onOpen} />);
 
-    const openTab = screen.getByRole("button", { name: /open/i });
-    const mergedTab = screen.getByRole("button", { name: /merged/i });
+    const group = screen.getByRole("group", { name: /filter by state/i });
+    const buttons = within(group).getAllByRole("button");
+    const openTab = buttons[0];
+    const mergedTab = buttons[1];
 
-    expect(openTab).toHaveTextContent("3");
-    expect(mergedTab).toHaveTextContent("2");
+    expect(openTab).toHaveTextContent("3"); // openPr1, openPr2, draftPr
+    expect(mergedTab).toHaveTextContent("2"); // mergedPr1, mergedPr2
   });
 
   it("should show empty state when no PRs match current tab", () => {

@@ -123,6 +123,7 @@ pub struct PullRequest {
     pub labels: Vec<String>,
     pub additions: u32,
     pub deletions: u32,
+    pub head_ref_name: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -732,6 +733,7 @@ mod tests {
             labels: vec!["enhancement".to_string(), "frontend".to_string()],
             additions: 50,
             deletions: 10,
+            head_ref_name: "fix/test-branch".to_string(),
             created_at: "2026-03-24T10:00:00Z".to_string(),
             updated_at: "2026-03-24T12:00:00Z".to_string(),
         };
@@ -899,6 +901,7 @@ mod tests {
                 labels: vec!["enhancement".to_string()],
                 additions: 50,
                 deletions: 10,
+                head_ref_name: "fix/test-branch".to_string(),
                 created_at: "2026-03-24T10:00:00Z".to_string(),
                 updated_at: "2026-03-24T12:00:00Z".to_string(),
             },
@@ -939,6 +942,7 @@ mod tests {
                 labels: vec![],
                 additions: 50,
                 deletions: 10,
+                head_ref_name: "fix/test-branch".to_string(),
                 created_at: "2026-03-24T10:00:00Z".to_string(),
                 updated_at: "2026-03-24T12:00:00Z".to_string(),
             },

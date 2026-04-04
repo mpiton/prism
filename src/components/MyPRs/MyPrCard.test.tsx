@@ -15,6 +15,7 @@ const basePr: PullRequestWithReview = {
     priority: "medium",
     repoId: "repo-1",
     url: "https://github.com/org/repo/pull/99",
+    headRefName: "fix/test",
     labels: [],
     additions: 42,
     deletions: 7,
@@ -156,11 +157,21 @@ describe("MyPrCard", () => {
     const data: PullRequestWithReview = {
       ...basePr,
       workspace: null,
+      pullRequest: { ...basePr.pullRequest, state: "merged" },
     };
     render(<MyPrCard data={data} onOpen={vi.fn()} />);
     expect(screen.queryByText("resume")).not.toBeInTheDocument();
     expect(screen.queryByText("wake")).not.toBeInTheDocument();
     expect(screen.queryByText("open")).not.toBeInTheDocument();
+  });
+
+  it("should show open badge when PR is open and no workspace", () => {
+    const data: PullRequestWithReview = {
+      ...basePr,
+      workspace: null,
+    };
+    render(<MyPrCard data={data} onOpen={vi.fn()} />);
+    expect(screen.getByText("open")).toBeInTheDocument();
   });
 
   it("should call onOpen on click", async () => {
@@ -178,7 +189,13 @@ describe("MyPrCard", () => {
       <MyPrCard data={basePr} onOpen={vi.fn()} onWorkspaceAction={handleWs} />,
     );
     await userEvent.click(screen.getByRole("button"));
-    expect(handleWs).toHaveBeenCalledWith("ws-1");
+    expect(handleWs).toHaveBeenCalledWith({
+      repoId: "repo-1",
+      pullRequestNumber: 99,
+      headRefName: "fix/test",
+      workspaceId: "ws-1",
+      workspaceState: "active",
+    });
   });
 
   it("should not show MERGEABLE when PR is closed", () => {

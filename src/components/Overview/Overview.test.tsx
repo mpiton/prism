@@ -46,6 +46,7 @@ function makePr(n: number): PullRequestWithReview {
       priority: "medium",
       repoId: "repo-1",
       url: `https://github.com/org/repo/pull/${n}`,
+      headRefName: "fix/test",
       labels: [],
       additions: 10,
       deletions: 5,

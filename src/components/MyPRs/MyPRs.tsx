@@ -5,10 +5,18 @@ import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { MyPrCard } from "./MyPrCard";
 
+interface WorkspaceActionParams {
+  readonly repoId: string;
+  readonly pullRequestNumber: number;
+  readonly headRefName: string;
+  readonly workspaceId?: string;
+  readonly workspaceState?: string;
+}
+
 interface MyPRsProps {
   readonly prs: readonly PullRequestWithReview[];
   readonly onOpen: (url: string) => void;
-  readonly onWorkspaceAction?: (workspaceId: string) => void;
+  readonly onWorkspaceAction?: (params: WorkspaceActionParams) => void;
 }
 
 type Tab = "open" | "merged";

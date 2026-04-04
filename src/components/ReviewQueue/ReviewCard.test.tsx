@@ -15,6 +15,7 @@ const mockData: PullRequestWithReview = {
     priority: "high",
     repoId: "repo-1",
     url: "https://github.com/org/repo/pull/42",
+    headRefName: "fix/test",
     labels: ["bug"],
     additions: 10,
     deletions: 5,
@@ -100,7 +101,13 @@ describe("ReviewCard", () => {
       />,
     );
     await userEvent.click(screen.getByRole("button"));
-    expect(handleWs).toHaveBeenCalledWith("ws-1");
+    expect(handleWs).toHaveBeenCalledWith({
+      repoId: "repo-1",
+      pullRequestNumber: 42,
+      headRefName: "fix/test",
+      workspaceId: "ws-1",
+      workspaceState: "active",
+    });
   });
 
   it("should have aria-label on link describing the PR", () => {

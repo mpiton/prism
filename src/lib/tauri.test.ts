@@ -100,9 +100,9 @@ describe("Workspace wrappers", () => {
   it("should invoke workspace_open with request payload", async () => {
     const { openWorkspace } = await import("./tauri");
     mockInvoke.mockResolvedValue({});
-    await openWorkspace({ repoId: "r-1", pullRequestNumber: 42 });
+    await openWorkspace({ repoId: "r-1", pullRequestNumber: 42, branch: "fix/test" });
     expect(mockInvoke).toHaveBeenCalledWith(TAURI_COMMANDS.workspace_open, {
-      request: { repoId: "r-1", pullRequestNumber: 42 },
+      req: { repoId: "r-1", pullRequestNumber: 42, branch: "fix/test" },
     });
   });
 

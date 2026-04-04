@@ -68,8 +68,8 @@ export async function setRepoLocalPath(repoId: string, path: string | null): Pro
 
 // ── Workspaces ───────────────────────────────────────────────────
 
-export async function openWorkspace(request: OpenWorkspaceRequest): Promise<OpenWorkspaceResponse> {
-  return invoke<OpenWorkspaceResponse>(TAURI_COMMANDS.workspace_open, { request });
+export async function openWorkspace(req: OpenWorkspaceRequest): Promise<OpenWorkspaceResponse> {
+  return invoke<OpenWorkspaceResponse>(TAURI_COMMANDS.workspace_open, { req });
 }
 
 export async function suspendWorkspace(workspaceId: string): Promise<void> {

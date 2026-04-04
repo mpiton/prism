@@ -121,6 +121,7 @@ pub fn map_pr(pr: &PrFields) -> Result<PullRequest, AppError> {
                 pr.id, pr.deletions
             ))
         })?,
+        head_ref_name: pr.head_ref_name.clone(),
         created_at: pr.created_at.clone(),
         updated_at: pr.updated_at.clone(),
     })

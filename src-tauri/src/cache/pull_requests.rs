@@ -19,6 +19,7 @@ pub(crate) struct PullRequestRow {
     pub(crate) labels: String,
     pub(crate) additions: i64,
     pub(crate) deletions: i64,
+    pub(crate) head_ref_name: String,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
 }
@@ -109,6 +110,7 @@ impl TryFrom<PullRequestRow> for PullRequest {
             labels,
             additions,
             deletions,
+            head_ref_name: row.head_ref_name,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -116,7 +118,7 @@ impl TryFrom<PullRequestRow> for PullRequest {
 }
 
 /// Explicit column list for all SELECT queries.
-pub(crate) const PR_COLS: &str = "id, number, title, author, state, ci_status, priority, repo_id, url, labels, additions, deletions, created_at, updated_at";
+pub(crate) const PR_COLS: &str = "id, number, title, author, state, ci_status, priority, repo_id, url, labels, additions, deletions, head_ref_name, created_at, updated_at";
 
 /// Insert or update a pull request. On conflict (same `id`), updates all fields.
 /// Uses `RETURNING` for an atomic read-after-write.
@@ -134,8 +136,8 @@ where
         serde_json::to_string(&pr.labels).map_err(|e| AppError::Config(e.to_string()))?;
 
     let sql = format!(
-        "INSERT INTO pull_requests (id, number, title, author, state, ci_status, priority, repo_id, url, labels, additions, deletions, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        "INSERT INTO pull_requests (id, number, title, author, state, ci_status, priority, repo_id, url, labels, additions, deletions, head_ref_name, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          ON CONFLICT(id) DO UPDATE SET
              number = excluded.number,
              title = excluded.title,
@@ -147,6 +149,7 @@ where
              labels = excluded.labels,
              additions = excluded.additions,
              deletions = excluded.deletions,
+             head_ref_name = excluded.head_ref_name,
              updated_at = excluded.updated_at
          RETURNING {PR_COLS}"
     );
@@ -164,6 +167,7 @@ where
         .bind(&labels_json)
         .bind(i64::from(pr.additions))
         .bind(i64::from(pr.deletions))
+        .bind(&pr.head_ref_name)
         .bind(&pr.created_at)
         .bind(&pr.updated_at)
         .fetch_one(executor)
@@ -313,6 +317,7 @@ mod tests {
             labels: vec!["bug".to_string(), "urgent".to_string()],
             additions: 50,
             deletions: 10,
+            head_ref_name: format!("fix/pr-{number}"),
             created_at: "2026-03-01T10:00:00Z".to_string(),
             updated_at: "2026-03-20T15:00:00Z".to_string(),
         }

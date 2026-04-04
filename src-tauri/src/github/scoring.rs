@@ -105,6 +105,7 @@ mod tests {
             labels: overrides.labels.unwrap_or_default(),
             additions: overrides.additions.unwrap_or(50),
             deletions: overrides.deletions.unwrap_or(10),
+            head_ref_name: "fix/test-branch".to_string(),
             created_at: overrides
                 .created_at
                 .unwrap_or_else(|| "2026-03-25T10:00:00Z".to_string()),

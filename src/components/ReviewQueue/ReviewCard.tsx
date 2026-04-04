@@ -9,7 +9,13 @@ import { WsBadge } from "../atoms/WsBadge";
 interface ReviewCardProps {
   readonly data: PullRequestWithReview;
   readonly onOpen: (url: string) => void;
-  readonly onWorkspaceAction?: (workspaceId: string) => void;
+  readonly onWorkspaceAction?: (params: {
+    readonly repoId: string;
+    readonly pullRequestNumber: number;
+    readonly headRefName: string;
+    readonly workspaceId?: string;
+    readonly workspaceState?: string;
+  }) => void;
 }
 
 export function ReviewCard({
@@ -53,15 +59,22 @@ export function ReviewCard({
         </div>
       </a>
 
-      {workspace && (
+      {(workspace || pr.state === "open") && (
         <WsBadge
-          state={workspace.state}
+          state={workspace?.state}
           onClick={
             onWorkspaceAction
-              ? () => onWorkspaceAction(workspace.id)
+              ? () =>
+                  onWorkspaceAction({
+                    repoId: pr.repoId,
+                    pullRequestNumber: pr.number,
+                    headRefName: pr.headRefName,
+                    workspaceId: workspace?.id,
+                    workspaceState: workspace?.state,
+                  })
               : undefined
           }
-          ariaLabel={`${workspace.state === "active" ? "Resume" : workspace.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
+          ariaLabel={`${workspace?.state === "active" ? "Resume" : workspace?.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
         />
       )}
     </div>
