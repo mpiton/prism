@@ -1,4 +1,3 @@
-#![allow(dead_code)] // TODO(T-034): remove after wiring up polling
 //! GitHub data synchronization (T-032).
 //!
 //! Fetches dashboard data from GitHub GraphQL API and persists it
@@ -9,7 +8,7 @@ use std::collections::HashSet;
 use sqlx::SqlitePool;
 
 use crate::cache::activity::upsert_activity;
-use crate::cache::dashboard::compute_dashboard_stats;
+use crate::cache::dashboard::{compute_dashboard_stats, get_latest_sync_at};
 use crate::cache::issues::upsert_issue;
 use crate::cache::pull_requests::upsert_pull_request;
 use crate::cache::repos::{list_repos, upsert_repo};
@@ -154,6 +153,13 @@ pub async fn sync_dashboard(
     let variables = build_query_variables(username, &enabled)?;
     let data = client.execute_graphql::<DashboardData>(variables).await?;
 
+    // Capture the previous sync cursor BEFORE the transaction advances it.
+    let activity_since = get_latest_sync_at(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339());
+
     // All DB writes in a single transaction for atomicity.
     let mut tx = pool.begin().await?;
 
@@ -171,6 +177,12 @@ pub async fn sync_dashboard(
     }
 
     tx.commit().await?;
+
+    // Activity sync is best-effort — don't fail dashboard sync if it errors.
+    match sync_activity(client, pool, username, &activity_since).await {
+        Ok(n) => tracing::info!("activity sync: {n} new events"),
+        Err(e) => tracing::warn!("activity sync failed: {e}"),
+    }
 
     compute_dashboard_stats(pool, username).await
 }
