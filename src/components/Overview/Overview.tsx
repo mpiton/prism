@@ -1,7 +1,7 @@
-import { type ReactElement, useCallback, useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactElement, useCallback } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
-import { listRepos, markAllActivityRead, openWorkspace, resumeWorkspace } from "../../lib/tauri";
+import { markAllActivityRead, openWorkspace, resumeWorkspace } from "../../lib/tauri";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useDashboardStore } from "../../stores/dashboard";
 import { ReviewQueue } from "../ReviewQueue";
@@ -21,11 +21,6 @@ function openUrl(url: string): void {
 export function Overview(): ReactElement {
   const { dashboard, error } = useGitHubData();
   const queryClient = useQueryClient();
-  const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos, staleTime: 60_000 });
-  const workspaceRepoIds = useMemo(
-    () => new Set(repos?.filter((r) => r.localPath).map((r) => r.id) ?? []),
-    [repos],
-  );
 
   const markAllRead = useMutation({
     mutationFn: markAllActivityRead,
@@ -107,8 +102,8 @@ export function Overview(): ReactElement {
   return (
     <div data-testid="overview" className="flex h-full gap-6 overflow-y-auto p-4">
       <div className="flex min-w-0 flex-1 flex-col gap-6">
-        <ReviewQueue reviews={reviews} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} workspaceRepoIds={workspaceRepoIds} />
-        <MyPRs prs={prs} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} workspaceRepoIds={workspaceRepoIds} />
+        <ReviewQueue reviews={reviews} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />
+        <MyPRs prs={prs} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />
       </div>
 
       <div className="flex w-[300px] min-w-0 flex-col gap-6">

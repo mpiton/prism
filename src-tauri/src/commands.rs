@@ -583,26 +583,36 @@ pub(crate) async fn workspace_open_inner(
     req: &OpenWorkspaceRequest,
     on_pty_output: impl Fn(&str, &[u8]) + Send + 'static,
 ) -> Result<OpenWorkspaceResponse, AppError> {
-    // 1. Get repo and validate local_path
+    // 1. Get repo; clone if no local_path
     let repo = get_repo(pool, &req.repo_id).await?;
-    let local_path = repo.local_path.as_deref().ok_or_else(|| {
-        AppError::Workspace(format!(
-            "repo '{}' has no local_path configured",
-            req.repo_id
-        ))
-    })?;
-    let local_path = PathBuf::from(local_path);
 
     // 2. Read config (needed for base_dir and LRU limit)
     let config = get_config(pool).await?;
 
-    // 3. Create worktree
     let base_dir = config
         .workspaces_dir
         .as_deref()
         .map(PathBuf::from)
         .or_else(|| worktree::default_base_dir().ok())
         .ok_or_else(|| AppError::Workspace("cannot determine workspaces base directory".into()))?;
+
+    let local_path = if let Some(lp) = repo.local_path.as_deref() {
+        PathBuf::from(lp)
+    } else {
+        // Auto-clone: clone into {base_dir}/{repo_name}/repo
+        let repos_dir = base_dir.join(&repo.name);
+        let clone_path = worktree::clone_repo(&repo.url, "repo", &repos_dir).await?;
+        // Persist local_path so future opens skip the clone
+        crate::cache::repos::set_local_path(
+            pool,
+            &repo.id,
+            Some(clone_path.to_str().unwrap_or("")),
+        )
+        .await?;
+        clone_path
+    };
+
+    // 3. Create worktree
     let wt_path = worktree::create_worktree(
         &local_path,
         &req.branch,

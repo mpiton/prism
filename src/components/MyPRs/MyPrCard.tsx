@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { timeAgo } from "../../lib/timeAgo";
 import type { CiStatus, PullRequestWithReview } from "../../lib/types";
 import { CI } from "../atoms/CI";
@@ -15,7 +15,6 @@ interface MyPrCardProps {
     readonly workspaceId?: string;
     readonly workspaceState?: string;
   }) => void;
-  readonly workspaceRepoIds?: ReadonlySet<string>;
 }
 
 function isMergeable(data: PullRequestWithReview): boolean {
@@ -53,10 +52,24 @@ export function MyPrCard({
   data,
   onOpen,
   onWorkspaceAction,
-  workspaceRepoIds,
 }: MyPrCardProps): ReactElement {
   const { pullRequest: pr, workspace } = data;
   const merged = pr.state === "merged";
+  const [loading, setLoading] = useState(false);
+
+  function handleWorkspace() {
+    if (!onWorkspaceAction || loading) return;
+    setLoading(true);
+    Promise.resolve(
+      onWorkspaceAction({
+        repoId: pr.repoId,
+        pullRequestNumber: pr.number,
+        headRefName: pr.headRefName,
+        workspaceId: workspace?.id,
+        workspaceState: workspace?.state,
+      }),
+    ).finally(() => setLoading(false));
+  }
   const reviewDots = buildReviewDots(data.reviewSummary);
 
   function handleClick(e: React.MouseEvent) {
@@ -118,21 +131,11 @@ export function MyPrCard({
         </div>
       </a>
 
-      {((workspace && workspace.state !== "archived") || ((pr.state === "open" || pr.state === "draft") && pr.headRefName && (!workspaceRepoIds || workspaceRepoIds.has(pr.repoId)))) && (
+      {((workspace && workspace.state !== "archived") || ((pr.state === "open" || pr.state === "draft") && pr.headRefName)) && (
         <WsBadge
           state={workspace?.state === "archived" ? undefined : workspace?.state}
-          onClick={
-            onWorkspaceAction
-              ? () =>
-                  onWorkspaceAction({
-                    repoId: pr.repoId,
-                    pullRequestNumber: pr.number,
-                    headRefName: pr.headRefName,
-                    workspaceId: workspace?.id,
-                    workspaceState: workspace?.state,
-                  })
-              : undefined
-          }
+          loading={loading}
+          onClick={onWorkspaceAction ? handleWorkspace : undefined}
           ariaLabel={`${workspace?.state === "active" ? "Resume" : workspace?.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
         />
       )}
