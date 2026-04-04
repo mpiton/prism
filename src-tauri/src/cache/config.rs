@@ -13,6 +13,8 @@ const KEY_AUTO_SUSPEND: &str = "auto_suspend_minutes";
 const KEY_GITHUB_TOKEN: &str = "github_token";
 const KEY_DATA_DIR: &str = "data_dir";
 const KEY_WORKSPACES_DIR: &str = "workspaces_dir";
+const KEY_CLAUDE_AUTH_MODE: &str = "claude_auth_mode";
+const KEY_CLAUDE_AUTO_GENERATE_MD: &str = "claude_auto_generate_md";
 
 /// Minimum allowed value for `poll_interval_secs`.
 const MIN_POLL_INTERVAL_SECS: u64 = 30;
@@ -20,6 +22,21 @@ const MIN_POLL_INTERVAL_SECS: u64 = 30;
 const MIN_MAX_ACTIVE_WORKSPACES: u32 = 1;
 /// Minimum allowed value for `auto_suspend_minutes`.
 const MIN_AUTO_SUSPEND_MINUTES: u64 = 5;
+
+/// Allowed values for `claude_auth_mode`.
+const VALID_CLAUDE_AUTH_MODES: &[&str] = &["oauth", "api_key"];
+
+/// Validate `claude_auth_mode` against the allowlist.
+fn validate_claude_auth_mode(mode: &str) -> Result<&str, AppError> {
+    if VALID_CLAUDE_AUTH_MODES.contains(&mode) {
+        Ok(mode)
+    } else {
+        Err(AppError::Config(format!(
+            "invalid claude_auth_mode: '{mode}'; expected one of: {}",
+            VALID_CLAUDE_AUTH_MODES.join(", ")
+        )))
+    }
+}
 
 /// Row from the `config` key-value table.
 #[derive(sqlx::FromRow)]
@@ -136,6 +153,28 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
             KEY_WORKSPACES_DIR => {
                 config.workspaces_dir = Some(row.value);
             }
+            KEY_CLAUDE_AUTH_MODE => {
+                if validate_claude_auth_mode(&row.value).is_ok() {
+                    config.claude_auth_mode = row.value;
+                } else {
+                    warn!(
+                        "ignoring invalid config value for '{}': '{}', expected one of: {}",
+                        KEY_CLAUDE_AUTH_MODE,
+                        row.value,
+                        VALID_CLAUDE_AUTH_MODES.join(", ")
+                    );
+                }
+            }
+            KEY_CLAUDE_AUTO_GENERATE_MD => {
+                if let Ok(v) = row.value.parse::<bool>() {
+                    config.claude_auto_generate_md = v;
+                } else {
+                    warn!(
+                        "ignoring non-parseable config value for '{}': '{}', using default",
+                        KEY_CLAUDE_AUTO_GENERATE_MD, row.value
+                    );
+                }
+            }
             _ => {} // ignore unknown keys for forward-compat
         }
     }
@@ -153,6 +192,7 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
     let poll_interval = clamp_poll_interval(config.poll_interval_secs);
     let max_workspaces = clamp_max_workspaces(config.max_active_workspaces);
     let auto_suspend = clamp_auto_suspend(config.auto_suspend_minutes);
+    let claude_auth_mode = validate_claude_auth_mode(&config.claude_auth_mode)?;
 
     let mut tx = pool.begin().await?;
 
@@ -180,6 +220,13 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
         config.workspaces_dir.as_deref(),
     )
     .await?;
+    upsert_key(&mut *tx, KEY_CLAUDE_AUTH_MODE, claude_auth_mode).await?;
+    upsert_key(
+        &mut *tx,
+        KEY_CLAUDE_AUTO_GENERATE_MD,
+        &config.claude_auto_generate_md.to_string(),
+    )
+    .await?;
 
     tx.commit().await?;
 
@@ -193,6 +240,8 @@ pub async fn set_config(pool: &SqlitePool, config: &AppConfig) -> Result<AppConf
         github_token: config.github_token.clone(),
         data_dir: config.data_dir.clone(),
         workspaces_dir: config.workspaces_dir.clone(),
+        claude_auth_mode: claude_auth_mode.to_string(),
+        claude_auto_generate_md: config.claude_auto_generate_md,
     })
 }
 
@@ -294,6 +343,8 @@ mod tests {
             github_token: Some("ghp_test".to_string()),
             data_dir: Some("/custom/data".to_string()),
             workspaces_dir: Some("/custom/ws".to_string()),
+            claude_auth_mode: "oauth".to_string(),
+            claude_auto_generate_md: false,
         };
 
         let result = set_config(&pool, &config).await.unwrap();

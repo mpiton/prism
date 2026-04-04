@@ -1650,6 +1650,8 @@ mod tests {
             github_token: Some("ghp_test".into()),
             data_dir: None,
             workspaces_dir: Some("/ws".into()),
+            claude_auth_mode: "oauth".to_string(),
+            claude_auto_generate_md: false,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert_eq!(json["pollIntervalSecs"], 120);
@@ -1709,6 +1711,8 @@ mod tests {
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
+            claude_auth_mode: "oauth".to_string(),
+            claude_auto_generate_md: false,
         };
         let partial = PartialAppConfig {
             poll_interval_secs: Some(60),
@@ -1719,6 +1723,8 @@ mod tests {
             github_token: None,
             data_dir: None,
             workspaces_dir: None,
+            claude_auth_mode: None,
+            claude_auto_generate_md: None,
         };
         let merged = merge_partial_config(&base, &partial);
         assert_eq!(merged.poll_interval_secs, 60);
@@ -1736,6 +1742,8 @@ mod tests {
             github_token: Some("ghp_old".into()),
             data_dir: Some("/data".into()),
             workspaces_dir: None,
+            claude_auth_mode: "oauth".to_string(),
+            claude_auto_generate_md: false,
         };
         // Double-option: Some(None) means "explicitly set to null"
         let partial = PartialAppConfig {
@@ -1747,6 +1755,8 @@ mod tests {
             github_token: Some(None), // clear it
             data_dir: None,           // leave as-is
             workspaces_dir: None,
+            claude_auth_mode: None,
+            claude_auto_generate_md: None,
         };
         let merged = merge_partial_config(&base, &partial);
         assert!(
@@ -2244,6 +2254,8 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                claude_auth_mode: "oauth".to_string(),
+                claude_auto_generate_md: false,
             },
         )
         .await
@@ -2299,6 +2311,8 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                claude_auth_mode: "oauth".to_string(),
+                claude_auto_generate_md: false,
             },
         )
         .await
@@ -2375,6 +2389,8 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                claude_auth_mode: "oauth".to_string(),
+                claude_auto_generate_md: false,
             },
         )
         .await
@@ -2429,6 +2445,8 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                claude_auth_mode: "oauth".to_string(),
+                claude_auto_generate_md: false,
             },
         )
         .await
@@ -2499,6 +2517,8 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                claude_auth_mode: "oauth".to_string(),
+                claude_auto_generate_md: false,
             },
         )
         .await
@@ -2570,6 +2590,8 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                claude_auth_mode: "oauth".to_string(),
+                claude_auto_generate_md: false,
             },
         )
         .await
@@ -2639,6 +2661,8 @@ mod tests {
                 github_token: None,
                 data_dir: None,
                 workspaces_dir: Some(ws_base.path().to_string_lossy().to_string()),
+                claude_auth_mode: "oauth".to_string(),
+                claude_auto_generate_md: false,
             },
         )
         .await
