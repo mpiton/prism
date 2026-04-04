@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authGetStatus, markAllActivityRead } from "./lib/tauri";
+import { authGetStatus, markAllActivityRead, openWorkspace, resumeWorkspace } from "./lib/tauri";
 import { useGitHubData } from "./hooks/useGitHubData";
 import { AuthSetup } from "./components/AuthSetup/AuthSetup";
 import { StatsBar } from "./components/StatsBar";
@@ -113,13 +113,54 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
     },
   });
 
+  const handleWorkspaceAction = useCallback(
+    async (params: {
+      readonly repoId: string;
+      readonly pullRequestNumber: number;
+      readonly headRefName: string;
+      readonly workspaceId?: string;
+      readonly workspaceState?: string;
+    }) => {
+      try {
+        const { setActiveWorkspace } = useWorkspacesStore.getState();
+        const { setView } = useDashboardStore.getState();
+
+        if (params.workspaceId && params.workspaceState !== "archived") {
+          if (params.workspaceState === "suspended") {
+            await resumeWorkspace(params.workspaceId);
+            await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+            await queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
+          }
+          setActiveWorkspace(params.workspaceId);
+          setView("workspaces");
+          return;
+        }
+
+        if (!params.headRefName) return;
+
+        const response = await openWorkspace({
+          repoId: params.repoId,
+          pullRequestNumber: params.pullRequestNumber,
+          branch: params.headRefName,
+        });
+        await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+        await queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
+        setActiveWorkspace(response.workspaceId);
+        setView("workspaces");
+      } catch (err: unknown) {
+        console.error("[MainContent] workspace action failed:", err);
+      }
+    },
+    [queryClient],
+  );
+
   switch (view) {
     case "overview":
       return <Overview />;
     case "reviews":
-      return <ReviewQueue reviews={dashboard?.reviewRequests ?? []} onOpen={openUrl} />;
+      return <ReviewQueue reviews={dashboard?.reviewRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />;
     case "mine":
-      return <MyPRs prs={dashboard?.myPullRequests ?? []} onOpen={openUrl} />;
+      return <MyPRs prs={dashboard?.myPullRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />;
     case "issues":
       return <Issues issues={dashboard?.assignedIssues ?? []} onOpen={openUrl} />;
     case "feed":

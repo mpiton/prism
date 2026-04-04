@@ -226,6 +226,7 @@ mod tests {
             labels: vec![],
             additions: 10,
             deletions: 5,
+            head_ref_name: "fix/test-branch".to_string(),
             created_at: "2026-03-29T10:00:00Z".to_string(),
             updated_at: "2026-03-29T10:00:00Z".to_string(),
         }

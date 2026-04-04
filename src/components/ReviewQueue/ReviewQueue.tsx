@@ -6,10 +6,18 @@ import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { ReviewCard } from "./ReviewCard";
 
+interface WorkspaceActionParams {
+  readonly repoId: string;
+  readonly pullRequestNumber: number;
+  readonly headRefName: string;
+  readonly workspaceId?: string;
+  readonly workspaceState?: string;
+}
+
 interface ReviewQueueProps {
   readonly reviews: readonly PullRequestWithReview[];
   readonly onOpen: (url: string) => void;
-  readonly onWorkspaceAction?: (workspaceId: string) => void;
+  readonly onWorkspaceAction?: (params: WorkspaceActionParams) => void;
 }
 
 const PRIORITY_ORDER: Record<Priority, number> = {

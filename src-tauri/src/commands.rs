@@ -13,9 +13,7 @@ use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{get_repo, list_repos, set_local_path, set_repo_enabled};
 use crate::cache::stats::compute_personal_stats;
 use crate::cache::sync::sync_dashboard;
-use crate::cache::workspaces::{
-    create_workspace, get_notes, list_workspaces, update_workspace_state,
-};
+use crate::cache::workspaces::{get_notes, list_workspaces, update_workspace_state};
 use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
@@ -583,26 +581,34 @@ pub(crate) async fn workspace_open_inner(
     req: &OpenWorkspaceRequest,
     on_pty_output: impl Fn(&str, &[u8]) + Send + 'static,
 ) -> Result<OpenWorkspaceResponse, AppError> {
-    // 1. Get repo and validate local_path
+    // 1. Get repo; clone if no local_path
     let repo = get_repo(pool, &req.repo_id).await?;
-    let local_path = repo.local_path.as_deref().ok_or_else(|| {
-        AppError::Workspace(format!(
-            "repo '{}' has no local_path configured",
-            req.repo_id
-        ))
-    })?;
-    let local_path = PathBuf::from(local_path);
 
     // 2. Read config (needed for base_dir and LRU limit)
     let config = get_config(pool).await?;
 
-    // 3. Create worktree
     let base_dir = config
         .workspaces_dir
         .as_deref()
         .map(PathBuf::from)
         .or_else(|| worktree::default_base_dir().ok())
         .ok_or_else(|| AppError::Workspace("cannot determine workspaces base directory".into()))?;
+
+    let local_path = if let Some(lp) = repo.local_path.as_deref() {
+        PathBuf::from(lp)
+    } else {
+        // Auto-clone: clone into {base_dir}/{org}/{repo}/repo
+        let repos_dir = base_dir.join(&repo.full_name);
+        let clone_path = worktree::clone_repo(&repo.url, "repo", &repos_dir).await?;
+        // Persist local_path so future opens skip the clone
+        let clone_str = clone_path
+            .to_str()
+            .ok_or_else(|| AppError::Workspace("clone path is not valid UTF-8".into()))?;
+        crate::cache::repos::set_local_path(pool, &repo.id, Some(clone_str)).await?;
+        clone_path
+    };
+
+    // 3. Create worktree
     let wt_path = worktree::create_worktree(
         &local_path,
         &req.branch,
@@ -621,19 +627,37 @@ pub(crate) async fn workspace_open_inner(
         }
     };
 
-    // 5. Create workspace in DB
+    // 5. Atomic DELETE archived + INSERT new workspace (transaction prevents
+    //    data loss if INSERT fails, and avoids resource leaks if DELETE fails).
     let now = chrono::Utc::now().to_rfc3339();
-    let ws = Workspace {
-        id: workspace_id.to_string(),
-        repo_id: req.repo_id.clone(),
-        pull_request_number: req.pull_request_number,
-        state: WorkspaceState::Active,
-        worktree_path: Some(wt_path.to_string_lossy().to_string()),
-        session_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-    if let Err(e) = create_workspace(pool, &ws).await {
+    let insert_result: Result<(), AppError> = async {
+        let mut tx = pool.begin().await?;
+        sqlx::query(
+            "DELETE FROM workspaces WHERE repo_id = $1 AND pull_request_number = $2 AND state = 'archived'",
+        )
+        .bind(&req.repo_id)
+        .bind(req.pull_request_number)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO workspaces (id, repo_id, pull_request_number, state, worktree_path, session_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(workspace_id)
+        .bind(&req.repo_id)
+        .bind(req.pull_request_number)
+        .bind("active")
+        .bind(wt_path.to_string_lossy().as_ref())
+        .bind(Option::<&str>::None)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+    .await;
+    if let Err(e) = insert_result {
         let _ = pty_state.manager.kill(&pty_id);
         let _ = worktree::remove_worktree(&local_path, &wt_path).await;
         return Err(e);
@@ -1968,7 +1992,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_workspace_open_no_local_path() {
+    async fn test_workspace_open_no_local_path_triggers_clone() {
         let (pool, _tmp) = test_pool().await;
         insert_test_repo(&pool, None).await;
 
@@ -1979,17 +2003,22 @@ mod tests {
             branch: "feature-42".into(),
         };
 
+        // With no local_path the function attempts an auto-clone.
+        // In CI without network access it will fail with a Git error
+        // (not a Workspace error), proving the clone path was taken.
         let ws_id = uuid::Uuid::new_v4().to_string();
         let result = workspace_open_inner(&pool, &pty_state, &ws_id, &req, |_, _| {}).await;
-        assert!(result.is_err());
+        assert!(result.is_err(), "should fail (no real clone target)");
         let err = result.unwrap_err();
+        // The error comes from the clone/worktree attempt (Git or Workspace),
+        // never the old "no local_path" error.
         assert!(
-            matches!(err, AppError::Workspace(_)),
-            "expected Workspace error, got: {err}"
+            matches!(err, AppError::Git(_) | AppError::Workspace(_)),
+            "expected Git or Workspace error from clone path, got: {err}"
         );
         assert!(
-            err.to_string().contains("no local_path"),
-            "error should mention local_path: {err}"
+            !err.to_string().contains("no local_path"),
+            "should not get old 'no local_path' error, got: {err}"
         );
 
         pool.close().await;
@@ -2527,6 +2556,7 @@ mod tests {
             labels: vec![],
             additions: 10,
             deletions: 5,
+            head_ref_name: "fix/test-branch".to_string(),
             created_at: "2026-03-01T00:00:00Z".to_string(),
             updated_at: updated_at.to_string(),
         };

@@ -19,6 +19,7 @@ function makePr(
       priority: "medium",
       repoId: "repo-1",
       url: "https://github.com/org/repo/pull/1",
+      headRefName: "fix/test",
       labels: [],
       additions: 10,
       deletions: 5,
@@ -285,6 +286,12 @@ describe("ReviewQueue", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: /workspace/i }));
-    expect(handleWs).toHaveBeenCalledWith("ws-42");
+    expect(handleWs).toHaveBeenCalledWith({
+      repoId: "repo-1",
+      pullRequestNumber: 99,
+      headRefName: "fix/test",
+      workspaceId: "ws-42",
+      workspaceState: "active",
+    });
   });
 });

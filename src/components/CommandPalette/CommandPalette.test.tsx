@@ -46,6 +46,7 @@ function makePr(overrides: Partial<PullRequestWithReview> = {}): PullRequestWith
       priority: "high",
       repoId: "repo-1",
       url: "https://github.com/org/repo/pull/42",
+      headRefName: "fix/login-bug",
       labels: [],
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-01T00:00:00Z",

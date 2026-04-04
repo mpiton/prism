@@ -52,6 +52,7 @@ export interface PullRequest {
   readonly deletions?: number;
   readonly changedFiles?: number;
   readonly commentsCount?: number;
+  readonly headRefName: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -192,6 +193,7 @@ export interface PersonalStats {
 export interface OpenWorkspaceRequest {
   readonly repoId: string;
   readonly pullRequestNumber: number;
+  readonly branch: string;
 }
 
 export interface OpenWorkspaceResponse {

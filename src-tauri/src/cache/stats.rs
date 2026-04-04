@@ -121,6 +121,7 @@ mod tests {
             labels: vec![],
             additions: 10,
             deletions: 5,
+            head_ref_name: "fix/test-branch".to_string(),
             created_at: hours_ago(48),
             updated_at: now_ts(),
         }

@@ -118,6 +118,57 @@ fn classify_git_error(stderr: &str, args_display: &str) -> AppError {
     ))
 }
 
+/// Clones a GitHub repository into `{base_dir}/{repo_name}`.
+///
+/// Returns the path to the cloned repository.
+/// Times out after [`GIT_TIMEOUT`] (120s — enough for most repos).
+pub async fn clone_repo(
+    repo_url: &str,
+    repo_name: &str,
+    base_dir: &Path,
+) -> Result<PathBuf, AppError> {
+    let clone_path = base_dir.join(repo_name);
+
+    if clone_path.join(".git").exists() {
+        // Valid clone — just fetch latest
+        tracing::info!("repo already cloned at {}, fetching", clone_path.display());
+        run_git(&["fetch".into(), "--all".into()], &clone_path).await?;
+        return Ok(clone_path);
+    } else if clone_path.exists() {
+        // Directory exists but isn't a git repo — likely a failed previous clone
+        return Err(AppError::Workspace(format!(
+            "clone path '{}' exists but is not a git repository; please remove it and try again",
+            clone_path.display()
+        )));
+    }
+
+    if let Some(parent) = clone_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| AppError::Workspace(format!("failed to create clone dir: {e}")))?;
+    }
+
+    tracing::info!("cloning {} into {}", repo_url, clone_path.display());
+
+    let clone_url = if repo_url.starts_with("http") {
+        repo_url.to_string()
+    } else {
+        format!("https://github.com/{repo_url}.git")
+    };
+
+    run_git(
+        &[
+            "clone".into(),
+            clone_url.into(),
+            clone_path.as_os_str().to_os_string(),
+        ],
+        base_dir,
+    )
+    .await?;
+
+    Ok(clone_path)
+}
+
 /// Runs a git command in the given directory and returns stdout on success.
 ///
 /// Times out after [`GIT_TIMEOUT`] to prevent indefinite hangs on network operations.

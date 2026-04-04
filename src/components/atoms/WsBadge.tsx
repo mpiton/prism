@@ -3,6 +3,7 @@ import type { WorkspaceState } from "../../lib/types";
 
 interface WsBadgeProps {
   readonly state?: WorkspaceState;
+  readonly loading?: boolean;
   readonly onClick?: () => void;
   readonly ariaLabel?: string;
 }
@@ -12,19 +13,20 @@ const LABEL_MAP: Record<Exclude<WorkspaceState, "archived">, string> = {
   suspended: "wake",
 };
 
-export function WsBadge({ state, onClick, ariaLabel }: WsBadgeProps): ReactElement | null {
+export function WsBadge({ state, loading, onClick, ariaLabel }: WsBadgeProps): ReactElement | null {
   if (state === "archived") {
     return null;
   }
 
-  const label = state ? LABEL_MAP[state as Exclude<WorkspaceState, "archived">] : "open";
+  const label = loading ? "cloning…" : state ? LABEL_MAP[state as Exclude<WorkspaceState, "archived">] : "open";
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={loading ? undefined : onClick}
+      disabled={loading}
       aria-label={ariaLabel}
-      className="rounded border border-accent/30 px-2 py-0.5 text-xs text-accent hover:bg-accent/10"
+      className={`rounded border border-accent/30 px-2 py-0.5 text-xs text-accent ${loading ? "animate-pulse opacity-60" : "hover:bg-accent/10"}`}
     >
       {label}
     </button>

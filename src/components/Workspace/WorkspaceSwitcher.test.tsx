@@ -57,6 +57,7 @@ function resetStores() {
     config: {
       pollIntervalSecs: 300,
       maxActiveWorkspaces: 3,
+      autoSuspendMinutes: 30,
       githubToken: null,
       dataDir: null,
       workspacesDir: null,
@@ -147,6 +148,7 @@ describe("WorkspaceSwitcher", () => {
       config: {
         pollIntervalSecs: 300,
         maxActiveWorkspaces: 5,
+        autoSuspendMinutes: 30,
         githubToken: null,
         dataDir: null,
         workspacesDir: null,
@@ -200,6 +202,7 @@ describe("WorkspaceSwitcher", () => {
       config: {
         pollIntervalSecs: 300,
         maxActiveWorkspaces: 0,
+        autoSuspendMinutes: 30,
         githubToken: null,
         dataDir: null,
         workspacesDir: null,
