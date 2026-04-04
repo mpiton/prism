@@ -149,7 +149,9 @@ describe("MyPrCard", () => {
   });
 
   it("should show workspace badge", () => {
-    render(<MyPrCard data={basePr} onOpen={vi.fn()} />);
+    render(
+      <MyPrCard data={basePr} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
+    );
     expect(screen.getByText("resume")).toBeInTheDocument();
   });
 
@@ -170,7 +172,9 @@ describe("MyPrCard", () => {
       ...basePr,
       workspace: null,
     };
-    render(<MyPrCard data={data} onOpen={vi.fn()} />);
+    render(
+      <MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
+    );
     expect(screen.getByText("open")).toBeInTheDocument();
   });
 

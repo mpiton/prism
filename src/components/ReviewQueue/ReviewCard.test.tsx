@@ -60,7 +60,13 @@ describe("ReviewCard", () => {
   });
 
   it("should show workspace badge", () => {
-    render(<ReviewCard data={mockData} onOpen={vi.fn()} />);
+    render(
+      <ReviewCard
+        data={mockData}
+        onOpen={vi.fn()}
+        onWorkspaceAction={vi.fn()}
+      />,
+    );
     expect(screen.getByText("resume")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Resume workspace for PR #42" }),
