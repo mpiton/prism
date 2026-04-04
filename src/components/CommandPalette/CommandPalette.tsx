@@ -22,7 +22,11 @@ interface PaletteItem {
   readonly section: DashboardView;
 }
 
-function prToItem(pr: PullRequestWithReview, repoMap: Map<string, string>): PaletteItem {
+function prToItem(
+  pr: PullRequestWithReview,
+  repoMap: Map<string, string>,
+  section: DashboardView,
+): PaletteItem {
   return {
     id: pr.pullRequest.id,
     type: "pr",
@@ -30,7 +34,7 @@ function prToItem(pr: PullRequestWithReview, repoMap: Map<string, string>): Pale
     title: pr.pullRequest.title,
     url: pr.pullRequest.url,
     repoName: repoMap.get(pr.pullRequest.repoId) ?? pr.pullRequest.repoId,
-    section: "reviews",
+    section,
   };
 }
 
@@ -81,15 +85,26 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   const repoMap = useMemo<Map<string, string>>(() => {
     if (!repos) return new Map();
-    return new Map(repos.map((r) => [r.id, r.name]));
+
+    const nameCounts = new Map<string, number>();
+    for (const repo of repos) {
+      nameCounts.set(repo.name, (nameCounts.get(repo.name) ?? 0) + 1);
+    }
+
+    return new Map(
+      repos.map((repo) => [
+        repo.id,
+        nameCounts.get(repo.name) === 1 ? repo.name : repo.fullName,
+      ]),
+    );
   }, [repos]);
 
   const { prItems, issueItems } = useMemo(() => {
     if (!dashboard) return { prItems: [], issueItems: [] };
 
     const allPrItems = deduplicateItems([
-      ...dashboard.reviewRequests.map((pr) => prToItem(pr, repoMap)),
-      ...dashboard.myPullRequests.map((pr) => prToItem(pr, repoMap)),
+      ...dashboard.reviewRequests.map((pr) => prToItem(pr, repoMap, "reviews")),
+      ...dashboard.myPullRequests.map((pr) => prToItem(pr, repoMap, "mine")),
     ]);
     const allIssueItems = deduplicateItems(
       dashboard.assignedIssues.map((issue) => issueToItem(issue, repoMap)),
@@ -104,7 +119,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   );
 
   const findSelectedItem = useCallback(
-    () => allItems.find((item) => item.id === selectedValue) ?? null,
+    () => allItems.find((item) => item.id.toLowerCase() === selectedValue) ?? null,
     [allItems, selectedValue],
   );
 

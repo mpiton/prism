@@ -231,6 +231,29 @@ describe("CommandPalette", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("should navigate to mine section when selecting a myPullRequests PR", async () => {
+    const pr = makePr();
+
+    (useGitHubData as Mock).mockReturnValue({
+      dashboard: makeDashboard({ myPullRequests: [pr] }),
+      stats: null,
+      isLoading: false,
+      error: null,
+      forceSync: vi.fn(),
+      isSyncing: false,
+    });
+
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText(/Fix login bug/);
+    await user.click(item);
+
+    expect(mockSetView).toHaveBeenCalledWith("mine");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it("should navigate to issues section when selecting an issue", async () => {
     const issue = makeIssue();
 
