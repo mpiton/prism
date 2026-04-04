@@ -227,7 +227,7 @@ export interface AppConfig {
   readonly githubToken: string | null;
   readonly dataDir: string | null;
   readonly workspacesDir: string | null;
-  readonly claudeAuthMode: string;
+  readonly claudeAuthMode: "oauth" | "api_key";
   readonly claudeAutoGenerateMd: boolean;
 }
 
@@ -246,7 +246,7 @@ export interface PartialAppConfig {
   readonly githubToken?: string | null;
   readonly dataDir?: string | null;
   readonly workspacesDir?: string | null;
-  readonly claudeAuthMode?: string;
+  readonly claudeAuthMode?: "oauth" | "api_key";
   readonly claudeAutoGenerateMd?: boolean;
 }
 

@@ -169,7 +169,7 @@ export function Settings(): ReactElement {
           <span className="text-dim text-sm">Auth mode</span>
           <select
             value={config.claudeAuthMode}
-            onChange={(e) => configMutation.mutate({ claudeAuthMode: e.target.value })}
+            onChange={(e) => configMutation.mutate({ claudeAuthMode: e.target.value as "oauth" | "api_key" })}
             className="bg-surface border-border rounded border px-2 py-1 font-mono text-sm text-white"
           >
             <option value="oauth">OAuth</option>

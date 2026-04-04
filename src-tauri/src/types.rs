@@ -391,7 +391,7 @@ pub struct AppConfig {
     pub data_dir: Option<String>,
     /// Override for the workspaces root directory (`~/.prism/workspaces/` by default).
     pub workspaces_dir: Option<String>,
-    /// Claude Code authentication mode: "oauth" or "api_key" (default: "oauth").
+    /// Claude Code authentication mode: `oauth` or `api_key` (default: `oauth`).
     pub claude_auth_mode: String,
     /// Whether to auto-generate CLAUDE.md files in workspaces (default: false).
     pub claude_auto_generate_md: bool,

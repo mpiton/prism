@@ -153,15 +153,18 @@ pub async fn get_config(pool: &SqlitePool) -> Result<AppConfig, AppError> {
             KEY_WORKSPACES_DIR => {
                 config.workspaces_dir = Some(row.value);
             }
-            KEY_CLAUDE_AUTH_MODE => match row.value.as_str() {
-                "oauth" | "api_key" => config.claude_auth_mode = row.value,
-                _ => {
+            KEY_CLAUDE_AUTH_MODE => {
+                if validate_claude_auth_mode(&row.value).is_ok() {
+                    config.claude_auth_mode = row.value;
+                } else {
                     warn!(
-                        "ignoring invalid config value for '{}': '{}', expected 'oauth' or 'api_key'",
-                        KEY_CLAUDE_AUTH_MODE, row.value
+                        "ignoring invalid config value for '{}': '{}', expected one of: {}",
+                        KEY_CLAUDE_AUTH_MODE,
+                        row.value,
+                        VALID_CLAUDE_AUTH_MODES.join(", ")
                     );
                 }
-            },
+            }
             KEY_CLAUDE_AUTO_GENERATE_MD => {
                 if let Ok(v) = row.value.parse::<bool>() {
                     config.claude_auto_generate_md = v;
