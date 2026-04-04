@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Command } from "cmdk";
 import { useQuery } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
@@ -55,10 +55,29 @@ function deduplicateItems(items: readonly PaletteItem[]): readonly PaletteItem[]
   });
 }
 
+function PaletteItemRow({ item }: { readonly item: PaletteItem }): ReactElement {
+  return (
+    <>
+      <span className="shrink-0 text-fg/50">#{item.number}</span>
+      <span className="truncate">{item.title}</span>
+      <span className="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs text-fg/60">
+        {item.repoName}
+      </span>
+      <span className="ml-auto shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs uppercase text-fg/60">
+        {item.type}
+      </span>
+    </>
+  );
+}
+
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { dashboard } = useGitHubData();
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
   const [selectedValue, setSelectedValue] = useState("");
+
+  useEffect(() => {
+    if (!open) setSelectedValue("");
+  }, [open]);
 
   const repoMap = useMemo<Map<string, string>>(() => {
     if (!repos) return new Map();
@@ -72,8 +91,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       ...dashboard.reviewRequests.map((pr) => prToItem(pr, repoMap)),
       ...dashboard.myPullRequests.map((pr) => prToItem(pr, repoMap)),
     ]);
-    const allIssueItems = dashboard.assignedIssues.map((issue) =>
-      issueToItem(issue, repoMap),
+    const allIssueItems = deduplicateItems(
+      dashboard.assignedIssues.map((issue) => issueToItem(issue, repoMap)),
     );
 
     return { prItems: allPrItems, issueItems: allIssueItems };
@@ -85,7 +104,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   );
 
   const findSelectedItem = useCallback(
-    () => allItems.find((item) => `${item.number} ${item.title}` === selectedValue) ?? null,
+    () => allItems.find((item) => item.id === selectedValue) ?? null,
     [allItems, selectedValue],
   );
 
@@ -96,6 +115,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   function handleKeyDown(e: React.KeyboardEvent): void {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
       const item = findSelectedItem();
       if (item) {
         window.open(item.url, "_blank", "noopener,noreferrer");
@@ -130,20 +150,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               {prItems.map((item) => (
                 <Command.Item
                   key={item.id}
-                  value={`${item.number} ${item.title}`}
+                  value={item.id}
+                  keywords={[String(item.number), item.title, item.repoName]}
                   onSelect={() => handleSelect(item)}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg aria-selected:bg-fg/10"
                 >
-                  <span className="shrink-0 text-fg/50">
-                    #{item.number}
-                  </span>
-                  <span className="truncate">{item.title}</span>
-                  <span className="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs text-fg/60">
-                    {item.repoName}
-                  </span>
-                  <span className="ml-auto shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs uppercase text-fg/60">
-                    {item.type}
-                  </span>
+                  <PaletteItemRow item={item} />
                 </Command.Item>
               ))}
             </Command.Group>
@@ -154,20 +166,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               {issueItems.map((item) => (
                 <Command.Item
                   key={item.id}
-                  value={`${item.number} ${item.title}`}
+                  value={item.id}
+                  keywords={[String(item.number), item.title, item.repoName]}
                   onSelect={() => handleSelect(item)}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg aria-selected:bg-fg/10"
                 >
-                  <span className="shrink-0 text-fg/50">
-                    #{item.number}
-                  </span>
-                  <span className="truncate">{item.title}</span>
-                  <span className="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs text-fg/60">
-                    {item.repoName}
-                  </span>
-                  <span className="ml-auto shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs uppercase text-fg/60">
-                    {item.type}
-                  </span>
+                  <PaletteItemRow item={item} />
                 </Command.Item>
               ))}
             </Command.Group>

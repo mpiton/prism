@@ -280,6 +280,7 @@ describe("CommandPalette", () => {
       "_blank",
       "noopener,noreferrer",
     );
+    expect(mockSetView).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     openSpy.mockRestore();
