@@ -523,39 +523,13 @@ impl PtyManagerState {
         self.workspace_ptys.lock().ok()?.remove(workspace_id)
     }
 
-    /// Removes the mapping by PTY ID (reverse lookup).
-    ///
-    /// Used by `pty_kill` to clean up the workspace→pty mapping when a PTY
-    /// is killed directly by its ID rather than through LRU eviction.
-    /// Also clears the corresponding `last_touch` throttle entry.
-    pub fn unregister_by_pty_id(&self, pty_id: &str) {
-        if let Ok(mut map) = self.workspace_ptys.lock() {
-            // Find the workspace_id before removing, so we can clean last_touch.
-            let ws_id = map
-                .iter()
-                .find(|(_, v)| v.as_str() == pty_id)
-                .map(|(k, _)| k.clone());
-            map.retain(|_, v| v != pty_id);
-            if let Some(ws_id) = ws_id
-                && let Ok(mut touch) = self.last_touch.lock()
-            {
-                touch.remove(&ws_id);
-            }
-        }
-    }
-
-    /// Reverse lookup: find the workspace ID associated with a PTY ID.
-    ///
-    /// Recovers from a poisoned mutex to avoid silently losing
-    /// `last_active_at` updates (which would cause premature auto-suspend).
-    pub fn lookup_workspace_by_pty(&self, pty_id: &str) -> Option<String> {
+    /// Forward lookup: find the PTY ID associated with a workspace ID.
+    pub fn lookup_pty_by_workspace(&self, workspace_id: &str) -> Option<String> {
         let map = match self.workspace_ptys.lock() {
             Ok(g) => g,
             Err(e) => e.into_inner(),
         };
-        map.iter()
-            .find(|(_, v)| v.as_str() == pty_id)
-            .map(|(k, _)| k.clone())
+        map.get(workspace_id).cloned()
     }
 }
 
@@ -1103,25 +1077,28 @@ pub async fn workspace_cleanup(
 /// Writes data to a PTY's stdin and touches `last_active_at` for the
 /// associated workspace so the lifecycle auto-suspend timer is reset.
 ///
-/// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
+/// Tauri 2 renames `workspace_id` → `workspaceId` for the JS caller.
 #[tauri::command]
 pub async fn pty_write(
     pool: tauri::State<'_, SqlitePool>,
     pty_state: tauri::State<'_, PtyManagerState>,
-    pty_id: String,
+    workspace_id: String,
     data: String,
 ) -> Result<(), String> {
+    let pty_id = pty_state
+        .lookup_pty_by_workspace(&workspace_id)
+        .ok_or_else(|| format!("no PTY for workspace '{workspace_id}'"))?;
+
     pty_state
         .manager
         .write_pty(&pty_id, data.as_bytes())
         .map_err(|e| e.to_string())?;
 
     // Best-effort: update last_active_at, throttled to at most once per 5s per workspace.
-    if let Some(ws_id) = pty_state.lookup_workspace_by_pty(&pty_id)
-        && pty_state.should_touch_last_active(&ws_id)
-        && let Err(e) = crate::cache::workspaces::update_last_active(&pool, &ws_id).await
+    if pty_state.should_touch_last_active(&workspace_id)
+        && let Err(e) = crate::cache::workspaces::update_last_active(&pool, &workspace_id).await
     {
-        warn!("pty_write: failed to touch last_active_at for workspace '{ws_id}': {e}");
+        warn!("pty_write: failed to touch last_active_at for workspace '{workspace_id}': {e}");
     }
 
     Ok(())
@@ -1129,14 +1106,18 @@ pub async fn pty_write(
 
 /// Resizes a PTY to new dimensions.
 ///
-/// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
+/// Tauri 2 renames `workspace_id` → `workspaceId` for the JS caller.
 #[tauri::command]
 pub async fn pty_resize(
     pty_state: tauri::State<'_, PtyManagerState>,
-    pty_id: String,
+    workspace_id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
+    let pty_id = pty_state
+        .lookup_pty_by_workspace(&workspace_id)
+        .ok_or_else(|| format!("no PTY for workspace '{workspace_id}'"))?;
+
     pty_state
         .manager
         .resize(&pty_id, cols, rows)
@@ -1145,15 +1126,25 @@ pub async fn pty_resize(
 
 /// Kills a PTY process and removes it from the manager.
 ///
-/// Also cleans up the workspace→pty mapping to prevent stale entries.
-/// Tauri 2 renames `pty_id` → `ptyId` for the JS caller.
+/// Idempotent: succeeds even if the PTY was already cleaned up by the
+/// reader task (EOF), since `AppError::NotFound` is treated as success.
+/// Tauri 2 renames `workspace_id` → `workspaceId` for the JS caller.
 #[tauri::command]
 pub async fn pty_kill(
     pty_state: tauri::State<'_, PtyManagerState>,
-    pty_id: String,
+    workspace_id: String,
 ) -> Result<(), String> {
-    pty_state.unregister_by_pty_id(&pty_id);
-    pty_state.manager.kill(&pty_id).map_err(|e| e.to_string())
+    let pty_id = pty_state
+        .lookup_pty_by_workspace(&workspace_id)
+        .ok_or_else(|| format!("no PTY for workspace '{workspace_id}'"))?;
+
+    match pty_state.manager.kill(&pty_id) {
+        Ok(()) | Err(AppError::NotFound(_)) => {
+            let _ = pty_state.unregister(&workspace_id);
+            Ok(())
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 // ── Debug / Memory monitoring (T-087) ───────────────────────────
@@ -2493,12 +2484,22 @@ mod tests {
             })
             .unwrap();
 
+        let workspace_id = "ws-test-write";
+        pty_state.register(workspace_id, &pty_id);
+
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        // Write via the same path as the Tauri command
+        // Verify lookup works
+        assert_eq!(
+            pty_state.lookup_pty_by_workspace(workspace_id),
+            Some(pty_id.clone())
+        );
+
+        // Write via workspace→pty lookup (same path as Tauri command)
+        let looked_up = pty_state.lookup_pty_by_workspace(workspace_id).unwrap();
         let result = pty_state
             .manager
-            .write_pty(&pty_id, b"echo pty_write_test\n");
+            .write_pty(&looked_up, b"echo pty_write_test\n");
         assert!(result.is_ok());
 
         // Verify output contains our marker
@@ -2526,7 +2527,11 @@ mod tests {
 
         let pty_id = pty_state.manager.spawn(&tmp, 80, 24, |_, _| {}).unwrap();
 
-        let result = pty_state.manager.resize(&pty_id, 120, 40);
+        let workspace_id = "ws-test-resize";
+        pty_state.register(workspace_id, &pty_id);
+
+        let looked_up = pty_state.lookup_pty_by_workspace(workspace_id).unwrap();
+        let result = pty_state.manager.resize(&looked_up, 120, 40);
         assert!(result.is_ok(), "resize should succeed: {result:?}");
 
         pty_state.manager.kill(&pty_id).unwrap();
