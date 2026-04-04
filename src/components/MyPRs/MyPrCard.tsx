@@ -116,9 +116,9 @@ export function MyPrCard({
         </div>
       </a>
 
-      {(workspace || (pr.state === "open" || pr.state === "draft")) && (
+      {((workspace && workspace.state !== "archived") || ((pr.state === "open" || pr.state === "draft") && pr.headRefName)) && (
         <WsBadge
-          state={workspace?.state}
+          state={workspace?.state === "archived" ? undefined : workspace?.state}
           onClick={
             onWorkspaceAction
               ? () =>

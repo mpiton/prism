@@ -59,9 +59,9 @@ export function ReviewCard({
         </div>
       </a>
 
-      {(workspace || pr.state === "open") && (
+      {((workspace && workspace.state !== "archived") || (pr.state === "open" && pr.headRefName)) && (
         <WsBadge
-          state={workspace?.state}
+          state={workspace?.state === "archived" ? undefined : workspace?.state}
           onClick={
             onWorkspaceAction
               ? () =>

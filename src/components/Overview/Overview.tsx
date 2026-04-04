@@ -56,6 +56,10 @@ export function Overview(): ReactElement {
         }
 
         // No workspace or archived — create a new one
+        if (!params.headRefName) {
+          console.warn("[Overview] cannot open workspace: branch name unknown (force sync first)");
+          return;
+        }
         const response = await openWorkspace({
           repoId: params.repoId,
           pullRequestNumber: params.pullRequestNumber,

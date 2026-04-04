@@ -621,7 +621,16 @@ pub(crate) async fn workspace_open_inner(
         }
     };
 
-    // 5. Create workspace in DB
+    // 5. Delete any archived workspace for this PR (UNIQUE constraint on repo_id + pr_number)
+    sqlx::query(
+        "DELETE FROM workspaces WHERE repo_id = $1 AND pull_request_number = $2 AND state = 'archived'",
+    )
+    .bind(&req.repo_id)
+    .bind(req.pull_request_number)
+    .execute(pool)
+    .await?;
+
+    // 6. Create workspace in DB
     let now = chrono::Utc::now().to_rfc3339();
     let ws = Workspace {
         id: workspace_id.to_string(),
