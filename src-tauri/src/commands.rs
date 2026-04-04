@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::cache::activity::{mark_all_read, mark_read};
 use crate::cache::config::{get_config, set_config};
@@ -18,9 +19,9 @@ use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
 use crate::types::{
-    AppConfig, DashboardData, DashboardStats, MemoryStats, OpenWorkspaceRequest,
-    OpenWorkspaceResponse, PartialAppConfig, PersonalStats, Repo, Workspace, WorkspaceListEntry,
-    WorkspaceNote, WorkspaceState, merge_partial_config,
+    AppConfig, ClaudeSessionPayload, DashboardData, DashboardStats, MemoryStats,
+    OpenWorkspaceRequest, OpenWorkspaceResponse, PartialAppConfig, PersonalStats, Repo, Workspace,
+    WorkspaceListEntry, WorkspaceNote, WorkspaceState, merge_partial_config,
 };
 use crate::workspace::pty::PtyManager;
 use crate::workspace::worktree;
@@ -539,6 +540,127 @@ impl Default for PtyManagerState {
     }
 }
 
+// ── Session monitoring ──────────────────────────────────────────
+
+/// Monitors PTY output for Claude Code session events.
+///
+/// Line-buffers chunks from the PTY reader and scans each complete line
+/// for session IDs and auth errors. On first session-ID match, persists
+/// to the database and emits a `workspace:claude_session` event.
+struct SessionMonitor {
+    workspace_id: String,
+    pool: SqlitePool,
+    app_handle: tauri::AppHandle,
+    line_buffer: Mutex<String>,
+    session_detected: Arc<AtomicBool>,
+}
+
+impl SessionMonitor {
+    fn new(workspace_id: String, pool: SqlitePool, app_handle: tauri::AppHandle) -> Self {
+        Self {
+            workspace_id,
+            pool,
+            app_handle,
+            line_buffer: Mutex::new(String::new()),
+            session_detected: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn process_chunk(&self, data: &[u8]) {
+        let text = String::from_utf8_lossy(data);
+
+        // Drain complete lines while holding the lock, then release before
+        // processing to avoid blocking other callers during emit/spawn.
+        let lines: Vec<String> = {
+            let mut buf = self.line_buffer.lock().unwrap_or_else(|e| {
+                warn!("SessionMonitor line_buffer mutex was poisoned, recovering");
+                e.into_inner()
+            });
+            buf.push_str(&text);
+            let mut lines = Vec::new();
+            while let Some(pos) = buf.find('\n') {
+                lines.push(buf.drain(..=pos).collect());
+            }
+            lines
+        };
+
+        for line in &lines {
+            // Atomic compare-and-swap: only the first thread to detect a
+            // session ID enters the persistence branch.
+            if self
+                .session_detected
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+                .is_ok()
+            {
+                if let Some(session_id) = crate::workspace::claude::detect_session_id(line) {
+                    let pool = self.pool.clone();
+                    let ws_id = self.workspace_id.clone();
+                    let app_handle = self.app_handle.clone();
+                    let sid = session_id.clone();
+                    let flag = self.session_detected.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = crate::cache::workspaces::update_claude_session(
+                            &pool,
+                            &ws_id,
+                            Some(&sid),
+                        )
+                        .await
+                        {
+                            // Reset flag so subsequent lines can retry detection
+                            flag.store(false, Ordering::Release);
+                            warn!("failed to persist claude session id (will retry): {e}");
+                            return;
+                        }
+                        if let Err(e) = app_handle.emit(
+                            "workspace:claude_session",
+                            ClaudeSessionPayload {
+                                workspace_id: ws_id,
+                                session_id: sid,
+                            },
+                        ) {
+                            warn!("failed to emit workspace:claude_session: {e}");
+                        }
+                    });
+                } else {
+                    // No session in this line — reset so the next line can try.
+                    self.session_detected.store(false, Ordering::Release);
+                }
+            }
+
+            if crate::workspace::claude::detect_auth_error(line)
+                && let Err(e) = self.app_handle.emit("auth:expired", ())
+            {
+                warn!("failed to emit auth:expired: {e}");
+            }
+        }
+    }
+}
+
+/// Builds a PTY output callback that forwards data to the frontend AND
+/// monitors for Claude Code session events.
+fn make_pty_callback(
+    workspace_id: String,
+    pool: SqlitePool,
+    app_handle: tauri::AppHandle,
+) -> impl Fn(&str, &[u8]) + Send + 'static {
+    let monitor = Arc::new(SessionMonitor::new(
+        workspace_id.clone(),
+        pool,
+        app_handle.clone(),
+    ));
+
+    move |_pty_id: &str, data: &[u8]| {
+        let payload = crate::types::PtyOutput {
+            workspace_id: workspace_id.clone(),
+            data: String::from_utf8_lossy(data).to_string(),
+        };
+        if let Err(e) = app_handle.emit("workspace:stdout", &payload) {
+            warn!("failed to emit workspace:stdout: {e}");
+        }
+        monitor.process_chunk(data);
+    }
+}
+
 // ── Workspace open inner logic (T-069) ──────────────────────────
 
 /// Core logic for `workspace_open`, testable without Tauri state.
@@ -832,6 +954,29 @@ pub(crate) async fn workspace_archive_inner(
     update_workspace_state(pool, &ws.id, &WorkspaceState::Archived, Some(&ws.state)).await
 }
 
+/// Fetches PR details from GitHub and generates CLAUDE.md in the worktree.
+/// Creates a `GitHubClient` from the stored token on-demand.
+async fn generate_claude_md_with_token(
+    repo_id: &str,
+    pr_number: u32,
+    worktree_path: &str,
+) -> Result<(), AppError> {
+    let token = tokio::task::spawn_blocking(auth::get_token)
+        .await
+        .map_err(|e| AppError::Workspace(format!("token task join error: {e}")))?
+        .map_err(|e| AppError::Auth(format!("failed to get token: {e}")))?
+        .ok_or_else(|| AppError::Auth("no GitHub token stored".into()))?;
+
+    let client = GitHubClient::new(&token)?;
+    crate::workspace::claude::generate_claude_md(
+        &client,
+        repo_id,
+        i64::from(pr_number),
+        std::path::Path::new(worktree_path),
+    )
+    .await
+}
+
 /// Opens a workspace for a PR: creates worktree, spawns PTY, persists in DB.
 ///
 /// Pre-generates the workspace UUID so the `workspace:stdout` events carry
@@ -844,22 +989,47 @@ pub async fn workspace_open(
     req: OpenWorkspaceRequest,
 ) -> Result<OpenWorkspaceResponse, String> {
     let workspace_id = uuid::Uuid::new_v4().to_string();
-    let ws_id_for_output = workspace_id.clone();
 
-    let handle = app_handle.clone();
-    let on_output = move |_pty_id: &str, data: &[u8]| {
-        let payload = crate::types::PtyOutput {
-            workspace_id: ws_id_for_output.clone(),
-            data: String::from_utf8_lossy(data).to_string(),
-        };
-        if let Err(e) = handle.emit("workspace:stdout", &payload) {
-            warn!("failed to emit workspace:stdout: {e}");
-        }
-    };
+    let on_output = make_pty_callback(
+        workspace_id.clone(),
+        pool.inner().clone(),
+        app_handle.clone(),
+    );
 
-    workspace_open_inner(&pool, &pty_state, &workspace_id, &req, on_output)
+    let resp = workspace_open_inner(&pool, &pty_state, &workspace_id, &req, on_output)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Background: generate CLAUDE.md then launch Claude
+    {
+        let manager = pty_state.manager.clone();
+        let pty_id = resp.pty_id.clone();
+        let repo_id = req.repo_id.clone();
+        let pr_number = req.pull_request_number;
+        let wt_path = resp.worktree_path.clone();
+        tokio::spawn(async move {
+            // 1. Generate CLAUDE.md (best-effort)
+            match generate_claude_md_with_token(&repo_id, pr_number, &wt_path).await {
+                Ok(()) => info!("CLAUDE.md generated for PR #{pr_number}"),
+                Err(e) => warn!("CLAUDE.md generation failed for PR #{pr_number}: {e}"),
+            }
+            // 2. Launch Claude in PTY
+            if let Err(e) = crate::workspace::claude::launch_claude(&manager, &pty_id) {
+                warn!("failed to launch claude in workspace: {e}");
+                return;
+            }
+            // 3. Brief pause for Claude to start, then rename session
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let name = format!("prism-pr-{pr_number}");
+            if let Err(e) =
+                crate::workspace::claude::rename_claude_session(&manager, &pty_id, &name)
+            {
+                warn!("failed to rename claude session: {e}");
+            }
+        });
+    }
+
+    Ok(resp)
 }
 
 /// Suspends an active workspace: kills PTY, sets state to Suspended.
@@ -898,17 +1068,11 @@ pub async fn workspace_resume(
     app_handle: tauri::AppHandle,
     workspace_id: String,
 ) -> Result<OpenWorkspaceResponse, String> {
-    let ws_id_for_output = workspace_id.clone();
-    let handle = app_handle.clone();
-    let on_output = move |_pty_id: &str, data: &[u8]| {
-        let payload = crate::types::PtyOutput {
-            workspace_id: ws_id_for_output.clone(),
-            data: String::from_utf8_lossy(data).to_string(),
-        };
-        if let Err(e) = handle.emit("workspace:stdout", &payload) {
-            warn!("failed to emit workspace:stdout: {e}");
-        }
-    };
+    let on_output = make_pty_callback(
+        workspace_id.clone(),
+        pool.inner().clone(),
+        app_handle.clone(),
+    );
 
     let resp = workspace_resume_inner(&pool, &pty_state, &workspace_id, on_output)
         .await
@@ -920,6 +1084,51 @@ pub async fn workspace_resume(
     };
     if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
         warn!("failed to emit workspace:state_changed: {e}");
+    }
+
+    // Background: launch or resume Claude
+    {
+        let manager = pty_state.manager.clone();
+        let pty_id = resp.pty_id.clone();
+        let session_id = resp.session_id.clone();
+        let pool_bg = pool.inner().clone();
+        let ws_id = workspace_id.clone();
+        tokio::spawn(async move {
+            // Resume or launch Claude first — must not be gated on a rename lookup
+            if let Some(sid) = &session_id {
+                if let Err(e) = crate::workspace::claude::resume_claude(&manager, &pty_id, sid) {
+                    warn!("failed to resume claude session: {e}");
+                    // Launch fresh first (safe ordering: workspace always has a process)
+                    if let Err(e2) = crate::workspace::claude::launch_claude(&manager, &pty_id) {
+                        warn!("failed to launch claude as fallback: {e2}");
+                        return;
+                    }
+                    // Then clear stale session_id (compare-and-swap)
+                    if let Err(e) =
+                        crate::cache::workspaces::clear_stale_session(&pool_bg, &ws_id, Some(sid))
+                            .await
+                    {
+                        warn!("failed to clear stale session: {e}");
+                    }
+                }
+            } else if let Err(e) = crate::workspace::claude::launch_claude(&manager, &pty_id) {
+                warn!("failed to launch claude: {e}");
+                return;
+            }
+
+            // Best-effort rename — fetch pr_number after Claude is already running
+            if let Ok(Some(ws)) = crate::cache::workspaces::get_workspace(&pool_bg, &ws_id).await {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let name = format!("prism-pr-{}", ws.pull_request_number);
+                if let Err(e) =
+                    crate::workspace::claude::rename_claude_session(&manager, &pty_id, &name)
+                {
+                    warn!("failed to rename claude session: {e}");
+                }
+            } else {
+                warn!("cannot get workspace for claude rename: {ws_id}");
+            }
+        });
     }
 
     Ok(resp)
@@ -2769,5 +2978,101 @@ mod tests {
         let missing = tmp.path().join("nonexistent.db");
         let size = get_file_size_bytes(&missing);
         assert_eq!(size, 0, "missing file should return 0");
+    }
+
+    // -- SessionMonitor line-buffering + detection tests --
+
+    mod session_monitor_tests {
+        use crate::workspace::claude::{detect_auth_error, detect_session_id};
+
+        /// Simplified line-buffer that mimics `SessionMonitor::process_chunk`
+        /// without requiring a `SqlitePool` or `tauri::AppHandle`.
+        struct TestLineBuffer {
+            buffer: String,
+            detected_sessions: Vec<String>,
+            detected_auth_errors: u32,
+        }
+
+        impl TestLineBuffer {
+            fn new() -> Self {
+                Self {
+                    buffer: String::new(),
+                    detected_sessions: vec![],
+                    detected_auth_errors: 0,
+                }
+            }
+
+            fn process_chunk(&mut self, data: &[u8]) {
+                self.buffer.push_str(&String::from_utf8_lossy(data));
+                while let Some(pos) = self.buffer.find('\n') {
+                    let line: String = self.buffer.drain(..=pos).collect();
+                    if let Some(sid) = detect_session_id(&line) {
+                        self.detected_sessions.push(sid);
+                    }
+                    if detect_auth_error(&line) {
+                        self.detected_auth_errors += 1;
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn test_detects_session_id_from_complete_line() {
+            let mut buf = TestLineBuffer::new();
+            buf.process_chunk(b"Session: abc-12345678\n");
+            assert_eq!(buf.detected_sessions, vec!["abc-12345678"]);
+        }
+
+        #[test]
+        fn test_buffers_partial_lines() {
+            let mut buf = TestLineBuffer::new();
+            buf.process_chunk(b"Session: abc-");
+            assert!(
+                buf.detected_sessions.is_empty(),
+                "should not detect from partial line"
+            );
+            buf.process_chunk(b"12345678\n");
+            assert_eq!(buf.detected_sessions, vec!["abc-12345678"]);
+        }
+
+        #[test]
+        fn test_detects_multiple_sessions_across_chunks() {
+            let mut buf = TestLineBuffer::new();
+            buf.process_chunk(
+                b"Session: first-session-1\nSome other output\nSession: second-session-2\n",
+            );
+            assert_eq!(buf.detected_sessions.len(), 2);
+            assert_eq!(buf.detected_sessions[0], "first-session-1");
+            assert_eq!(buf.detected_sessions[1], "second-session-2");
+        }
+
+        #[test]
+        fn test_detects_auth_error() {
+            let mut buf = TestLineBuffer::new();
+            buf.process_chunk(b"Error: 401 Unauthorized\n");
+            assert_eq!(buf.detected_auth_errors, 1);
+        }
+
+        #[test]
+        fn test_no_false_positive_without_newline() {
+            let mut buf = TestLineBuffer::new();
+            buf.process_chunk(b"Session: abc-12345678");
+            assert!(
+                buf.detected_sessions.is_empty(),
+                "incomplete line should not trigger detection"
+            );
+            assert!(
+                !buf.buffer.is_empty(),
+                "partial line should remain in buffer"
+            );
+        }
+
+        #[test]
+        fn test_handles_mixed_content() {
+            let mut buf = TestLineBuffer::new();
+            buf.process_chunk(b"Starting shell...\nSession: my-session_42\nReady.\n");
+            assert_eq!(buf.detected_sessions, vec!["my-session_42"]);
+            assert_eq!(buf.detected_auth_errors, 0);
+        }
     }
 }
