@@ -265,7 +265,7 @@ describe("WorkspaceView", () => {
     useWorkspacesStore.setState({ activeWorkspaceId: null });
 
     const setActiveWorkspace = vi.fn();
-    useWorkspacesStore.setState({ setActiveWorkspace } as Partial<typeof useWorkspacesStore.getState>);
+    useWorkspacesStore.setState({ setActiveWorkspace } as Partial<ReturnType<typeof useWorkspacesStore.getState>>);
 
     const activeEntry = makeEntry({ workspaceOverrides: { id: "ws-click", state: "active", pullRequestNumber: 5 } });
 
@@ -289,10 +289,13 @@ describe("WorkspaceView", () => {
   it("should call resumeWorkspace then set active when clicking a suspended workspace", async () => {
     useWorkspacesStore.setState({ activeWorkspaceId: null });
 
-    const setActiveWorkspace = vi.fn();
-    useWorkspacesStore.setState({ setActiveWorkspace } as Partial<typeof useWorkspacesStore.getState>);
+    const callOrder: string[] = [];
+    const setActiveWorkspace = vi.fn(() => callOrder.push("setActive"));
+    useWorkspacesStore.setState({ setActiveWorkspace } as Partial<ReturnType<typeof useWorkspacesStore.getState>>);
 
-    vi.mocked(resumeWorkspace).mockResolvedValue(undefined);
+    vi.mocked(resumeWorkspace).mockImplementation(async () => {
+      callOrder.push("resume");
+    });
 
     const suspendedEntry = makeEntry({ workspaceOverrides: { id: "ws-suspended", state: "suspended", pullRequestNumber: 7 } });
 
@@ -310,6 +313,7 @@ describe("WorkspaceView", () => {
     await waitFor(() => {
       expect(resumeWorkspace).toHaveBeenCalledWith("ws-suspended");
       expect(setActiveWorkspace).toHaveBeenCalledWith("ws-suspended");
+      expect(callOrder).toEqual(["resume", "setActive"]);
     });
   });
 });

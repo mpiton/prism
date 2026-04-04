@@ -61,7 +61,10 @@ export function useWorkspaceEnriched(enabled = true) {
     return map;
   }, [query.data]);
 
-  const entries: readonly WorkspaceListEntry[] = query.data ?? [];
+  const entries: readonly WorkspaceListEntry[] = useMemo(
+    () => query.data ?? [],
+    [query.data],
+  );
 
   return { statusInfo, entries, isLoading: query.isLoading };
 }
