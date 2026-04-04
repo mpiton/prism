@@ -102,7 +102,7 @@ interface MainContentProps {
 
 function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElement {
   const { dashboard } = useGitHubData();
-  const { statusInfo } = useWorkspaceEnriched(view === "workspaces");
+  const { statusInfo, entries } = useWorkspaceEnriched(view === "workspaces");
   const queryClient = useQueryClient();
 
   const markAllRead = useMutation({
@@ -175,6 +175,7 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
         <WorkspaceView
           workspaces={dashboard?.workspaces ?? []}
           statusInfo={statusInfo}
+          entries={entries}
           onBackToDashboard={onBackToDashboard}
         />
       );

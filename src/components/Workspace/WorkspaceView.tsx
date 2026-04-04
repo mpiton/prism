@@ -1,24 +1,55 @@
-import type { ReactElement } from "react";
-import type { Workspace, WorkspaceStatusInfo } from "../../lib/types";
+import { useCallback, useMemo, type ReactElement } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types";
+import { resumeWorkspace } from "../../lib/tauri";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { Terminal } from "./Terminal";
 import { WorkspaceStatusBar } from "./WorkspaceStatusBar";
+import { WorkspaceListPage } from "./WorkspaceListPage";
 
 interface WorkspaceViewProps {
   readonly workspaces: readonly Workspace[];
   readonly statusInfo: Readonly<Record<string, WorkspaceStatusInfo>>;
+  readonly entries: readonly WorkspaceListEntry[];
   readonly onBackToDashboard: () => void;
 }
 
 export function WorkspaceView({
   workspaces,
   statusInfo,
+  entries,
   onBackToDashboard,
 }: WorkspaceViewProps): ReactElement {
+  const queryClient = useQueryClient();
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const info = active ? statusInfo[active.id] : undefined;
+
+  const visibleEntries = useMemo(
+    () => entries.filter((e) => e.workspace.state !== "archived"),
+    [entries],
+  );
+
+  const handleWorkspaceClick = useCallback(
+    async (id: string) => {
+      const entry = visibleEntries.find((e) => e.workspace.id === id);
+      if (!entry) return;
+
+      try {
+        if (entry.workspace.state === "suspended") {
+          await resumeWorkspace(id);
+        }
+        setActiveWorkspace(id);
+        queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+        queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
+      } catch (err: unknown) {
+        console.error("[WorkspaceView] failed to resume workspace:", err);
+      }
+    },
+    [visibleEntries, queryClient, setActiveWorkspace],
+  );
 
   return (
     <section
@@ -49,9 +80,7 @@ export function WorkspaceView({
           )}
         </>
       ) : (
-        <div className="flex flex-1 items-center justify-center text-dim">
-          Select a workspace to begin
-        </div>
+        <WorkspaceListPage entries={visibleEntries} onWorkspaceClick={handleWorkspaceClick} />
       )}
     </section>
   );

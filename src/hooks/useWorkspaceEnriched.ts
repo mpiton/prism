@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listWorkspacesEnriched, onEvent } from "../lib/tauri";
 import { TAURI_EVENTS } from "../lib/types";
-import type { WorkspaceStatusInfo } from "../lib/types";
+import type { WorkspaceListEntry, WorkspaceStatusInfo } from "../lib/types";
 
 const STALE_TIME = 30_000;
 
@@ -61,5 +61,7 @@ export function useWorkspaceEnriched(enabled = true) {
     return map;
   }, [query.data]);
 
-  return { statusInfo, isLoading: query.isLoading };
+  const entries: readonly WorkspaceListEntry[] = query.data ?? [];
+
+  return { statusInfo, entries, isLoading: query.isLoading };
 }
