@@ -17,6 +17,7 @@ interface MyPRsProps {
   readonly prs: readonly PullRequestWithReview[];
   readonly onOpen: (url: string) => void;
   readonly onWorkspaceAction?: (params: WorkspaceActionParams) => void;
+  readonly workspaceRepoIds?: ReadonlySet<string>;
 }
 
 type Tab = "open" | "merged";
@@ -34,6 +35,7 @@ export function MyPRs({
   prs,
   onOpen,
   onWorkspaceAction,
+  workspaceRepoIds,
 }: MyPRsProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
 
@@ -91,6 +93,7 @@ export function MyPRs({
               data={pr}
               onOpen={onOpen}
               onWorkspaceAction={onWorkspaceAction}
+              workspaceRepoIds={workspaceRepoIds}
             />
           ))}
         </div>

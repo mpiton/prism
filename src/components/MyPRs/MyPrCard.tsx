@@ -15,6 +15,7 @@ interface MyPrCardProps {
     readonly workspaceId?: string;
     readonly workspaceState?: string;
   }) => void;
+  readonly workspaceRepoIds?: ReadonlySet<string>;
 }
 
 function isMergeable(data: PullRequestWithReview): boolean {
@@ -52,6 +53,7 @@ export function MyPrCard({
   data,
   onOpen,
   onWorkspaceAction,
+  workspaceRepoIds,
 }: MyPrCardProps): ReactElement {
   const { pullRequest: pr, workspace } = data;
   const merged = pr.state === "merged";
@@ -116,7 +118,7 @@ export function MyPrCard({
         </div>
       </a>
 
-      {((workspace && workspace.state !== "archived") || ((pr.state === "open" || pr.state === "draft") && pr.headRefName)) && (
+      {((workspace && workspace.state !== "archived") || ((pr.state === "open" || pr.state === "draft") && pr.headRefName && (!workspaceRepoIds || workspaceRepoIds.has(pr.repoId)))) && (
         <WsBadge
           state={workspace?.state === "archived" ? undefined : workspace?.state}
           onClick={

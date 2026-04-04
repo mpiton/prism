@@ -16,12 +16,14 @@ interface ReviewCardProps {
     readonly workspaceId?: string;
     readonly workspaceState?: string;
   }) => void;
+  readonly workspaceRepoIds?: ReadonlySet<string>;
 }
 
 export function ReviewCard({
   data,
   onOpen,
   onWorkspaceAction,
+  workspaceRepoIds,
 }: ReviewCardProps): ReactElement {
   const { pullRequest: pr, workspace } = data;
 
@@ -59,7 +61,7 @@ export function ReviewCard({
         </div>
       </a>
 
-      {((workspace && workspace.state !== "archived") || (pr.state === "open" && pr.headRefName)) && (
+      {((workspace && workspace.state !== "archived") || (pr.state === "open" && pr.headRefName && (!workspaceRepoIds || workspaceRepoIds.has(pr.repoId)))) && (
         <WsBadge
           state={workspace?.state === "archived" ? undefined : workspace?.state}
           onClick={

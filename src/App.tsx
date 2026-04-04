@@ -3,13 +3,14 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useMemo,
   useState,
   type ErrorInfo,
   type ReactElement,
   type ReactNode,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authGetStatus, markAllActivityRead, openWorkspace, resumeWorkspace } from "./lib/tauri";
+import { authGetStatus, listRepos, markAllActivityRead, openWorkspace, resumeWorkspace } from "./lib/tauri";
 import { useGitHubData } from "./hooks/useGitHubData";
 import { AuthSetup } from "./components/AuthSetup/AuthSetup";
 import { StatsBar } from "./components/StatsBar";
@@ -104,6 +105,12 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
   const { dashboard } = useGitHubData();
   const { statusInfo } = useWorkspaceEnriched(view === "workspaces");
   const queryClient = useQueryClient();
+  const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos, staleTime: 60_000 });
+
+  const workspaceRepoIds = useMemo(
+    () => new Set(repos?.filter((r) => r.localPath).map((r) => r.id) ?? []),
+    [repos],
+  );
 
   const markAllRead = useMutation({
     mutationFn: markAllActivityRead,
@@ -156,9 +163,9 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
     case "overview":
       return <Overview />;
     case "reviews":
-      return <ReviewQueue reviews={dashboard?.reviewRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />;
+      return <ReviewQueue reviews={dashboard?.reviewRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} workspaceRepoIds={workspaceRepoIds} />;
     case "mine":
-      return <MyPRs prs={dashboard?.myPullRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />;
+      return <MyPRs prs={dashboard?.myPullRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} workspaceRepoIds={workspaceRepoIds} />;
     case "issues":
       return <Issues issues={dashboard?.assignedIssues ?? []} onOpen={openUrl} />;
     case "feed":

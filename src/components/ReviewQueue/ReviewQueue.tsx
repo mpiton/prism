@@ -18,6 +18,7 @@ interface ReviewQueueProps {
   readonly reviews: readonly PullRequestWithReview[];
   readonly onOpen: (url: string) => void;
   readonly onWorkspaceAction?: (params: WorkspaceActionParams) => void;
+  readonly workspaceRepoIds?: ReadonlySet<string>;
 }
 
 const PRIORITY_ORDER: Record<Priority, number> = {
@@ -60,6 +61,7 @@ export function ReviewQueue({
   reviews,
   onOpen,
   onWorkspaceAction,
+  workspaceRepoIds,
 }: ReviewQueueProps): ReactElement {
   const storePriority = useDashboardStore((s) => s.activeFilters.priority);
   const storeRepo = useDashboardStore((s) => s.activeFilters.repo);
@@ -155,6 +157,7 @@ export function ReviewQueue({
               data={review}
               onOpen={onOpen}
               onWorkspaceAction={onWorkspaceAction}
+              workspaceRepoIds={workspaceRepoIds}
             />
           ))}
         </div>
