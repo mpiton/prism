@@ -552,7 +552,7 @@ struct SessionMonitor {
     pool: SqlitePool,
     app_handle: tauri::AppHandle,
     line_buffer: Mutex<String>,
-    session_detected: AtomicBool,
+    session_detected: Arc<AtomicBool>,
 }
 
 impl SessionMonitor {
@@ -562,7 +562,7 @@ impl SessionMonitor {
             pool,
             app_handle,
             line_buffer: Mutex::new(String::new()),
-            session_detected: AtomicBool::new(false),
+            session_detected: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -597,6 +597,7 @@ impl SessionMonitor {
                     let ws_id = self.workspace_id.clone();
                     let app_handle = self.app_handle.clone();
                     let sid = session_id.clone();
+                    let flag = self.session_detected.clone();
                     tokio::spawn(async move {
                         if let Err(e) = crate::cache::workspaces::update_claude_session(
                             &pool,
@@ -605,7 +606,10 @@ impl SessionMonitor {
                         )
                         .await
                         {
-                            warn!("failed to persist claude session id: {e}");
+                            // Reset flag so subsequent lines can retry detection
+                            flag.store(false, Ordering::Release);
+                            warn!("failed to persist claude session id (will retry): {e}");
+                            return;
                         }
                         if let Err(e) = app_handle.emit(
                             "workspace:claude_session",
@@ -952,7 +956,7 @@ pub(crate) async fn workspace_archive_inner(
 
 /// Fetches PR details from GitHub and generates CLAUDE.md in the worktree.
 /// Creates a `GitHubClient` from the stored token on-demand.
-async fn spawn_claude_md_generation(
+async fn generate_claude_md_with_token(
     repo_id: &str,
     pr_number: u32,
     worktree_path: &str,
@@ -1005,7 +1009,7 @@ pub async fn workspace_open(
         let wt_path = resp.worktree_path.clone();
         tokio::spawn(async move {
             // 1. Generate CLAUDE.md (best-effort)
-            match spawn_claude_md_generation(&repo_id, pr_number, &wt_path).await {
+            match generate_claude_md_with_token(&repo_id, pr_number, &wt_path).await {
                 Ok(()) => info!("CLAUDE.md generated for PR #{pr_number}"),
                 Err(e) => warn!("CLAUDE.md generation failed for PR #{pr_number}: {e}"),
             }
@@ -1090,29 +1094,21 @@ pub async fn workspace_resume(
         let pool_bg = pool.inner().clone();
         let ws_id = workspace_id.clone();
         tokio::spawn(async move {
-            let pr_number = if let Ok(Some(ws)) =
-                crate::cache::workspaces::get_workspace(&pool_bg, &ws_id).await
-            {
-                ws.pull_request_number
-            } else {
-                warn!("cannot get workspace for claude resume: {ws_id}");
-                return;
-            };
-
+            // Resume or launch Claude first — must not be gated on a rename lookup
             if let Some(sid) = &session_id {
                 if let Err(e) = crate::workspace::claude::resume_claude(&manager, &pty_id, sid) {
                     warn!("failed to resume claude session: {e}");
-                    // Clear stale session_id before launching fresh (compare-and-swap)
+                    // Launch fresh first (safe ordering: workspace always has a process)
+                    if let Err(e2) = crate::workspace::claude::launch_claude(&manager, &pty_id) {
+                        warn!("failed to launch claude as fallback: {e2}");
+                        return;
+                    }
+                    // Then clear stale session_id (compare-and-swap)
                     if let Err(e) =
                         crate::cache::workspaces::clear_stale_session(&pool_bg, &ws_id, Some(sid))
                             .await
                     {
                         warn!("failed to clear stale session: {e}");
-                    }
-                    // Fallback: launch fresh
-                    if let Err(e2) = crate::workspace::claude::launch_claude(&manager, &pty_id) {
-                        warn!("failed to launch claude as fallback: {e2}");
-                        return;
                     }
                 }
             } else if let Err(e) = crate::workspace::claude::launch_claude(&manager, &pty_id) {
@@ -1120,13 +1116,17 @@ pub async fn workspace_resume(
                 return;
             }
 
-            // Rename session
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            let name = format!("prism-pr-{pr_number}");
-            if let Err(e) =
-                crate::workspace::claude::rename_claude_session(&manager, &pty_id, &name)
-            {
-                warn!("failed to rename claude session: {e}");
+            // Best-effort rename — fetch pr_number after Claude is already running
+            if let Ok(Some(ws)) = crate::cache::workspaces::get_workspace(&pool_bg, &ws_id).await {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let name = format!("prism-pr-{}", ws.pull_request_number);
+                if let Err(e) =
+                    crate::workspace::claude::rename_claude_session(&manager, &pty_id, &name)
+                {
+                    warn!("failed to rename claude session: {e}");
+                }
+            } else {
+                warn!("cannot get workspace for claude rename: {ws_id}");
             }
         });
     }
