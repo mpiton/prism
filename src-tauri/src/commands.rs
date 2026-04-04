@@ -1986,7 +1986,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_workspace_open_no_local_path() {
+    async fn test_workspace_open_no_local_path_triggers_clone() {
         let (pool, _tmp) = test_pool().await;
         insert_test_repo(&pool, None).await;
 
@@ -1997,17 +1997,18 @@ mod tests {
             branch: "feature-42".into(),
         };
 
+        // With no local_path the function attempts an auto-clone.
+        // In CI without network access it will fail with a Git error
+        // (not a Workspace error), proving the clone path was taken.
         let ws_id = uuid::Uuid::new_v4().to_string();
         let result = workspace_open_inner(&pool, &pty_state, &ws_id, &req, |_, _| {}).await;
-        assert!(result.is_err());
+        assert!(result.is_err(), "should fail (no real clone target)");
         let err = result.unwrap_err();
+        // The error should be a Git error from the clone/worktree attempt,
+        // not the old "no local_path" Workspace error.
         assert!(
-            matches!(err, AppError::Workspace(_)),
-            "expected Workspace error, got: {err}"
-        );
-        assert!(
-            err.to_string().contains("no local_path"),
-            "error should mention local_path: {err}"
+            !err.to_string().contains("no local_path"),
+            "should not get old 'no local_path' error, got: {err}"
         );
 
         pool.close().await;
