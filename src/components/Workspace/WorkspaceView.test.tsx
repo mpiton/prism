@@ -294,6 +294,7 @@ describe("WorkspaceView", () => {
     useWorkspacesStore.setState({ setActiveWorkspace } as Partial<ReturnType<typeof useWorkspacesStore.getState>>);
 
     vi.mocked(resumeWorkspace).mockImplementation(async () => {
+      await Promise.resolve();
       callOrder.push("resume");
     });
 
