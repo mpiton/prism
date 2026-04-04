@@ -164,7 +164,8 @@ describe("PTY wrappers", () => {
     mockInvoke.mockResolvedValue(undefined);
     await ptyWrite({ workspaceId: "ws-1", data: "ls\n" });
     expect(mockInvoke).toHaveBeenCalledWith(TAURI_COMMANDS.pty_write, {
-      input: { workspaceId: "ws-1", data: "ls\n" },
+      workspaceId: "ws-1",
+      data: "ls\n",
     });
   });
 
@@ -173,7 +174,9 @@ describe("PTY wrappers", () => {
     mockInvoke.mockResolvedValue(undefined);
     await ptyResize({ workspaceId: "ws-1", cols: 120, rows: 40 });
     expect(mockInvoke).toHaveBeenCalledWith(TAURI_COMMANDS.pty_resize, {
-      resize: { workspaceId: "ws-1", cols: 120, rows: 40 },
+      workspaceId: "ws-1",
+      cols: 120,
+      rows: 40,
     });
   });
 

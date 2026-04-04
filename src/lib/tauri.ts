@@ -103,11 +103,11 @@ export async function listWorkspacesEnriched(): Promise<WorkspaceListEntry[]> {
 // ── PTY ──────────────────────────────────────────────────────────
 
 export async function ptyWrite(input: PtyInput): Promise<void> {
-  return invoke<void>(TAURI_COMMANDS.pty_write, { input });
+  return invoke<void>(TAURI_COMMANDS.pty_write, { ...input });
 }
 
 export async function ptyResize(resize: PtyResize): Promise<void> {
-  return invoke<void>(TAURI_COMMANDS.pty_resize, { resize });
+  return invoke<void>(TAURI_COMMANDS.pty_resize, { ...resize });
 }
 
 export async function ptyKill(workspaceId: string): Promise<void> {
