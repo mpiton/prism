@@ -41,29 +41,35 @@ export function Overview(): ReactElement {
       readonly workspaceId?: string;
       readonly workspaceState?: string;
     }) => {
-      const { setActiveWorkspace } = useWorkspacesStore.getState();
-      const { setView } = useDashboardStore.getState();
+      try {
+        const { setActiveWorkspace } = useWorkspacesStore.getState();
+        const { setView } = useDashboardStore.getState();
 
-      if (params.workspaceId) {
-        // Existing workspace — resume if suspended, then navigate
-        if (params.workspaceState === "suspended") {
-          await resumeWorkspace(params.workspaceId);
+        if (params.workspaceId && params.workspaceState !== "archived") {
+          // Existing workspace — resume if suspended, then navigate
+          if (params.workspaceState === "suspended") {
+            await resumeWorkspace(params.workspaceId);
+          }
+          setActiveWorkspace(params.workspaceId);
+          setView("workspaces");
+          return;
         }
-        setActiveWorkspace(params.workspaceId);
-        setView("workspaces");
-        return;
-      }
 
-      // No workspace yet — create one
-      const response = await openWorkspace({
-        repoId: params.repoId,
-        pullRequestNumber: params.pullRequestNumber,
-        branch: params.headRefName,
-      });
-      await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
-      await queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
-      setActiveWorkspace(response.workspaceId);
-      setView("workspaces");
+        // No workspace or archived — create a new one
+        const response = await openWorkspace({
+          repoId: params.repoId,
+          pullRequestNumber: params.pullRequestNumber,
+          branch: params.headRefName,
+        });
+        await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+        await queryClient.invalidateQueries({
+          queryKey: ["github", "dashboard"],
+        });
+        setActiveWorkspace(response.workspaceId);
+        setView("workspaces");
+      } catch (err: unknown) {
+        console.error("[Overview] workspace action failed:", err);
+      }
     },
     [queryClient],
   );
