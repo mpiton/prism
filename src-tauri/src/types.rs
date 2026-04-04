@@ -362,6 +362,14 @@ pub struct WorkspaceStateChanged {
     pub new_state: WorkspaceState,
 }
 
+/// Payload emitted when a Claude Code session ID is detected from PTY stdout.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeSessionPayload {
+    pub workspace_id: String,
+    pub session_id: String,
+}
+
 /// Application-level configuration persisted in the `config` table.
 // Hash omitted: config structs are likely to gain Vec fields (e.g. watched_repos).
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -45,7 +45,6 @@ static AUTH_ERROR_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Rejects plain words (must contain at least one digit, dash, or underscore).
 /// Also rejects lines that match a session error pattern to avoid
 /// re-persisting broken session IDs from error messages.
-#[allow(dead_code)]
 pub fn detect_session_id(stdout_line: &str) -> Option<String> {
     if detect_session_error(stdout_line).is_some() {
         return None;
@@ -71,7 +70,6 @@ pub fn detect_session_error(stdout_line: &str) -> Option<String> {
 }
 
 /// Returns `true` if the stdout line contains an auth/401 error indicator.
-#[allow(dead_code)]
 pub fn detect_auth_error(stdout_line: &str) -> bool {
     AUTH_ERROR_RE.is_match(stdout_line)
 }
@@ -91,7 +89,6 @@ fn reject_control_chars(value: &str, label: &str) -> Result<(), AppError> {
 ///
 /// Writes `claude\n` to the PTY's stdin. The caller is responsible for
 /// spawning the PTY with `cwd` pointing at the correct worktree.
-#[allow(dead_code)]
 pub fn launch_claude(pty_manager: &PtyManager, pty_id: &str) -> Result<(), AppError> {
     pty_manager.write_pty(pty_id, b"claude\n")
 }
@@ -100,7 +97,6 @@ pub fn launch_claude(pty_manager: &PtyManager, pty_id: &str) -> Result<(), AppEr
 ///
 /// Writes `claude --resume <session_id>\n` to the PTY's stdin.
 /// Rejects `session_id` values containing control characters.
-#[allow(dead_code)]
 pub fn resume_claude(
     pty_manager: &PtyManager,
     pty_id: &str,
@@ -115,7 +111,6 @@ pub fn resume_claude(
 ///
 /// Writes the `/session rename <name>` slash-command to the PTY's stdin.
 /// Rejects `name` values containing control characters.
-#[allow(dead_code)]
 pub fn rename_claude_session(
     pty_manager: &PtyManager,
     pty_id: &str,
@@ -213,7 +208,6 @@ pub struct PrContext {
 }
 
 /// Renders the CLAUDE.md content from PR context (pure function).
-#[allow(dead_code)]
 pub fn render_claude_md(ctx: &PrContext) -> String {
     use std::fmt::Write;
 
@@ -558,7 +552,6 @@ pub async fn create_suspension_note(
 /// Fetches PR details from GitHub and generates a CLAUDE.md in the worktree.
 ///
 /// `repo_id` must be in "owner/name" format (e.g. "mpiton/prism").
-#[allow(dead_code)]
 pub async fn generate_claude_md(
     client: &GitHubClient,
     repo_id: &str,

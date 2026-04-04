@@ -215,7 +215,6 @@ pub async fn update_workspace_state(
 
 /// Update the Claude Code session ID and `updated_at` timestamp.
 /// Returns the updated workspace via `RETURNING`.
-#[allow(dead_code)]
 pub async fn update_claude_session(
     pool: &SqlitePool,
     id: &str,
@@ -241,7 +240,6 @@ pub async fn update_claude_session(
 /// If `expected` is `None`, clears unconditionally (any current value).
 /// Returns `true` if a row was updated, `false` if the `session_id` had
 /// already changed (no-op in that case).
-#[allow(dead_code)]
 pub async fn clear_stale_session(
     pool: &SqlitePool,
     id: &str,
