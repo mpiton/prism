@@ -95,7 +95,6 @@ pub async fn insert_activity(pool: &SqlitePool, activity: &Activity) -> Result<A
 }
 
 /// Return recent activity events, paginated and ordered by `created_at DESC`.
-#[allow(dead_code)]
 pub async fn get_recent_activity(
     pool: &SqlitePool,
     limit: i64,
@@ -135,7 +134,6 @@ pub async fn mark_all_read(pool: &SqlitePool) -> Result<u64, AppError> {
 ///
 /// Returns `true` if a new row was inserted, `false` if the ID already existed.
 /// Accepts any sqlx executor (pool, connection, or transaction) for flexibility.
-#[allow(dead_code)]
 pub async fn upsert_activity<'e, E>(executor: E, activity: &Activity) -> Result<bool, AppError>
 where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,

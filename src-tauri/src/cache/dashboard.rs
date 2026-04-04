@@ -253,7 +253,7 @@ pub async fn compute_dashboard_stats(
 }
 
 /// Get the most recent `last_sync_at` across all repos.
-async fn get_latest_sync_at(pool: &SqlitePool) -> Result<Option<String>, AppError> {
+pub(crate) async fn get_latest_sync_at(pool: &SqlitePool) -> Result<Option<String>, AppError> {
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT MAX(last_sync_at) FROM repos WHERE last_sync_at IS NOT NULL")
             .fetch_optional(pool)
