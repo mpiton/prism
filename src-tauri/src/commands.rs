@@ -597,8 +597,8 @@ pub(crate) async fn workspace_open_inner(
     let local_path = if let Some(lp) = repo.local_path.as_deref() {
         PathBuf::from(lp)
     } else {
-        // Auto-clone: clone into {base_dir}/{repo_name}/repo
-        let repos_dir = base_dir.join(&repo.name);
+        // Auto-clone: clone into {base_dir}/{org}/{repo}/repo
+        let repos_dir = base_dir.join(&repo.full_name);
         let clone_path = worktree::clone_repo(&repo.url, "repo", &repos_dir).await?;
         // Persist local_path so future opens skip the clone
         let clone_str = clone_path
@@ -2010,11 +2010,15 @@ mod tests {
         let result = workspace_open_inner(&pool, &pty_state, &ws_id, &req, |_, _| {}).await;
         assert!(result.is_err(), "should fail (no real clone target)");
         let err = result.unwrap_err();
-        // The error should be a Git error from the clone/worktree attempt,
-        // not the old "no local_path" Workspace error.
+        // The error comes from the clone/worktree attempt (Git or Workspace),
+        // never the old "no local_path" error.
         assert!(
-            matches!(err, AppError::Git(_)),
-            "expected Git error from clone/worktree path, got: {err}"
+            matches!(err, AppError::Git(_) | AppError::Workspace(_)),
+            "expected Git or Workspace error from clone path, got: {err}"
+        );
+        assert!(
+            !err.to_string().contains("no local_path"),
+            "should not get old 'no local_path' error, got: {err}"
         );
 
         pool.close().await;
