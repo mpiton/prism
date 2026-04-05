@@ -52,7 +52,7 @@ export function Stats(): ReactElement {
       <StatItem label="PRs merged this week" value={String(stats.prsMergedThisWeek)} />
       <StatItem label="Avg review response" value={avgHours} />
       <StatItem label="Reviews given this week" value={String(stats.reviewsGivenThisWeek)} />
-      <StatItem label="Active workspaces" value={String(stats.activeWorkspaceCount)} />
+      <StatItem label="Workspaces" value={String(stats.totalWorkspaceCount)} />
     </div>
   );
 }

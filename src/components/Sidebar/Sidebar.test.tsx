@@ -12,7 +12,7 @@ vi.mock("../../hooks/useGitHubData", () => ({
       pendingReviews: 3,
       openPrs: 7,
       openIssues: 2,
-      activeWorkspaces: 1,
+      totalWorkspaces: 1,
       unreadActivity: 4,
     },
     dashboard: {

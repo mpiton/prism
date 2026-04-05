@@ -88,7 +88,7 @@ function makePersonalStats(overrides: Partial<PersonalStats> = {}): PersonalStat
     prsMergedThisWeek: 3,
     avgReviewResponseHours: 2.5,
     reviewsGivenThisWeek: 7,
-    activeWorkspaceCount: 1,
+    totalWorkspaceCount: 1,
     ...overrides,
   };
 }
@@ -344,7 +344,7 @@ describe("Settings", () => {
         prsMergedThisWeek: 5,
         avgReviewResponseHours: 3.2,
         reviewsGivenThisWeek: 12,
-        activeWorkspaceCount: 2,
+        totalWorkspaceCount: 2,
       }),
     );
 

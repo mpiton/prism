@@ -222,7 +222,7 @@ fn count_to_u32(count: i64) -> u32 {
 /// - `pending_reviews`: review requests for the user with status `pending` (open/draft PRs only)
 /// - `open_prs`: pull requests authored by the user in `open` or `draft` state
 /// - `open_issues`: issues authored by the user in `open` state
-/// - `active_workspaces`: all workspaces in `active` state (global, not user-scoped)
+/// - `total_workspaces`: all workspaces in `active` or `suspended` state (excludes archived) (global, not user-scoped)
 /// - `unread_activity`: all activity events with `is_read = 0` (global, not user-scoped)
 pub async fn compute_dashboard_stats(
     pool: &SqlitePool,
@@ -236,7 +236,7 @@ pub async fn compute_dashboard_stats(
           AND pr.state IN ('open', 'draft')), \
          (SELECT COUNT(*) FROM pull_requests WHERE author = $1 AND state IN ('open', 'draft')), \
          (SELECT COUNT(*) FROM issues WHERE author = $1 AND state = 'open'), \
-         (SELECT COUNT(*) FROM workspaces WHERE state = 'active'), \
+         (SELECT COUNT(*) FROM workspaces WHERE state IN ('active', 'suspended')), \
          (SELECT COUNT(*) FROM activity WHERE is_read = 0)",
     )
     .bind(username)
@@ -247,7 +247,7 @@ pub async fn compute_dashboard_stats(
         pending_reviews: count_to_u32(row.0),
         open_prs: count_to_u32(row.1),
         open_issues: count_to_u32(row.2),
-        active_workspaces: count_to_u32(row.3),
+        total_workspaces: count_to_u32(row.3),
         unread_activity: count_to_u32(row.4),
     })
 }
@@ -547,7 +547,7 @@ mod tests {
         assert_eq!(stats.pending_reviews, 0);
         assert_eq!(stats.open_prs, 0);
         assert_eq!(stats.open_issues, 0);
-        assert_eq!(stats.active_workspaces, 0);
+        assert_eq!(stats.total_workspaces, 0);
         assert_eq!(stats.unread_activity, 0);
         pool.close().await;
     }
@@ -623,6 +623,18 @@ mod tests {
             updated_at: "2026-03-20T10:00:00Z".to_string(),
         };
         create_workspace(&pool, &ws).await.unwrap();
+        // 1 suspended workspace (should also count)
+        let ws2 = Workspace {
+            id: "ws-2".to_string(),
+            repo_id: "repo-1".to_string(),
+            pull_request_number: 2,
+            state: WorkspaceState::Suspended,
+            worktree_path: None,
+            session_id: None,
+            created_at: "2026-03-20T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T10:00:00Z".to_string(),
+        };
+        create_workspace(&pool, &ws2).await.unwrap();
 
         // 2 unread activities, 1 read (should not count)
         let act1 = Activity {
@@ -659,7 +671,7 @@ mod tests {
         assert_eq!(stats.pending_reviews, 1, "only pending review requests");
         assert_eq!(stats.open_prs, 2, "only open/draft PRs by alice");
         assert_eq!(stats.open_issues, 1, "only open issues by alice");
-        assert_eq!(stats.active_workspaces, 1, "only active workspaces");
+        assert_eq!(stats.total_workspaces, 2, "active + suspended workspaces");
         assert_eq!(stats.unread_activity, 1, "only unread activity");
         pool.close().await;
     }

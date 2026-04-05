@@ -79,7 +79,7 @@ export function StatsBar(): ReactElement {
         />
         <StatItem
           label="Workspaces"
-          value={stats?.activeWorkspaces ?? null}
+          value={stats?.totalWorkspaces ?? null}
           testId="stat-workspaces"
         />
       </div>

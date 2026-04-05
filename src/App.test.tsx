@@ -15,7 +15,7 @@ vi.mock("./lib/tauri", async (importOriginal) => {
 vi.mock("./hooks/useGitHubData", () => ({
   useGitHubData: vi.fn().mockReturnValue({
     dashboard: { syncedAt: "2026-03-28T10:00:00Z", reviewRequests: [], myPullRequests: [], assignedIssues: [], recentActivity: [], workspaces: [] },
-    stats: { pendingReviews: 3, openPrs: 5, openIssues: 2, activeWorkspaces: 1, unreadActivity: 0 },
+    stats: { pendingReviews: 3, openPrs: 5, openIssues: 2, totalWorkspaces: 1, unreadActivity: 0 },
     isLoading: false,
     error: null,
     authExpired: false,

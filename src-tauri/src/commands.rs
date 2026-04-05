@@ -1564,14 +1564,14 @@ mod tests {
             pending_reviews: 3,
             open_prs: 7,
             open_issues: 2,
-            active_workspaces: 1,
+            total_workspaces: 1,
             unread_activity: 5,
         };
         let json = serde_json::to_value(&stats).unwrap();
         assert_eq!(json["pendingReviews"], 3);
         assert_eq!(json["openPrs"], 7);
         assert_eq!(json["openIssues"], 2);
-        assert_eq!(json["activeWorkspaces"], 1);
+        assert_eq!(json["totalWorkspaces"], 1);
         assert_eq!(json["unreadActivity"], 5);
     }
 
