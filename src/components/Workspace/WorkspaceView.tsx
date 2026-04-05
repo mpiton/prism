@@ -26,6 +26,7 @@ export function WorkspaceView({
   const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const info = active ? statusInfo[active.id] : undefined;
+  const isSuspended = active !== undefined && active.state === "suspended";
 
   const visibleEntries = useMemo(
     () => entries.filter((e) => e.workspace.state !== "archived"),
@@ -64,7 +65,7 @@ export function WorkspaceView({
       {active ? (
         <>
           <div className="min-h-0 flex-1">
-            <Terminal ptyId={active.id} />
+            <Terminal ptyId={active.id} disabled={isSuspended} />
           </div>
           {info && (
             <WorkspaceStatusBar
@@ -76,6 +77,7 @@ export function WorkspaceView({
               sessionName={info.sessionName}
               sessionCount={info.sessionCount}
               githubUrl={info.githubUrl}
+              disabled={isSuspended}
             />
           )}
         </>

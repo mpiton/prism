@@ -20,14 +20,14 @@ vi.mock("./WorkspaceSwitcher", () => ({
 }));
 
 vi.mock("./Terminal", () => ({
-  Terminal: ({ ptyId }: { ptyId: string }) => (
-    <div data-testid={`terminal-${ptyId}`} />
+  Terminal: ({ ptyId, disabled }: { ptyId: string; disabled?: boolean }) => (
+    <div data-testid={`terminal-${ptyId}`} data-disabled={String(disabled)} />
   ),
 }));
 
 vi.mock("./WorkspaceStatusBar", () => ({
-  WorkspaceStatusBar: ({ workspaceId }: { workspaceId: string }) => (
-    <div data-testid="workspace-statusbar">{workspaceId}</div>
+  WorkspaceStatusBar: ({ workspaceId, disabled }: { workspaceId: string; disabled?: boolean }) => (
+    <div data-testid="workspace-statusbar" data-disabled={String(disabled)}>{workspaceId}</div>
   ),
 }));
 
@@ -284,6 +284,39 @@ describe("WorkspaceView", () => {
       expect(resumeWorkspace).not.toHaveBeenCalled();
       expect(setActiveWorkspace).toHaveBeenCalledWith("ws-click");
     });
+  });
+
+  it("should pass disabled=false to Terminal for active workspace", () => {
+    useWorkspacesStore.setState({ activeWorkspaceId: "ws-1" });
+
+    renderWithQuery(
+      <WorkspaceView
+        workspaces={WORKSPACES}
+        statusInfo={STATUS_INFO}
+        entries={[]}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("terminal-ws-1")).toHaveAttribute("data-disabled", "false");
+  });
+
+  it("should pass disabled=true to Terminal and StatusBar for suspended workspace", () => {
+    act(() => {
+      useWorkspacesStore.setState({ activeWorkspaceId: "ws-2" });
+    });
+
+    renderWithQuery(
+      <WorkspaceView
+        workspaces={WORKSPACES}
+        statusInfo={STATUS_INFO}
+        entries={[]}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("terminal-ws-2")).toHaveAttribute("data-disabled", "true");
+    expect(screen.getByTestId("workspace-statusbar")).toHaveAttribute("data-disabled", "true");
   });
 
   it("should call resumeWorkspace then set active when clicking a suspended workspace", async () => {
