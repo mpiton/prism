@@ -311,7 +311,13 @@ pub(crate) async fn run_force_sync(
     }
 
     // Post-sync: archive workspaces for merged/closed PRs past the configured delay.
-    let config = get_config(pool).await.unwrap_or_default();
+    let config = match get_config(pool).await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("force-sync workspace cleanup: failed to read config: {e}");
+            return Ok(stats);
+        }
+    };
     let pty_state: tauri::State<'_, PtyManagerState> = app_handle.state();
     match workspace_cleanup_inner(
         pool,
@@ -330,6 +336,12 @@ pub(crate) async fn run_force_sync(
                 if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
                     warn!("force-sync cleanup: failed to emit state_changed for '{ws_id}': {e}");
                 }
+            }
+            if !archived_ids.is_empty() {
+                info!(
+                    "force-sync cleanup: archived {} workspace(s)",
+                    archived_ids.len()
+                );
             }
         }
         Err(e) => warn!("force-sync workspace cleanup failed: {e}"),
