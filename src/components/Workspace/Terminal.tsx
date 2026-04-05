@@ -103,7 +103,7 @@ export function Terminal({ ptyId, disabled }: TerminalProps) {
           className="absolute inset-0 flex items-center justify-center bg-black/70"
         >
           <p className="text-sm text-neutral-400">
-            Workspace suspended
+            Workspace suspended — click Wake to resume
           </p>
         </div>
       )}

@@ -26,7 +26,7 @@ export function WorkspaceView({
   const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const info = active ? statusInfo[active.id] : undefined;
-  const isSuspended = active !== undefined && active.state !== "active";
+  const isSuspended = active !== undefined && active.state === "suspended";
 
   const visibleEntries = useMemo(
     () => entries.filter((e) => e.workspace.state !== "archived"),

@@ -21,13 +21,13 @@ vi.mock("./WorkspaceSwitcher", () => ({
 
 vi.mock("./Terminal", () => ({
   Terminal: ({ ptyId, disabled }: { ptyId: string; disabled?: boolean }) => (
-    <div data-testid={`terminal-${ptyId}`} data-disabled={disabled ? "true" : "false"} />
+    <div data-testid={`terminal-${ptyId}`} data-disabled={String(disabled)} />
   ),
 }));
 
 vi.mock("./WorkspaceStatusBar", () => ({
   WorkspaceStatusBar: ({ workspaceId, disabled }: { workspaceId: string; disabled?: boolean }) => (
-    <div data-testid="workspace-statusbar" data-disabled={disabled ? "true" : "false"}>{workspaceId}</div>
+    <div data-testid="workspace-statusbar" data-disabled={String(disabled)}>{workspaceId}</div>
   ),
 }));
 
