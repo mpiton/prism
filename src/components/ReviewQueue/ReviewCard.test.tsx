@@ -121,4 +121,16 @@ describe("ReviewCard", () => {
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute("aria-label", "PR #42: Fix login bug by alice");
   });
+
+  it("should NOT render WsBadge when PR is closed with suspended workspace", () => {
+    const data: PullRequestWithReview = {
+      ...mockData,
+      pullRequest: { ...mockData.pullRequest, state: "closed" },
+      workspace: { id: "ws-1", state: "suspended", lastNoteContent: null },
+    };
+    render(
+      <ReviewCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
 });

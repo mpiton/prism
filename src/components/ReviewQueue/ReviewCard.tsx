@@ -74,7 +74,7 @@ export function ReviewCard({
         </div>
       </a>
 
-      {onWorkspaceAction && ((workspace && workspace.state !== "archived") || (pr.state === "open" && pr.headRefName)) && (
+      {onWorkspaceAction && pr.state === "open" && ((workspace && workspace.state !== "archived") || pr.headRefName) && (
         <WsBadge
           state={workspace?.state === "archived" ? undefined : workspace?.state}
           loading={loading}
