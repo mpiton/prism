@@ -250,8 +250,8 @@ fn build_query_variables(
 
     Ok(dashboard_data::Variables {
         review_query: format!("type:pr {repo_filter} review-requested:{username} state:open"),
-        my_prs_query: format!("type:pr {repo_filter} author:{username} state:open"),
-        issues_query: format!("type:issue {repo_filter} author:{username} state:open"),
+        my_prs_query: format!("type:pr {repo_filter} author:{username} sort:updated"),
+        issues_query: format!("type:issue {repo_filter} assignee:{username} sort:updated"),
         first: 100,
     })
 }
@@ -571,6 +571,7 @@ mod tests {
         PrFieldsReviewsNodes, PrFieldsReviewsNodesAuthor, PrFieldsReviewsNodesAuthorOn,
         PullRequestReviewState, PullRequestState,
     };
+    use crate::types::{IssueState, PrState};
 
     async fn test_pool() -> (SqlitePool, tempfile::TempDir) {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -828,8 +829,16 @@ mod tests {
         assert!(vars.review_query.contains("review-requested:octocat"));
         assert!(vars.review_query.contains("repo:org/repo"));
         assert!(vars.my_prs_query.contains("author:octocat"));
-        assert!(vars.issues_query.contains("author:octocat"));
+        assert!(vars.issues_query.contains("assignee:octocat"));
         assert_eq!(vars.first, 100);
+
+        // review_query keeps state:open (only review open PRs)
+        assert!(vars.review_query.contains("state:open"));
+        // my_prs and issues fetch all states (open, closed, merged) sorted by update time
+        assert!(!vars.my_prs_query.contains("state:open"));
+        assert!(!vars.issues_query.contains("state:open"));
+        assert!(vars.my_prs_query.contains("sort:updated"));
+        assert!(vars.issues_query.contains("sort:updated"));
     }
 
     #[tokio::test]
@@ -1493,6 +1502,60 @@ mod tests {
 
         assert_eq!(count, 1);
         mock.assert_async().await;
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_updates_pr_state_open_to_merged() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Insert PR as open
+        let mut pr = make_pr_fields("PR_1", 42, "Feature PR");
+        pr.state = PullRequestState::OPEN;
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_single_pr(&mut conn, &pr).await.unwrap();
+        }
+        let result = get_pull_request(&pool, "PR_1").await.unwrap();
+        assert_eq!(result.state, PrState::Open);
+
+        // Re-sync same PR as merged
+        pr.state = PullRequestState::MERGED;
+        {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_single_pr(&mut conn, &pr).await.unwrap();
+        }
+        let result = get_pull_request(&pool, "PR_1").await.unwrap();
+        assert_eq!(result.state, PrState::Merged);
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_updates_issue_state_open_to_closed() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Insert issue as open
+        let mut issue_fields = make_issue_fields("ISSUE_1", 10, "Bug report");
+        issue_fields.state = GqlIssueState::OPEN;
+        {
+            let issue = map_issue(&issue_fields).unwrap();
+            let mut conn = pool.acquire().await.unwrap();
+            upsert_issue(&mut *conn, &issue).await.unwrap();
+        }
+        let issues = get_issues_by_repo(&pool, "org/repo").await.unwrap();
+        assert_eq!(issues[0].state, IssueState::Open);
+
+        // Re-sync same issue as closed
+        issue_fields.state = GqlIssueState::CLOSED;
+        {
+            let issue = map_issue(&issue_fields).unwrap();
+            let mut conn = pool.acquire().await.unwrap();
+            upsert_issue(&mut *conn, &issue).await.unwrap();
+        }
+        let issues = get_issues_by_repo(&pool, "org/repo").await.unwrap();
+        assert_eq!(issues[0].state, IssueState::Closed);
         pool.close().await;
     }
 }
