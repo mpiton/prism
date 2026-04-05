@@ -250,8 +250,8 @@ fn build_query_variables(
 
     Ok(dashboard_data::Variables {
         review_query: format!("type:pr {repo_filter} review-requested:{username} state:open"),
-        my_prs_query: format!("type:pr {repo_filter} author:{username}"),
-        issues_query: format!("type:issue {repo_filter} author:{username}"),
+        my_prs_query: format!("type:pr {repo_filter} author:{username} sort:updated"),
+        issues_query: format!("type:issue {repo_filter} author:{username} sort:updated"),
         first: 100,
     })
 }
@@ -834,9 +834,11 @@ mod tests {
 
         // review_query keeps state:open (only review open PRs)
         assert!(vars.review_query.contains("state:open"));
-        // my_prs and issues fetch all states (open, closed, merged)
+        // my_prs and issues fetch all states (open, closed, merged) sorted by update time
         assert!(!vars.my_prs_query.contains("state:open"));
         assert!(!vars.issues_query.contains("state:open"));
+        assert!(vars.my_prs_query.contains("sort:updated"));
+        assert!(vars.issues_query.contains("sort:updated"));
     }
 
     #[tokio::test]
