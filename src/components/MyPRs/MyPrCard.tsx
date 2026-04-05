@@ -131,7 +131,7 @@ export function MyPrCard({
         </div>
       </a>
 
-      {onWorkspaceAction && ((workspace && workspace.state !== "archived") || ((pr.state === "open" || pr.state === "draft") && pr.headRefName)) && (
+      {onWorkspaceAction && (pr.state === "open" || pr.state === "draft") && ((workspace && workspace.state !== "archived") || pr.headRefName) && (
         <WsBadge
           state={workspace?.state === "archived" ? undefined : workspace?.state}
           loading={loading}

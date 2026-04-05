@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use sqlx::SqlitePool;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tracing::{info, warn};
 
 use crate::cache::config::get_config;
@@ -37,6 +37,11 @@ pub(crate) trait PollingContext: Send + Sync + 'static {
 
     /// Notify the frontend that the token is expired/invalid (401).
     fn emit_auth_expired(&self, error: &str);
+
+    /// Archive workspaces whose PRs have been merged/closed. No-op by default.
+    fn cleanup_workspaces(&self) -> impl std::future::Future<Output = ()> + Send {
+        std::future::ready(())
+    }
 }
 
 // ── Real implementation ──────────────────────────────────────────
@@ -85,6 +90,44 @@ impl PollingContext for RealPollingContext {
             warn!("failed to emit auth:expired: {e}");
         }
     }
+
+    async fn cleanup_workspaces(&self) {
+        let config = match get_config(&self.pool).await {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("post-sync cleanup: failed to read config: {e}");
+                return;
+            }
+        };
+        let pty_state: tauri::State<'_, crate::commands::PtyManagerState> = self.app_handle.state();
+        match crate::commands::workspace_cleanup_inner(
+            &self.pool,
+            &pty_state,
+            config.archive_delay_hours,
+            config.archive_delay_closed_hours,
+        )
+        .await
+        {
+            Ok(archived_ids) => {
+                for ws_id in &archived_ids {
+                    let payload = crate::types::WorkspaceStateChanged {
+                        workspace_id: ws_id.clone(),
+                        new_state: crate::types::WorkspaceState::Archived,
+                    };
+                    if let Err(e) = self.app_handle.emit("workspace:state_changed", &payload) {
+                        warn!("post-sync cleanup: failed to emit state_changed for '{ws_id}': {e}");
+                    }
+                }
+                if !archived_ids.is_empty() {
+                    info!(
+                        "post-sync cleanup: archived {} workspace(s)",
+                        archived_ids.len()
+                    );
+                }
+            }
+            Err(e) => warn!("post-sync cleanup failed: {e}"),
+        }
+    }
 }
 
 // ── Core loop ────────────────────────────────────────────────────
@@ -111,6 +154,7 @@ pub(crate) async fn poll_once(ctx: &(impl PollingContext + ?Sized)) -> PollOutco
                 stats.pending_reviews
             );
             ctx.emit_updated(&stats);
+            ctx.cleanup_workspaces().await;
             PollOutcome::Ok
         }
         // In the polling path, AppError::Auth can only originate from an HTTP 401
@@ -211,6 +255,7 @@ mod tests {
         updates: Arc<Mutex<Vec<DashboardStats>>>,
         errors: Arc<Mutex<Vec<String>>>,
         auth_expired: Arc<Mutex<Vec<String>>>,
+        cleanup_calls: Arc<Mutex<u32>>,
     }
 
     /// Mock context that returns pre-configured sync results.
@@ -265,6 +310,10 @@ mod tests {
                 .lock()
                 .expect("lock poisoned")
                 .push(error.to_string());
+        }
+
+        async fn cleanup_workspaces(&self) {
+            *self.recorder.cleanup_calls.lock().expect("lock poisoned") += 1;
         }
     }
 
@@ -501,5 +550,41 @@ mod tests {
         let updates = recorder.updates.lock().unwrap();
         assert_eq!(updates.len(), 1, "one successful update after recovery");
         assert_eq!(updates[0], stats, "recovered stats should match");
+    }
+
+    #[tokio::test]
+    async fn test_poll_once_calls_cleanup_on_success() {
+        let stats = make_stats(2);
+        let (ctx, recorder) = MockCtx::new(vec![Ok(stats)]);
+
+        let outcome = poll_once(&ctx).await;
+
+        assert!(
+            matches!(outcome, PollOutcome::Ok),
+            "poll_once should return Ok on success"
+        );
+        let calls = *recorder.cleanup_calls.lock().expect("lock poisoned");
+        assert_eq!(
+            calls, 1,
+            "cleanup_workspaces should be called once after a successful sync"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_poll_once_skips_cleanup_on_error() {
+        let err = AppError::GitHub("network error".into());
+        let (ctx, recorder) = MockCtx::new(vec![Err(err)]);
+
+        let outcome = poll_once(&ctx).await;
+
+        assert!(
+            matches!(outcome, PollOutcome::Failed),
+            "poll_once should return Failed on error"
+        );
+        let calls = *recorder.cleanup_calls.lock().expect("lock poisoned");
+        assert_eq!(
+            calls, 0,
+            "cleanup_workspaces should not be called on sync failure"
+        );
     }
 }

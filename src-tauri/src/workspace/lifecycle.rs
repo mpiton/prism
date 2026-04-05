@@ -640,4 +640,34 @@ mod tests {
 
         pool.close().await;
     }
+
+    #[tokio::test]
+    async fn test_cleanup_delay_zero_archives_immediately() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Merged PR with updated_at 1 second in the past so delay=0 catches it
+        let just_past =
+            (Utc::now() - Duration::seconds(1)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        insert_test_pr(&pool, "pr-1", 42, crate::types::PrState::Merged, &just_past).await;
+
+        // Suspended workspace linked to this PR
+        let mut ws = sample_workspace("ws-1", 42);
+        ws.state = WorkspaceState::Suspended;
+        ws.worktree_path = None;
+        create_workspace(&pool, &ws).await.unwrap();
+
+        let pty_state = PtyManagerState::new();
+        let archived = workspace_cleanup_inner(&pool, &pty_state, 0, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(archived.len(), 1, "delay=0 should archive immediately");
+        assert_eq!(archived[0], "ws-1");
+
+        let ws = get_workspace(&pool, "ws-1").await.unwrap().unwrap();
+        assert_eq!(ws.state, WorkspaceState::Archived);
+
+        pool.close().await;
+    }
 }

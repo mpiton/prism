@@ -309,6 +309,44 @@ pub(crate) async fn run_force_sync(
     if let Err(e) = app_handle.emit("github:updated", &stats) {
         warn!("failed to emit github:updated after force sync: {e}");
     }
+
+    // Post-sync: archive workspaces for merged/closed PRs past the configured delay.
+    let config = match get_config(pool).await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("force-sync workspace cleanup: failed to read config: {e}");
+            return Ok(stats);
+        }
+    };
+    let pty_state: tauri::State<'_, PtyManagerState> = app_handle.state();
+    match workspace_cleanup_inner(
+        pool,
+        &pty_state,
+        config.archive_delay_hours,
+        config.archive_delay_closed_hours,
+    )
+    .await
+    {
+        Ok(archived_ids) => {
+            for ws_id in &archived_ids {
+                let payload = crate::types::WorkspaceStateChanged {
+                    workspace_id: ws_id.clone(),
+                    new_state: WorkspaceState::Archived,
+                };
+                if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
+                    warn!("force-sync cleanup: failed to emit state_changed for '{ws_id}': {e}");
+                }
+            }
+            if !archived_ids.is_empty() {
+                info!(
+                    "force-sync cleanup: archived {} workspace(s)",
+                    archived_ids.len()
+                );
+            }
+        }
+        Err(e) => warn!("force-sync workspace cleanup failed: {e}"),
+    }
+
     Ok(stats)
 }
 

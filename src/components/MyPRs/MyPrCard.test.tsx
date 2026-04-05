@@ -239,4 +239,28 @@ describe("MyPrCard", () => {
       expect(dot).toHaveAttribute("aria-hidden", "true");
     }
   });
+
+  it("should NOT render WsBadge when PR is merged with suspended workspace", () => {
+    const data: PullRequestWithReview = {
+      ...basePr,
+      pullRequest: { ...basePr.pullRequest, state: "merged" },
+      workspace: { id: "ws-1", state: "suspended", lastNoteContent: null },
+    };
+    render(
+      <MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("should render WsBadge when PR is open with suspended workspace", () => {
+    const data: PullRequestWithReview = {
+      ...basePr,
+      workspace: { id: "ws-1", state: "suspended", lastNoteContent: null },
+    };
+    render(
+      <MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
+    );
+    expect(screen.getByRole("button", { name: "Wake workspace for PR #99" })).toBeInTheDocument();
+    expect(screen.getByText("wake")).toBeInTheDocument();
+  });
 });
