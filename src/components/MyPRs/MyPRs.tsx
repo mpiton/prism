@@ -62,7 +62,7 @@ export function MyPRs({
           className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "open"
               ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-              : "text-dim hover:text-foreground"
+              : "text-dim hover:bg-surface-hover hover:text-foreground"
           }`}
         >
           Open {openPrs.length}
@@ -74,7 +74,7 @@ export function MyPRs({
           className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "merged"
               ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-              : "text-dim hover:text-foreground"
+              : "text-dim hover:bg-surface-hover hover:text-foreground"
           }`}
         >
           Merged {mergedPrs.length}

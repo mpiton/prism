@@ -66,7 +66,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
           className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "open"
               ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-              : "text-dim hover:text-foreground"
+              : "text-dim hover:bg-surface-hover hover:text-foreground"
           }`}
         >
           Open {openIssues.length}
@@ -78,7 +78,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
           className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "closed"
               ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-              : "text-dim hover:text-foreground"
+              : "text-dim hover:bg-surface-hover hover:text-foreground"
           }`}
         >
           Closed {closedIssues.length}

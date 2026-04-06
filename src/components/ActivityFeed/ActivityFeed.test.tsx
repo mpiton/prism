@@ -92,4 +92,14 @@ describe("ActivityFeed", () => {
     expect(screen.getByText("Activity")).toBeInTheDocument();
     expect(screen.getByText("6")).toBeInTheDocument();
   });
+
+  it("should set aria-pressed correctly when filter button is clicked", async () => {
+    const user = userEvent.setup();
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    await user.click(screen.getByRole("button", { name: /review/i }));
+
+    expect(screen.getByRole("button", { name: /review/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^all$/i })).toHaveAttribute("aria-pressed", "false");
+  });
 });
