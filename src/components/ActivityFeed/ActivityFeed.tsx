@@ -50,7 +50,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
               className={`rounded px-2 py-2 text-xs capitalize transition-colors ${
                 filter === f
                   ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-                  : "text-dim hover:text-foreground"
+                  : "text-dim hover:bg-surface-hover hover:text-foreground"
               }`}
             >
               {f}
