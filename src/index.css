@@ -44,10 +44,14 @@ body {
 }
 
 /* ── Focus ring global (WCAG AA) ─────────────── */
+:root {
+  --focus-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  box-shadow: var(--focus-shadow);
 }
 
 /* ── Scrollbar dark theme ─────────────────────── */

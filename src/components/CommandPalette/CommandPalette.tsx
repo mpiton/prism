@@ -153,7 +153,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       <div className="w-full max-w-lg rounded-lg border border-border bg-bg shadow-xl">
         <Command.Input
           placeholder="Search PRs and issues…"
-          className="w-full border-b border-border bg-transparent px-4 py-3 text-sm text-fg outline-none placeholder:text-fg/50"
+          className="w-full border-b border-border bg-transparent px-4 py-3 text-sm text-fg placeholder:text-fg/50"
         />
         <Command.List className="max-h-80 overflow-y-auto p-2">
           <Command.Empty className="px-4 py-6 text-center text-sm text-fg/50">
