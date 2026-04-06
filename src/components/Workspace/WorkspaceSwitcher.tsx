@@ -99,7 +99,7 @@ export function WorkspaceSwitcher({
               onKeyDown={(e) => handleKeyDown(e, i)}
               className={`flex items-center gap-1.5 rounded px-2.5 py-2 text-xs transition-colors ${
                 isActive
-                  ? "bg-surface-hover text-accent"
+                  ? "bg-surface-hover text-accent hover:brightness-95"
                   : "text-dim hover:bg-surface-hover hover:text-text"
               }`}
             >
