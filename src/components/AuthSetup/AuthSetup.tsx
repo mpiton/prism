@@ -137,7 +137,7 @@ export function AuthSetup() {
         onChange={(e) => setToken(e.target.value)}
         placeholder="ghp_..."
         autoComplete="off"
-        className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+        className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted"
       />
 
       {displayError && (
