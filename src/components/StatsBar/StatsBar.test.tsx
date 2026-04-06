@@ -16,7 +16,7 @@ const MOCK_STATS: DashboardStats = {
   pendingReviews: 3,
   openPrs: 5,
   openIssues: 2,
-  activeWorkspaces: 1,
+  totalWorkspaces: 1,
   unreadActivity: 7,
 };
 

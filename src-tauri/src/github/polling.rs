@@ -322,7 +322,7 @@ mod tests {
             pending_reviews: pending,
             open_prs: 5,
             open_issues: 2,
-            active_workspaces: 1,
+            total_workspaces: 1,
             unread_activity: 0,
         }
     }

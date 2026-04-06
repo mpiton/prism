@@ -308,7 +308,7 @@ describe("Composite struct shapes", () => {
       pendingReviews: 5,
       openPrs: 12,
       openIssues: 3,
-      activeWorkspaces: 2,
+      totalWorkspaces: 2,
       unreadActivity: 8,
     };
     const stats = coerceFixture<DashboardStats>(json);
@@ -321,7 +321,7 @@ describe("Composite struct shapes", () => {
       prsMergedThisWeek: 3,
       avgReviewResponseHours: 2.5,
       reviewsGivenThisWeek: 7,
-      activeWorkspaceCount: 1,
+      totalWorkspaceCount: 1,
     };
     const stats = coerceFixture<PersonalStats>(json);
     expect(stats.prsMergedThisWeek).toBe(3);

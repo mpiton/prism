@@ -12,7 +12,7 @@ use crate::types::PersonalStats;
 /// - `avg_review_response_hours`: average hours between review request and review submission
 ///   for this user as reviewer (all time). `0.0` when no data.
 /// - `reviews_given_this_week`: reviews submitted by the user in the current ISO week.
-/// - `active_workspace_count`: workspaces in `active` state (global, not user-scoped —
+/// - `total_workspace_count`: workspaces in `active` or `suspended` state (global, not user-scoped —
 ///   the workspaces table has no owner column).
 pub async fn compute_personal_stats(
     pool: &SqlitePool,
@@ -46,7 +46,7 @@ pub async fn compute_personal_stats(
          (SELECT COUNT(*) FROM reviews \
           WHERE reviewer = $1 \
           AND submitted_at >= {monday}), \
-         (SELECT COUNT(*) FROM workspaces WHERE state = 'active')"
+         (SELECT COUNT(*) FROM workspaces WHERE state IN ('active', 'suspended'))"
     );
 
     let row: (i64, f64, i64, i64) = sqlx::query_as(&sql).bind(username).fetch_one(pool).await?;
@@ -56,7 +56,7 @@ pub async fn compute_personal_stats(
         prs_merged_this_week: u32::try_from(row.0).unwrap_or(u32::MAX),
         avg_review_response_hours: if row.1 < 0.0 { 0.0 } else { row.1 },
         reviews_given_this_week: u32::try_from(row.2).unwrap_or(u32::MAX),
-        active_workspace_count: u32::try_from(row.3).unwrap_or(u32::MAX),
+        total_workspace_count: u32::try_from(row.3).unwrap_or(u32::MAX),
     })
 }
 
@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(stats.prs_merged_this_week, 0);
         assert_eq!(stats.avg_review_response_hours, 0.0);
         assert_eq!(stats.reviews_given_this_week, 0);
-        assert_eq!(stats.active_workspace_count, 0);
+        assert_eq!(stats.total_workspace_count, 0);
 
         pool.close().await;
     }
@@ -195,7 +195,7 @@ mod tests {
         };
         create_workspace(&pool, &ws).await.unwrap();
 
-        // 1 suspended workspace (should not count)
+        // 1 suspended workspace (should also count)
         let ws2 = Workspace {
             id: "ws-2".to_string(),
             repo_id: "repo-1".to_string(),
@@ -223,7 +223,10 @@ mod tests {
             stats.reviews_given_this_week, 1,
             "1 review by alice this week"
         );
-        assert_eq!(stats.active_workspace_count, 1, "1 active workspace");
+        assert_eq!(
+            stats.total_workspace_count, 2,
+            "active + suspended workspaces"
+        );
 
         pool.close().await;
     }

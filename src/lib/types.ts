@@ -167,7 +167,7 @@ export interface DashboardStats {
   readonly pendingReviews: number;
   readonly openPrs: number;
   readonly openIssues: number;
-  readonly activeWorkspaces: number;
+  readonly totalWorkspaces: number;
   readonly unreadActivity: number;
 }
 
@@ -185,7 +185,7 @@ export interface PersonalStats {
   readonly prsMergedThisWeek: number;
   readonly avgReviewResponseHours: number;
   readonly reviewsGivenThisWeek: number;
-  readonly activeWorkspaceCount: number;
+  readonly totalWorkspaceCount: number;
 }
 
 // ── IPC payloads (T-011) ─────────────────────────────────────────

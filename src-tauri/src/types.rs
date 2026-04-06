@@ -278,7 +278,7 @@ pub struct DashboardStats {
     pub pending_reviews: u32,
     pub open_prs: u32,
     pub open_issues: u32,
-    pub active_workspaces: u32,
+    pub total_workspaces: u32,
     pub unread_activity: u32,
 }
 
@@ -289,7 +289,7 @@ pub struct PersonalStats {
     pub prs_merged_this_week: u32,
     pub avg_review_response_hours: f64,
     pub reviews_given_this_week: u32,
-    pub active_workspace_count: u32,
+    pub total_workspace_count: u32,
 }
 
 // ── IPC payloads (T-011) ──────────────────────────────────────
@@ -1006,14 +1006,14 @@ mod tests {
             pending_reviews: 5,
             open_prs: 12,
             open_issues: 3,
-            active_workspaces: 2,
+            total_workspaces: 2,
             unread_activity: 8,
         };
         let json = serde_json::to_string(&stats).unwrap();
         assert!(json.contains("\"pendingReviews\""));
         assert!(json.contains("\"openPrs\""));
         assert!(json.contains("\"openIssues\""));
-        assert!(json.contains("\"activeWorkspaces\""));
+        assert!(json.contains("\"totalWorkspaces\""));
         assert!(json.contains("\"unreadActivity\""));
         let deserialized: DashboardStats = serde_json::from_str(&json).unwrap();
         assert_eq!(stats, deserialized);
@@ -1025,13 +1025,13 @@ mod tests {
             prs_merged_this_week: 3,
             avg_review_response_hours: 2.5,
             reviews_given_this_week: 7,
-            active_workspace_count: 1,
+            total_workspace_count: 1,
         };
         let json = serde_json::to_string(&stats).unwrap();
         assert!(json.contains("\"prsMergedThisWeek\""));
         assert!(json.contains("\"avgReviewResponseHours\""));
         assert!(json.contains("\"reviewsGivenThisWeek\""));
-        assert!(json.contains("\"activeWorkspaceCount\""));
+        assert!(json.contains("\"totalWorkspaceCount\""));
         let deserialized: PersonalStats = serde_json::from_str(&json).unwrap();
         assert_eq!(stats, deserialized);
     }

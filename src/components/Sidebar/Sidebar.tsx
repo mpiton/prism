@@ -12,7 +12,7 @@ import { RepoList } from "./RepoList";
 interface NavEntry {
   readonly label: string;
   readonly view: DashboardView;
-  readonly countKey?: "pendingReviews" | "openPrs" | "openIssues" | "activeWorkspaces" | "unreadActivity";
+  readonly countKey?: "pendingReviews" | "openPrs" | "openIssues" | "totalWorkspaces" | "unreadActivity";
 }
 
 const NAV_ITEMS: readonly NavEntry[] = [
@@ -21,7 +21,7 @@ const NAV_ITEMS: readonly NavEntry[] = [
   { label: "My PRs", view: "mine", countKey: "openPrs" },
   { label: "Issues", view: "issues", countKey: "openIssues" },
   { label: "Activity", view: "feed", countKey: "unreadActivity" },
-  { label: "Workspaces", view: "workspaces", countKey: "activeWorkspaces" },
+  { label: "Workspaces", view: "workspaces", countKey: "totalWorkspaces" },
   { label: "Settings", view: "settings" },
 ];
 
