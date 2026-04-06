@@ -63,7 +63,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
           type="button"
           aria-pressed={tab === "open"}
           onClick={() => setTab("open")}
-          className={`rounded px-2 py-0.5 text-xs transition-colors ${
+          className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "open"
               ? "bg-accent text-bg font-semibold"
               : "text-dim hover:text-foreground"
@@ -75,7 +75,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
           type="button"
           aria-pressed={tab === "closed"}
           onClick={() => setTab("closed")}
-          className={`rounded px-2 py-0.5 text-xs transition-colors ${
+          className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "closed"
               ? "bg-accent text-bg font-semibold"
               : "text-dim hover:text-foreground"

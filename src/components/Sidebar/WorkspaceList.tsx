@@ -24,7 +24,7 @@ export function WorkspaceList({
           type="button"
           onClick={() => onWorkspaceClick(ws.id)}
           aria-label={`PR #${ws.pullRequestNumber} (${ws.state})`}
-          className="flex items-center gap-2 rounded px-2 py-1 text-left text-xs text-dim hover:bg-surface-hover hover:text-foreground"
+          className="flex items-center gap-2 rounded px-2 py-2 text-left text-xs text-dim hover:bg-surface-hover hover:text-foreground"
         >
           <span
             data-state={ws.state}

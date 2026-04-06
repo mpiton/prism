@@ -131,7 +131,7 @@ export function Sidebar(): ReactElement {
           type="button"
           aria-pressed={focusMode}
           onClick={toggleFocusMode}
-          className={`w-full rounded px-2 py-1 text-xs font-medium ${
+          className={`w-full rounded px-2 py-2 text-xs font-medium ${
             focusMode
               ? "bg-accent text-bg font-semibold"
               : "text-dim hover:text-foreground"

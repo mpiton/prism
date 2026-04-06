@@ -77,7 +77,7 @@ export function WorkspaceSwitcher({
       <button
         type="button"
         onClick={onBackToDashboard}
-        className="mr-2 rounded px-2 py-1 text-xs text-dim hover:bg-surface-hover hover:text-text"
+        className="mr-2 rounded px-2 py-2 text-xs text-dim hover:bg-surface-hover hover:text-text"
       >
         Dashboard
       </button>
@@ -97,7 +97,7 @@ export function WorkspaceSwitcher({
               data-active={isActive ? "true" : "false"}
               onClick={() => setActiveWorkspace(ws.id)}
               onKeyDown={(e) => handleKeyDown(e, i)}
-              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors ${
+              className={`flex items-center gap-1.5 rounded px-2.5 py-2 text-xs transition-colors ${
                 isActive
                   ? "bg-surface-hover text-accent"
                   : "text-dim hover:bg-surface-hover hover:text-text"
