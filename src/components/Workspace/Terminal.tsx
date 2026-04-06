@@ -24,13 +24,10 @@ const PRISM_THEME = {
 
 interface TerminalProps {
   readonly ptyId: string;
-  readonly disabled?: boolean;
 }
 
-export function Terminal({ ptyId, disabled }: TerminalProps) {
+export function Terminal({ ptyId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const disabledRef = useRef(disabled);
-  disabledRef.current = disabled;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -53,7 +50,6 @@ export function Terminal({ ptyId, disabled }: TerminalProps) {
 
     // stdin: forward user keystrokes to PTY
     term.onData((data) => {
-      if (disabledRef.current) return;
       ptyWrite({ workspaceId: ptyId, data }).catch((err: unknown) => {
         console.error("[Terminal] ptyWrite failed:", err);
       });
@@ -69,7 +65,6 @@ export function Terminal({ ptyId, disabled }: TerminalProps) {
     // resize: observe container and notify PTY
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
-      if (disabledRef.current) return;
       const dims = fitAddon.proposeDimensions();
       if (dims) {
         ptyResize({ workspaceId: ptyId, cols: dims.cols, rows: dims.rows }).catch(
@@ -91,22 +86,12 @@ export function Terminal({ ptyId, disabled }: TerminalProps) {
   }, [ptyId]);
 
   return (
-    <div className="relative h-full w-full">
+    <div className="h-full w-full">
       <div
         ref={containerRef}
         data-testid={`terminal-${ptyId}`}
         className="h-full w-full overflow-hidden bg-[#0a0a09]"
       />
-      {disabled && (
-        <div
-          data-testid="terminal-suspended-overlay"
-          className="absolute inset-0 flex items-center justify-center bg-black/70"
-        >
-          <p className="text-sm text-neutral-400">
-            Workspace suspended — click Wake to resume
-          </p>
-        </div>
-      )}
     </div>
   );
 }

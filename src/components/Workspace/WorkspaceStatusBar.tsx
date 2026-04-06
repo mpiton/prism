@@ -12,7 +12,6 @@ interface WorkspaceStatusBarProps {
   readonly sessionName: string | null;
   readonly sessionCount: number;
   readonly githubUrl: string;
-  readonly disabled?: boolean;
 }
 
 export function WorkspaceStatusBar({
@@ -24,13 +23,11 @@ export function WorkspaceStatusBar({
   sessionName,
   sessionCount,
   githubUrl,
-  disabled = false,
 }: WorkspaceStatusBarProps): ReactElement {
   const hasSync = ahead > 0 || behind > 0;
   const safeGithubUrl = githubUrl.startsWith("https://") ? githubUrl : "#";
 
   function handlePtyCommand(command: string): void {
-    if (disabled) return;
     ptyWrite({ workspaceId, data: `${command}\n` }).catch((err: unknown) => {
       console.error("[WorkspaceStatusBar] ptyWrite failed:", err);
     });
@@ -84,8 +81,7 @@ export function WorkspaceStatusBar({
           data-testid="btn-git-push"
           type="button"
           aria-label="Git push"
-          disabled={disabled}
-          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text"
           onClick={() => handlePtyCommand("git push")}
         >
           push
@@ -94,8 +90,7 @@ export function WorkspaceStatusBar({
           data-testid="btn-git-pull"
           type="button"
           aria-label="Git pull"
-          disabled={disabled}
-          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text"
           onClick={() => handlePtyCommand("git pull")}
         >
           pull
@@ -106,10 +101,7 @@ export function WorkspaceStatusBar({
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Open pull request on GitHub"
-          aria-disabled={disabled || undefined}
-          tabIndex={disabled ? -1 : undefined}
-          onClick={disabled ? (e) => e.preventDefault() : undefined}
-          className={`rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text ${disabled ? "pointer-events-none opacity-40" : ""}`}
+          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text"
         >
           github
         </a>

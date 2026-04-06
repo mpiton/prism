@@ -144,27 +144,4 @@ describe("WorkspaceStatusBar", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("should disable buttons and github link when workspace is not active", () => {
-    render(<WorkspaceStatusBar {...defaultProps} disabled />);
-
-    expect(screen.getByTestId("btn-git-push")).toBeDisabled();
-    expect(screen.getByTestId("btn-git-pull")).toBeDisabled();
-    expect(screen.getByTestId("btn-open-github")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByTestId("btn-open-github")).toHaveAttribute(
-      "tabindex",
-      "-1",
-    );
-  });
-
-  it("should not write to pty when disabled", async () => {
-    const user = userEvent.setup();
-    render(<WorkspaceStatusBar {...defaultProps} disabled />);
-
-    await user.click(screen.getByTestId("btn-git-push"));
-
-    expect(ptyWrite).not.toHaveBeenCalled();
-  });
 });
