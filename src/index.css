@@ -73,8 +73,14 @@ body {
 *::-webkit-scrollbar-thumb {
   background: var(--color-muted);
   border-radius: 3px;
+  min-height: 20px;
+  min-width: 20px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
   background: var(--color-dim);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
