@@ -81,6 +81,8 @@ function RepoRow({ repo, disabled, onToggle }: RepoRowProps): ReactElement {
   );
 }
 
+const sectionClass = "flex flex-col gap-3 border-b border-border pb-4";
+
 export function Settings(): ReactElement {
   const queryClient = useQueryClient();
   const configQuery = useConfigQuery();
@@ -142,7 +144,7 @@ export function Settings(): ReactElement {
         <p role="alert" className="text-sm text-red-400">{saveError}</p>
       ) : null}
 
-      <div data-testid="settings-github" className="flex flex-col gap-3">
+      <div data-testid="settings-github" className={sectionClass}>
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">GitHub</h2>
         <AuthSetup />
         <NumberField
@@ -153,7 +155,7 @@ export function Settings(): ReactElement {
         />
       </div>
 
-      <div data-testid="settings-workspaces" className="flex flex-col gap-3">
+      <div data-testid="settings-workspaces" className={sectionClass}>
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">Workspaces</h2>
         <NumberField
           label="Max active workspaces"
@@ -163,7 +165,7 @@ export function Settings(): ReactElement {
         />
       </div>
 
-      <div data-testid="settings-claude-code" className="flex flex-col gap-3">
+      <div data-testid="settings-claude-code" className={sectionClass}>
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">Claude Code</h2>
         <label className="flex items-center justify-between gap-4">
           <span className="text-dim text-sm">Auth mode</span>
