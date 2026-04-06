@@ -20,14 +20,14 @@ vi.mock("./WorkspaceSwitcher", () => ({
 }));
 
 vi.mock("./Terminal", () => ({
-  Terminal: ({ ptyId, disabled }: { ptyId: string; disabled?: boolean }) => (
-    <div data-testid={`terminal-${ptyId}`} data-disabled={String(disabled)} />
+  Terminal: ({ ptyId }: { ptyId: string }) => (
+    <div data-testid={`terminal-${ptyId}`} />
   ),
 }));
 
 vi.mock("./WorkspaceStatusBar", () => ({
-  WorkspaceStatusBar: ({ workspaceId, disabled }: { workspaceId: string; disabled?: boolean }) => (
-    <div data-testid="workspace-statusbar" data-disabled={String(disabled)}>{workspaceId}</div>
+  WorkspaceStatusBar: ({ workspaceId }: { workspaceId: string }) => (
+    <div data-testid="workspace-statusbar">{workspaceId}</div>
   ),
 }));
 
@@ -187,7 +187,7 @@ describe("WorkspaceView", () => {
       useWorkspacesStore.setState({ activeWorkspaceId: "ws-2" });
     });
 
-    expect(screen.getByTestId("terminal-ws-2")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-suspended-placeholder")).toBeInTheDocument();
     expect(screen.queryByTestId("terminal-ws-1")).not.toBeInTheDocument();
   });
 
@@ -286,22 +286,7 @@ describe("WorkspaceView", () => {
     });
   });
 
-  it("should pass disabled=false to Terminal for active workspace", () => {
-    useWorkspacesStore.setState({ activeWorkspaceId: "ws-1" });
-
-    renderWithQuery(
-      <WorkspaceView
-        workspaces={WORKSPACES}
-        statusInfo={STATUS_INFO}
-        entries={[]}
-        onBackToDashboard={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByTestId("terminal-ws-1")).toHaveAttribute("data-disabled", "false");
-  });
-
-  it("should pass disabled=true to Terminal and StatusBar for suspended workspace", () => {
+  it("should show suspended placeholder instead of terminal for suspended workspace", () => {
     act(() => {
       useWorkspacesStore.setState({ activeWorkspaceId: "ws-2" });
     });
@@ -315,8 +300,32 @@ describe("WorkspaceView", () => {
       />,
     );
 
-    expect(screen.getByTestId("terminal-ws-2")).toHaveAttribute("data-disabled", "true");
-    expect(screen.getByTestId("workspace-statusbar")).toHaveAttribute("data-disabled", "true");
+    expect(screen.getByTestId("workspace-suspended-placeholder")).toBeInTheDocument();
+    expect(screen.queryByTestId("terminal-ws-2")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-statusbar")).not.toBeInTheDocument();
+  });
+
+  it("should resume workspace when Wake button is clicked", async () => {
+    act(() => {
+      useWorkspacesStore.setState({ activeWorkspaceId: "ws-2" });
+    });
+
+    vi.mocked(resumeWorkspace).mockResolvedValue(undefined);
+
+    renderWithQuery(
+      <WorkspaceView
+        workspaces={WORKSPACES}
+        statusInfo={STATUS_INFO}
+        entries={[]}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("btn-wake-workspace"));
+
+    await waitFor(() => {
+      expect(resumeWorkspace).toHaveBeenCalledWith("ws-2");
+    });
   });
 
   it("should call resumeWorkspace then set active when clicking a suspended workspace", async () => {
