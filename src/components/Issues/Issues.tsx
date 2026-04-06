@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { type ReactElement, useMemo, useState } from "react";
+import { listRepos } from "../../lib/tauri";
 import type { Issue } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
@@ -22,6 +24,22 @@ function isClosed(issue: Issue): boolean {
 
 export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
+
+  const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
+
+  const repoMap = useMemo<Map<string, string>>(() => {
+    if (!repos) return new Map();
+    const nameCounts = new Map<string, number>();
+    for (const repo of repos) {
+      nameCounts.set(repo.name, (nameCounts.get(repo.name) ?? 0) + 1);
+    }
+    return new Map(
+      repos.map((repo) => [
+        repo.id,
+        nameCounts.get(repo.name) === 1 ? repo.name : repo.fullName,
+      ]),
+    );
+  }, [repos]);
 
   const openIssues = issues.filter(isOpen);
   const closedIssues = issues.filter(isClosed);
@@ -72,7 +90,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
       ) : (
         <div className="flex flex-col gap-1">
           {visible.map((issue) => (
-            <IssueCard key={issue.id} issue={issue} onOpen={onOpen} />
+            <IssueCard key={issue.id} issue={issue} repoName={repoMap.get(issue.repoId) ?? issue.repoId} onOpen={onOpen} />
           ))}
         </div>
       )}

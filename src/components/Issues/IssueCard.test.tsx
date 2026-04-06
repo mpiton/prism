@@ -23,7 +23,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
 
 describe("IssueCard", () => {
   it("should render issue with title and number", () => {
-    render(<IssueCard issue={makeIssue()} onOpen={vi.fn()} />);
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
 
     expect(screen.getByText("Fix login bug")).toBeInTheDocument();
     expect(screen.getByText("#42")).toBeInTheDocument();
@@ -33,6 +33,7 @@ describe("IssueCard", () => {
     render(
       <IssueCard
         issue={makeIssue({ labels: ["bug", "enhancement"] })}
+        repoName="repo-name"
         onOpen={vi.fn()}
       />,
     );
@@ -42,7 +43,7 @@ describe("IssueCard", () => {
   });
 
   it("should show green dot for open issues", () => {
-    render(<IssueCard issue={makeIssue({ state: "open" })} onOpen={vi.fn()} />);
+    render(<IssueCard issue={makeIssue({ state: "open" })} repoName="repo-name" onOpen={vi.fn()} />);
 
     const dot = screen.getByTestId("issue-state-dot");
     expect(dot.className).toContain("bg-green");
@@ -50,23 +51,23 @@ describe("IssueCard", () => {
 
   it("should show purple dot for closed issues", () => {
     render(
-      <IssueCard issue={makeIssue({ state: "closed" })} onOpen={vi.fn()} />,
+      <IssueCard issue={makeIssue({ state: "closed" })} repoName="repo-name" onOpen={vi.fn()} />,
     );
 
     const dot = screen.getByTestId("issue-state-dot");
     expect(dot.className).toContain("bg-purple");
   });
 
-  it("should display repo id", () => {
+  it("should display repo name", () => {
     render(
-      <IssueCard issue={makeIssue({ repoId: "my-repo" })} onOpen={vi.fn()} />,
+      <IssueCard issue={makeIssue({ repoId: "repo-1" })} repoName="my-repo" onOpen={vi.fn()} />,
     );
 
     expect(screen.getByText("my-repo")).toBeInTheDocument();
   });
 
   it("should display relative time", () => {
-    render(<IssueCard issue={makeIssue()} onOpen={vi.fn()} />);
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
 
     expect(screen.getByTestId("time-ago")).toBeInTheDocument();
   });
@@ -75,7 +76,7 @@ describe("IssueCard", () => {
     const onOpen = vi.fn();
     const user = userEvent.setup();
 
-    render(<IssueCard issue={makeIssue()} onOpen={onOpen} />);
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={onOpen} />);
 
     await user.click(screen.getByText("Fix login bug"));
 
@@ -85,13 +86,13 @@ describe("IssueCard", () => {
   });
 
   it("should have aria-label on link describing the issue", () => {
-    render(<IssueCard issue={makeIssue()} onOpen={vi.fn()} />);
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute("aria-label", "Issue #42: Fix login bug (open)");
   });
 
   it("should mark state dot as aria-hidden", () => {
-    render(<IssueCard issue={makeIssue()} onOpen={vi.fn()} />);
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
     const dot = screen.getByTestId("issue-state-dot");
     expect(dot).toHaveAttribute("aria-hidden", "true");
   });
