@@ -90,7 +90,7 @@ export function StatsBar(): ReactElement {
           </span>
         )}
         {isSyncing ? (
-          <span className="text-xs text-dim animate-pulse">syncing...</span>
+          <span className="text-xs text-dim animate-pulse" aria-live="polite">syncing...</span>
         ) : (
           <span className="text-xs text-dim">{formatSyncedTime(syncedAt, now)}</span>
         )}
