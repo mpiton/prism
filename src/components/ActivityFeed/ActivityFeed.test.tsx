@@ -99,7 +99,9 @@ describe("ActivityFeed", () => {
 
     await user.click(screen.getByRole("button", { name: /review/i }));
 
-    expect(screen.getByRole("button", { name: /review/i })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /^all$/i })).toHaveAttribute("aria-pressed", "false");
+    const filterGroup = screen.getByRole("group", { name: /filter by type/i });
+    const pressedButtons = Array.from(filterGroup.querySelectorAll('[aria-pressed="true"]'));
+    expect(pressedButtons).toHaveLength(1);
+    expect(pressedButtons[0]).toHaveTextContent("review");
   });
 });
