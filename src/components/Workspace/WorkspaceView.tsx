@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactElement } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types";
 import { resumeWorkspace } from "../../lib/tauri";
@@ -33,17 +33,21 @@ export function WorkspaceView({
     [entries],
   );
 
+  const [waking, setWaking] = useState(false);
+
   const handleWakeWorkspace = useCallback(async () => {
-    if (!active) return;
+    if (!active || waking) return;
+    setWaking(true);
     try {
       await resumeWorkspace(active.id);
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] });
-      setActiveWorkspace(active.id);
     } catch (err: unknown) {
       console.error("[WorkspaceView] failed to wake workspace:", err);
+    } finally {
+      setWaking(false);
     }
-  }, [active, queryClient, setActiveWorkspace]);
+  }, [active, waking, queryClient]);
 
   const handleWorkspaceClick = useCallback(
     async (id: string) => {
@@ -83,10 +87,11 @@ export function WorkspaceView({
           <button
             data-testid="btn-wake-workspace"
             type="button"
-            className="rounded bg-neutral-700 px-4 py-2 text-sm text-white hover:bg-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            className="rounded bg-neutral-700 px-4 py-2 text-sm text-white hover:bg-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={waking}
             onClick={handleWakeWorkspace}
           >
-            Wake
+            {waking ? "Waking…" : "Wake"}
           </button>
         </div>
       ) : active ? (
