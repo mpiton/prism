@@ -61,7 +61,7 @@ export function MyPRs({
           onClick={() => setTab("open")}
           className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "open"
-              ? "bg-accent text-bg font-semibold"
+              ? "bg-accent text-bg font-semibold hover:bg-accent/80"
               : "text-dim hover:text-foreground"
           }`}
         >
@@ -73,7 +73,7 @@ export function MyPRs({
           onClick={() => setTab("merged")}
           className={`rounded px-2 py-2 text-xs transition-colors ${
             tab === "merged"
-              ? "bg-accent text-bg font-semibold"
+              ? "bg-accent text-bg font-semibold hover:bg-accent/80"
               : "text-dim hover:text-foreground"
           }`}
         >

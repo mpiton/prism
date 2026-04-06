@@ -133,7 +133,7 @@ export function Sidebar(): ReactElement {
           onClick={toggleFocusMode}
           className={`w-full rounded px-2 py-2 text-xs font-medium ${
             focusMode
-              ? "bg-accent text-bg font-semibold"
+              ? "bg-accent text-bg font-semibold hover:bg-accent/80"
               : "text-dim hover:text-foreground"
           }`}
         >

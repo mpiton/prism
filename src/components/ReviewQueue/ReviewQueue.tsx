@@ -117,7 +117,7 @@ export function ReviewQueue({
               }
               className={`rounded px-2 py-2 text-xs transition-colors ${
                 priorityFilter === f
-                  ? "bg-accent text-bg font-semibold"
+                  ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                   : "text-dim hover:text-foreground"
               }`}
             >
@@ -133,7 +133,7 @@ export function ReviewQueue({
             onChange={(e) =>
               setFilter({ repo: e.target.value || undefined })
             }
-            className="rounded border border-border bg-surface px-2 py-2 text-xs text-foreground"
+            className="cursor-pointer rounded border border-border bg-surface px-2 py-2 text-xs text-foreground transition-colors hover:border-foreground"
           >
             <option value="">All repos</option>
             {repos.map((id) => (

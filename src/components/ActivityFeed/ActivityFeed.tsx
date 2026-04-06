@@ -49,7 +49,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
               onClick={() => setFilter(f)}
               className={`rounded px-2 py-2 text-xs capitalize transition-colors ${
                 filter === f
-                  ? "bg-accent text-bg font-semibold"
+                  ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                   : "text-dim hover:text-foreground"
               }`}
             >
