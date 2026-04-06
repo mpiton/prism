@@ -416,4 +416,22 @@ describe("CommandPalette", () => {
     expect(screen.getByText("Pull Requests")).toBeInTheDocument();
     expect(screen.getByText("Issues")).toBeInTheDocument();
   });
+
+  it("should have title attribute on item title span", () => {
+    const pr = makePr();
+
+    (useGitHubData as Mock).mockReturnValue({
+      dashboard: makeDashboard({ reviewRequests: [pr] }),
+      stats: null,
+      isLoading: false,
+      error: null,
+      forceSync: vi.fn(),
+      isSyncing: false,
+    });
+
+    renderPalette({ open: true, onOpenChange: () => {} });
+
+    const titleSpan = screen.getByText("Fix login bug");
+    expect(titleSpan).toHaveAttribute("title", "Fix login bug");
+  });
 });

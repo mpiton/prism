@@ -263,4 +263,10 @@ describe("MyPrCard", () => {
     expect(screen.getByRole("button", { name: "Wake workspace for PR #99" })).toBeInTheDocument();
     expect(screen.getByText("wake")).toBeInTheDocument();
   });
+
+  it("should have title attribute on PR title span", () => {
+    render(<MyPrCard data={basePr} onOpen={vi.fn()} />);
+    const titleSpan = screen.getByText("Add dashboard feature");
+    expect(titleSpan).toHaveAttribute("title", "Add dashboard feature");
+  });
 });

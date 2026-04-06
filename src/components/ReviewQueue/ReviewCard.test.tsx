@@ -133,4 +133,10 @@ describe("ReviewCard", () => {
     );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("should have title attribute on PR title span", () => {
+    render(<ReviewCard data={mockData} onOpen={vi.fn()} />);
+    const titleSpan = screen.getByText("Fix login bug");
+    expect(titleSpan).toHaveAttribute("title", "Fix login bug");
+  });
 });
