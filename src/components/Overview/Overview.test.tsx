@@ -17,6 +17,7 @@ vi.mock("../../hooks/useGitHubData", () => ({
 
 vi.mock("../../lib/tauri", () => ({
   markAllActivityRead: vi.fn().mockResolvedValue(0),
+  listRepos: vi.fn().mockResolvedValue([]),
 }));
 
 import { useGitHubData } from "../../hooks/useGitHubData";

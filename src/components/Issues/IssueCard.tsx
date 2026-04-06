@@ -5,6 +5,7 @@ import { LabelTag } from "../atoms/LabelTag";
 
 interface IssueCardProps {
   readonly issue: Issue;
+  readonly repoName: string;
   readonly onOpen: (url: string) => void;
 }
 
@@ -13,7 +14,7 @@ const STATE_DOT_COLOR: Record<IssueState, string> = {
   closed: "bg-purple",
 };
 
-export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
+export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactElement {
   function handleClick(e: MouseEvent) {
     e.preventDefault();
     onOpen(issue.url);
@@ -40,7 +41,7 @@ export function IssueCard({ issue, onOpen }: IssueCardProps): ReactElement {
       </div>
 
       <div className="flex min-w-0 items-center gap-2 pl-[18px]">
-        <span className="shrink-0 truncate text-xs text-dim">{issue.repoId}</span>
+        <span className="shrink-0 truncate text-xs text-dim">{repoName}</span>
         {issue.labels.length > 0 && (
           <span className="flex min-w-0 items-center gap-1 overflow-hidden">
             {issue.labels.map((label) => (

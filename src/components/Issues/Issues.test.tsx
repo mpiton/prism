@@ -1,8 +1,34 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Issue } from "../../lib/types";
+import type { Issue, Repo } from "../../lib/types";
 import { Issues } from "./Issues";
+
+const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
+
+vi.mock("@tanstack/react-query", async () => {
+  const actual = await vi.importActual("@tanstack/react-query");
+  return {
+    ...actual,
+    useQuery: mockUseQuery,
+  };
+});
+
+function makeRepo(overrides: Partial<Repo> = {}): Repo {
+  return {
+    id: "repo-1",
+    org: "org",
+    name: "repo",
+    fullName: "org/repo",
+    url: "https://github.com/org/repo",
+    defaultBranch: "main",
+    isArchived: false,
+    enabled: true,
+    localPath: null,
+    lastSyncAt: null,
+    ...overrides,
+  };
+}
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
@@ -32,6 +58,7 @@ const onOpen = vi.fn();
 
 beforeEach(() => {
   onOpen.mockClear();
+  mockUseQuery.mockReturnValue({ data: [makeRepo()] });
 });
 
 describe("Issues", () => {
@@ -95,5 +122,27 @@ describe("Issues", () => {
     await user.click(screen.getByText("Open issue one"));
 
     expect(onOpen).toHaveBeenCalledWith(openIssue1.url);
+  });
+
+  it("should display repo name instead of repo id", () => {
+    render(<Issues issues={[openIssue1]} onOpen={onOpen} />);
+
+    expect(screen.getByText("repo")).toBeInTheDocument();
+  });
+
+  it("should use fullName when repo names are ambiguous", () => {
+    const issue1 = makeIssue({ number: 1, title: "Issue in org-a", state: "open", repoId: "repo-a" });
+    const issue2 = makeIssue({ number: 2, title: "Issue in org-b", state: "open", repoId: "repo-b" });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo({ id: "repo-a", org: "org-a", name: "shared", fullName: "org-a/shared" }),
+        makeRepo({ id: "repo-b", org: "org-b", name: "shared", fullName: "org-b/shared" }),
+      ],
+    });
+
+    render(<Issues issues={[issue1, issue2]} onOpen={onOpen} />);
+
+    expect(screen.getByText("org-a/shared")).toBeInTheDocument();
+    expect(screen.getByText("org-b/shared")).toBeInTheDocument();
   });
 });
