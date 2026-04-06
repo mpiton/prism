@@ -43,10 +43,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Focus ring global ────────────────────────── */
+/* ── Focus ring global (WCAG AA) ─────────────── */
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 /* ── Scrollbar dark theme ─────────────────────── */
