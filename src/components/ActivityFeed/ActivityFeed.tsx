@@ -47,7 +47,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
               type="button"
               aria-pressed={filter === f}
               onClick={() => setFilter(f)}
-              className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${
+              className={`rounded px-2 py-2 text-xs capitalize transition-colors ${
                 filter === f
                   ? "bg-accent text-bg font-semibold"
                   : "text-dim hover:text-foreground"
@@ -61,7 +61,7 @@ export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): 
         <button
           type="button"
           onClick={onMarkAllRead}
-          className="ml-auto rounded px-2 py-0.5 text-xs text-dim hover:text-foreground"
+          className="ml-auto rounded px-2 py-2 text-xs text-dim hover:text-foreground"
         >
           Mark all read
         </button>

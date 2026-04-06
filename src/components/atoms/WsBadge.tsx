@@ -26,7 +26,7 @@ export function WsBadge({ state, loading, onClick, ariaLabel }: WsBadgeProps): R
       onClick={loading ? undefined : onClick}
       disabled={loading}
       aria-label={ariaLabel}
-      className={`rounded border border-accent/30 px-2 py-0.5 text-xs text-accent ${loading ? "animate-pulse opacity-60" : "hover:bg-accent/10"}`}
+      className={`rounded border border-accent/30 px-2 py-2 text-xs text-accent ${loading ? "animate-pulse opacity-60" : "hover:bg-accent/10"}`}
     >
       {label}
     </button>

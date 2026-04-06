@@ -85,7 +85,7 @@ export function WorkspaceStatusBar({
           type="button"
           aria-label="Git push"
           disabled={disabled}
-          className="rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => handlePtyCommand("git push")}
         >
           push
@@ -95,7 +95,7 @@ export function WorkspaceStatusBar({
           type="button"
           aria-label="Git pull"
           disabled={disabled}
-          className="rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => handlePtyCommand("git pull")}
         >
           pull
@@ -109,7 +109,7 @@ export function WorkspaceStatusBar({
           aria-disabled={disabled || undefined}
           tabIndex={disabled ? -1 : undefined}
           onClick={disabled ? (e) => e.preventDefault() : undefined}
-          className={`rounded px-2 py-0.5 text-muted hover:bg-surface-hover hover:text-text ${disabled ? "pointer-events-none opacity-40" : ""}`}
+          className={`rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text ${disabled ? "pointer-events-none opacity-40" : ""}`}
         >
           github
         </a>
