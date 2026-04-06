@@ -42,7 +42,7 @@ function StatItem({ label, value, testId, highlight }: StatItemProps): ReactElem
 }
 
 export function StatsBar(): ReactElement {
-  const { stats, dashboard } = useGitHubData();
+  const { stats, dashboard, isSyncing } = useGitHubData();
   const focusMode = useDashboardStore((s) => s.focusMode);
   const [now, setNow] = useState(() => Date.now());
 
@@ -89,7 +89,11 @@ export function StatsBar(): ReactElement {
             FOCUS MODE
           </span>
         )}
-        <span className="text-xs text-dim">{formatSyncedTime(syncedAt, now)}</span>
+        {isSyncing ? (
+          <span className="text-xs text-dim animate-pulse">syncing...</span>
+        ) : (
+          <span className="text-xs text-dim">{formatSyncedTime(syncedAt, now)}</span>
+        )}
       </div>
     </div>
   );
