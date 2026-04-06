@@ -41,6 +41,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -62,6 +63,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: new Date(Date.now() - 30_000).toISOString() },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -75,6 +77,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -89,6 +92,7 @@ describe("StatsBar", () => {
       stats: null,
       dashboard: null,
       isLoading: true,
+      isSyncing: false,
       error: null,
     });
 
@@ -103,6 +107,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: new Date(Date.now() - 120_000).toISOString() },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -116,6 +121,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: new Date(Date.now() - 7_200_000).toISOString() },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -129,6 +135,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: null },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -143,6 +150,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -157,6 +165,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -170,6 +179,7 @@ describe("StatsBar", () => {
       stats: MOCK_STATS,
       dashboard: { syncedAt: "not-a-date" },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
@@ -178,11 +188,44 @@ describe("StatsBar", () => {
     expect(screen.getByText(/never synced/i)).toBeInTheDocument();
   });
 
+  it("should show syncing indicator when sync is in progress", () => {
+    (useGitHubData as Mock).mockReturnValue({
+      stats: MOCK_STATS,
+      dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
+      isLoading: false,
+      isSyncing: true,
+      error: null,
+    });
+
+    render(<StatsBar />, { wrapper: createWrapper() });
+
+    const syncIndicator = screen.getByText(/syncing/i);
+    expect(syncIndicator).toBeInTheDocument();
+    expect(syncIndicator).toHaveClass("animate-pulse");
+    expect(screen.queryByText(/synced.*ago/i)).not.toBeInTheDocument();
+  });
+
+  it("should show synced time when not syncing", () => {
+    (useGitHubData as Mock).mockReturnValue({
+      stats: MOCK_STATS,
+      dashboard: { syncedAt: new Date(Date.now() - 60_000).toISOString() },
+      isLoading: false,
+      isSyncing: false,
+      error: null,
+    });
+
+    render(<StatsBar />, { wrapper: createWrapper() });
+
+    expect(screen.getByText(/synced.*ago/i)).toBeInTheDocument();
+    expect(screen.queryByText(/syncing/i)).not.toBeInTheDocument();
+  });
+
   it("should have role=region and aria-label on stats container", () => {
     (useGitHubData as Mock).mockReturnValue({
       stats: MOCK_STATS,
       dashboard: { syncedAt: "2026-03-28T10:00:00Z" },
       isLoading: false,
+      isSyncing: false,
       error: null,
     });
 
