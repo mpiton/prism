@@ -41,7 +41,7 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
       </div>
 
       <div className="flex min-w-0 items-center gap-2 pl-[18px]">
-        <span className="shrink-0 truncate text-xs text-dim" title={repoName}>{repoName}</span>
+        <span className="min-w-0 truncate text-xs text-dim" title={repoName}>{repoName}</span>
         {issue.labels.length > 0 && (
           <span className="flex min-w-0 items-center gap-1 overflow-hidden">
             {issue.labels.map((label) => (
