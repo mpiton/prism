@@ -72,7 +72,7 @@ describe("WorkspaceSwitcher", () => {
     resetStores();
   });
 
-  it("should render all workspace tabs", () => {
+  it("should render non-archived workspace tabs", () => {
     render(
       <WorkspaceSwitcher
         workspaces={WORKSPACES}
@@ -83,6 +83,7 @@ describe("WorkspaceSwitcher", () => {
     expect(screen.getByText("#42")).toBeInTheDocument();
     expect(screen.getByText("#99")).toBeInTheDocument();
     expect(screen.getByText("#7")).toBeInTheDocument();
+    expect(screen.queryByText("#15")).not.toBeInTheDocument();
   });
 
   it("should highlight active tab", () => {
@@ -138,11 +139,10 @@ describe("WorkspaceSwitcher", () => {
 
     const activeDot = screen.getByTestId("dot-ws-1");
     const suspendedDot = screen.getByTestId("dot-ws-2");
-    const archivedDot = screen.getByTestId("dot-ws-4");
 
     expect(activeDot.className).toContain("bg-green");
     expect(suspendedDot.className).toContain("bg-orange");
-    expect(archivedDot.className).toContain("bg-dim");
+    expect(screen.queryByTestId("dot-ws-4")).not.toBeInTheDocument();
   });
 
   it("should use maxActiveWorkspaces from settings store", () => {
@@ -178,7 +178,7 @@ describe("WorkspaceSwitcher", () => {
     );
 
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(3);
 
     const activeTab = screen.getByTestId("tab-ws-1");
     const inactiveTab = screen.getByTestId("tab-ws-2");
@@ -256,7 +256,7 @@ describe("WorkspaceSwitcher", () => {
     firstTab.focus();
     await user.keyboard("{ArrowLeft}");
 
-    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-4");
+    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-3");
   });
 
   it("should navigate to first tab with Home key", async () => {
@@ -291,7 +291,7 @@ describe("WorkspaceSwitcher", () => {
     firstTab.focus();
     await user.keyboard("{End}");
 
-    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-4");
+    expect(useWorkspacesStore.getState().activeWorkspaceId).toBe("ws-3");
   });
 
   it("should set tabIndex 0 on active tab and -1 on others", () => {

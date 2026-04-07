@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types";
 import { resumeWorkspace } from "../../lib/tauri";
@@ -28,11 +28,6 @@ export function WorkspaceView({
   const info = active ? statusInfo[active.id] : undefined;
   const isSuspended = active !== undefined && active.state === "suspended";
 
-  const visibleEntries = useMemo(
-    () => entries.filter((e) => e.workspace.state !== "archived"),
-    [entries],
-  );
-
   const [waking, setWaking] = useState(false);
 
   const handleWakeWorkspace = useCallback(async () => {
@@ -51,8 +46,8 @@ export function WorkspaceView({
 
   const handleWorkspaceClick = useCallback(
     async (id: string) => {
-      const entry = visibleEntries.find((e) => e.workspace.id === id);
-      if (!entry) return;
+      const entry = entries.find((e) => e.workspace.id === id);
+      if (!entry || entry.workspace.state === "archived") return;
 
       try {
         if (entry.workspace.state === "suspended") {
@@ -65,7 +60,7 @@ export function WorkspaceView({
         console.error("[WorkspaceView] failed to resume workspace:", err);
       }
     },
-    [visibleEntries, queryClient, setActiveWorkspace],
+    [entries, queryClient, setActiveWorkspace],
   );
 
   return (
@@ -113,7 +108,7 @@ export function WorkspaceView({
           )}
         </>
       ) : (
-        <WorkspaceListPage entries={visibleEntries} onWorkspaceClick={handleWorkspaceClick} />
+        <WorkspaceListPage entries={entries} onWorkspaceClick={handleWorkspaceClick} />
       )}
     </section>
   );
