@@ -277,9 +277,7 @@ describe("WorkspaceView", () => {
 
     fireEvent.click(screen.getByTestId("workspace-item-ws-archived"));
 
-    await waitFor(() => {
-      expect(resumeWorkspace).not.toHaveBeenCalled();
-    });
+    expect(resumeWorkspace).not.toHaveBeenCalled();
   });
 
   it("should set active workspace when clicking an active workspace", async () => {

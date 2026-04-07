@@ -60,7 +60,7 @@ export function WorkspaceView({
         console.error("[WorkspaceView] failed to resume workspace:", err);
       }
     },
-    [queryClient, setActiveWorkspace],
+    [entries, queryClient, setActiveWorkspace],
   );
 
   return (
