@@ -242,7 +242,7 @@ describe("WorkspaceView", () => {
     expect(screen.queryByTestId("terminal-ws-1")).not.toBeInTheDocument();
   });
 
-  it("should filter out archived workspaces from list", () => {
+  it("should show archived workspaces in list", () => {
     useWorkspacesStore.setState({ activeWorkspaceId: null });
 
     const activeEntry = makeEntry({ workspaceOverrides: { id: "ws-active", state: "active", pullRequestNumber: 1 } });
@@ -258,7 +258,28 @@ describe("WorkspaceView", () => {
     );
 
     expect(screen.getByTestId("workspace-item-ws-active")).toBeInTheDocument();
-    expect(screen.queryByTestId("workspace-item-ws-archived")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workspace-item-ws-archived")).toBeInTheDocument();
+  });
+
+  it("should not resume archived workspace on click", async () => {
+    useWorkspacesStore.setState({ activeWorkspaceId: null });
+
+    const archivedEntry = makeEntry({ workspaceOverrides: { id: "ws-archived", state: "archived", pullRequestNumber: 2 } });
+
+    renderWithQuery(
+      <WorkspaceView
+        workspaces={WORKSPACES}
+        statusInfo={{}}
+        entries={[archivedEntry]}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("workspace-item-ws-archived"));
+
+    await waitFor(() => {
+      expect(resumeWorkspace).not.toHaveBeenCalled();
+    });
   });
 
   it("should set active workspace when clicking an active workspace", async () => {

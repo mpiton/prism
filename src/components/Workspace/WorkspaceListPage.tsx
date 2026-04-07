@@ -39,8 +39,13 @@ export function WorkspaceListPage({
             <button
               type="button"
               onClick={() => onWorkspaceClick(workspace.id)}
+              disabled={workspace.state === "archived"}
               aria-label={`PR #${workspace.pullRequestNumber} (${workspace.state})`}
-              className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface-hover"
+              className={`flex w-full items-start gap-3 px-4 py-3 text-left ${
+                workspace.state === "archived"
+                  ? "cursor-default opacity-50"
+                  : "hover:bg-surface-hover"
+              }`}
             >
               <span
                 data-state={workspace.state}

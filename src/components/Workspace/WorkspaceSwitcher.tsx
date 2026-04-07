@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useMemo } from "react";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useSettingsStore } from "../../stores/settings";
 import type { Workspace, WorkspaceState } from "../../lib/types";
@@ -30,15 +30,19 @@ export function WorkspaceSwitcher({
     useSettingsStore((s) => s.config?.maxActiveWorkspaces),
   );
 
+  const visibleWorkspaces = useMemo(
+    () => workspaces.filter((w) => w.state !== "archived"),
+    [workspaces],
+  );
   const activeCount = workspaces.filter((w) => w.state === "active").length;
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const focusedId = workspaces.some((w) => w.id === activeWorkspaceId)
+  const focusedId = visibleWorkspaces.some((w) => w.id === activeWorkspaceId)
     ? activeWorkspaceId
-    : workspaces[0]?.id ?? null;
+    : visibleWorkspaces[0]?.id ?? null;
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent, index: number) => {
-      const count = workspaces.length;
+      const count = visibleWorkspaces.length;
       if (count === 0) return;
 
       let next: number | null = null;
@@ -60,13 +64,13 @@ export function WorkspaceSwitcher({
       }
 
       e.preventDefault();
-      const ws = workspaces[next];
+      const ws = visibleWorkspaces[next];
       if (ws) {
         setActiveWorkspace(ws.id);
         tabRefs.current[next]?.focus();
       }
     },
-    [workspaces, setActiveWorkspace],
+    [visibleWorkspaces, setActiveWorkspace],
   );
 
   return (
@@ -83,7 +87,7 @@ export function WorkspaceSwitcher({
       </button>
 
       <div className="flex items-center gap-1" role="tablist" aria-label="Workspaces">
-        {workspaces.map((ws, i) => {
+        {visibleWorkspaces.map((ws, i) => {
           const isActive = ws.id === focusedId;
           return (
             <button

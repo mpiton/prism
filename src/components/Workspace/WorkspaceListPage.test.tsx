@@ -229,6 +229,30 @@ describe("WorkspaceListPage", () => {
     expect(branchSpan).toHaveAttribute("title", "feat/login");
   });
 
+  it("should disable archived workspace entries", async () => {
+    const user = userEvent.setup();
+    const handleClick = vi.fn();
+
+    render(
+      <WorkspaceListPage entries={[ARCHIVED_ENTRY]} onWorkspaceClick={handleClick} />,
+    );
+
+    const btn = screen.getByRole("button", { name: /PR #7/ });
+    expect(btn).toBeDisabled();
+
+    await user.click(btn);
+    expect(handleClick).not.toHaveBeenCalled();
+  });
+
+  it("should style archived entries with reduced opacity", () => {
+    render(
+      <WorkspaceListPage entries={[ARCHIVED_ENTRY]} onWorkspaceClick={vi.fn()} />,
+    );
+
+    const btn = screen.getByRole("button", { name: /PR #7/ });
+    expect(btn.className).toContain("opacity-50");
+  });
+
   it("should have title attribute on last note paragraph", () => {
     render(
       <WorkspaceListPage entries={[ACTIVE_ENTRY]} onWorkspaceClick={vi.fn()} />,
