@@ -208,6 +208,19 @@ pub fn run() {
             // Force-sync guard — prevents concurrent sync invocations
             app.manage(SyncInFlight::default());
 
+            // Set window icon from bundled PNG
+            if let Some(window) = app.get_webview_window("main") {
+                let png_bytes = include_bytes!("../icons/icon.png");
+                if let Ok(img) =
+                    image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+                {
+                    let rgba = img.to_rgba8();
+                    let (w, h) = rgba.dimensions();
+                    let icon = tauri::image::Image::new_owned(rgba.into_raw(), w, h);
+                    let _ = window.set_icon(icon);
+                }
+            }
+
             // System tray icon with context menu (desktop only)
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             tray::setup_tray(app).map_err(|e| e.to_string())?;

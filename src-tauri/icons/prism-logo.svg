@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Spectrum gradient along right face direction -->
+    <linearGradient id="spectrum" gradientUnits="userSpaceOnUse"
+      x1="256" y1="80" x2="416" y2="420">
+      <stop offset="0%" stop-color="#ff4d4d"/>
+      <stop offset="20%" stop-color="#ff9f1c"/>
+      <stop offset="40%" stop-color="#00d26a"/>
+      <stop offset="60%" stop-color="#5eaaff"/>
+      <stop offset="80%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+
+    <!-- Soft glow: blur + sharp overlay -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Ambient glow (blur only, no sharp overlay) -->
+    <filter id="ambient" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="14"/>
+    </filter>
+
+    <!-- Clip to triangle interior -->
+    <clipPath id="prism">
+      <polygon points="256,80 416,420 96,420"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" fill="#111110"/>
+
+  <!-- Triangle prism — solid dark fill -->
+  <polygon points="256,80 416,420 96,420" fill="#1e1e1b"/>
+
+  <!-- Ambient glow behind spectrum band (colored light spill) -->
+  <line x1="256" y1="80" x2="416" y2="420"
+    stroke="url(#spectrum)" stroke-width="70"
+    clip-path="url(#prism)" filter="url(#ambient)" opacity="0.45"/>
+
+  <!-- Spectrum band — thick gradient stroke along right face, clipped inside -->
+  <line x1="256" y1="80" x2="416" y2="420"
+    stroke="url(#spectrum)" stroke-width="70"
+    clip-path="url(#prism)"/>
+
+  <!-- Ambient glow behind lime edge -->
+  <line x1="96" y1="420" x2="256" y2="80"
+    stroke="#c8ff00" stroke-width="8" stroke-linecap="round"
+    filter="url(#ambient)" opacity="0.35"/>
+
+  <!-- Left edge — lime accent -->
+  <line x1="96" y1="420" x2="256" y2="80"
+    stroke="#c8ff00" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Bottom edge — barely visible -->
+  <line x1="96" y1="420" x2="416" y2="420"
+    stroke="#2a2a27" stroke-width="2"/>
+</svg>
