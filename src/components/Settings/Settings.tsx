@@ -165,30 +165,6 @@ export function Settings(): ReactElement {
         />
       </div>
 
-      <div data-testid="settings-claude-code" className={sectionClass}>
-        <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">Claude Code</h2>
-        <label className="flex items-center justify-between gap-4">
-          <span className="text-dim text-sm">Auth mode</span>
-          <select
-            value={config.claudeAuthMode}
-            onChange={(e) => configMutation.mutate({ claudeAuthMode: e.target.value as "oauth" | "api_key" })}
-            className="bg-surface border-border rounded border px-2 py-1 font-mono text-sm text-white"
-          >
-            <option value="oauth">OAuth</option>
-            <option value="api_key">API Key</option>
-          </select>
-        </label>
-        <label className="flex items-center justify-between gap-3 py-1">
-          <span className="text-dim text-sm">Auto-generate CLAUDE.md</span>
-          <input
-            type="checkbox"
-            checked={config.claudeAutoGenerateMd}
-            onChange={(e) => configMutation.mutate({ claudeAutoGenerateMd: e.target.checked })}
-            className="accent-accent h-4 w-4"
-          />
-        </label>
-      </div>
-
       <div data-testid="settings-repos" className="flex flex-col gap-3">
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">Repositories</h2>
         {reposQuery.isLoading ? (
