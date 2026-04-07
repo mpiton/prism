@@ -35,16 +35,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
 
   const repoMap = useMemo<Map<string, string>>(() => {
     if (!repos) return new Map();
-    const nameCounts = new Map<string, number>();
-    for (const repo of repos) {
-      nameCounts.set(repo.name, (nameCounts.get(repo.name) ?? 0) + 1);
-    }
-    return new Map(
-      repos.map((repo) => [
-        repo.id,
-        nameCounts.get(repo.name) === 1 ? repo.name : repo.fullName,
-      ]),
-    );
+    return new Map(repos.map((repo) => [repo.id, repo.fullName]));
   }, [repos]);
 
   const openIssues = issues.filter(isOpen);
