@@ -4,6 +4,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Issue, Repo } from "../../lib/types";
 import { Issues } from "./Issues";
 
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (opts: { count: number; estimateSize: (i: number) => number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: opts.count }, (_, i) => ({
+        index: i,
+        key: i,
+        start: i * opts.estimateSize(i),
+        size: opts.estimateSize(i),
+      })),
+    getTotalSize: () => opts.count * opts.estimateSize(0),
+  }),
+}));
+
 const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
 
 vi.mock("@tanstack/react-query", async () => {

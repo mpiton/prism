@@ -11,7 +11,6 @@ import { ActivityFeed } from "../ActivityFeed";
 
 const MAX_REVIEWS = 5;
 const MAX_PRS = 5;
-const MAX_ISSUES = 3;
 const MAX_ACTIVITIES = 5;
 
 function openUrl(url: string): void {
@@ -98,7 +97,7 @@ export function Overview(): ReactElement {
 
   const reviews = dashboard.reviewRequests.slice(0, MAX_REVIEWS);
   const prs = dashboard.myPullRequests.slice(0, MAX_PRS);
-  const issues = dashboard.assignedIssues.slice(0, MAX_ISSUES);
+  const issues = dashboard.assignedIssues;
   const activities = dashboard.recentActivity.slice(0, MAX_ACTIVITIES);
 
   return (

@@ -14,6 +14,10 @@ if (typeof Element.prototype.scrollIntoView === "undefined") {
   Element.prototype.scrollIntoView = function () {};
 }
 
+if (typeof Element.prototype.scrollTo === "undefined") {
+  Element.prototype.scrollTo = function () {};
+}
+
 afterEach(() => {
   cleanup();
 });
