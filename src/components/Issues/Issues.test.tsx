@@ -137,13 +137,13 @@ describe("Issues", () => {
     expect(onOpen).toHaveBeenCalledWith(openIssue1.url);
   });
 
-  it("should display repo name instead of repo id", () => {
+  it("should display fullName instead of repo id", () => {
     render(<Issues issues={[openIssue1]} onOpen={onOpen} />);
 
-    expect(screen.getByText("repo")).toBeInTheDocument();
+    expect(screen.getByText("org/repo")).toBeInTheDocument();
   });
 
-  it("should use fullName when repo names are ambiguous", () => {
+  it("should always display fullName for all repos", () => {
     const issue1 = makeIssue({ number: 1, title: "Issue in org-a", state: "open", repoId: "repo-a" });
     const issue2 = makeIssue({ number: 2, title: "Issue in org-b", state: "open", repoId: "repo-b" });
     mockUseQuery.mockReturnValue({
@@ -157,5 +157,13 @@ describe("Issues", () => {
 
     expect(screen.getByText("org-a/shared")).toBeInTheDocument();
     expect(screen.getByText("org-b/shared")).toBeInTheDocument();
+  });
+
+  it("should fallback to repoId when repo not found in map", () => {
+    const orphanIssue = makeIssue({ number: 99, title: "Orphan issue", state: "open", repoId: "unknown-repo" });
+
+    render(<Issues issues={[orphanIssue]} onOpen={onOpen} />);
+
+    expect(screen.getByText("unknown-repo")).toBeInTheDocument();
   });
 });
