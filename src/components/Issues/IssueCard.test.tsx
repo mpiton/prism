@@ -96,4 +96,16 @@ describe("IssueCard", () => {
     const dot = screen.getByTestId("issue-state-dot");
     expect(dot).toHaveAttribute("aria-hidden", "true");
   });
+
+  it("should have title attribute on issue title span", () => {
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
+    const titleSpan = screen.getByText("Fix login bug");
+    expect(titleSpan).toHaveAttribute("title", "Fix login bug");
+  });
+
+  it("should have title attribute on repo name span", () => {
+    render(<IssueCard issue={makeIssue()} repoName="my-repo" onOpen={vi.fn()} />);
+    const repoSpan = screen.getByText("my-repo");
+    expect(repoSpan).toHaveAttribute("title", "my-repo");
+  });
 });

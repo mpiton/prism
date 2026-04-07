@@ -219,4 +219,22 @@ describe("WorkspaceListPage", () => {
 
     expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
   });
+
+  it("should have title attribute on branch span", () => {
+    render(
+      <WorkspaceListPage entries={[ACTIVE_ENTRY]} onWorkspaceClick={vi.fn()} />,
+    );
+
+    const branchSpan = screen.getByText("feat/login");
+    expect(branchSpan).toHaveAttribute("title", "feat/login");
+  });
+
+  it("should have title attribute on last note paragraph", () => {
+    render(
+      <WorkspaceListPage entries={[ACTIVE_ENTRY]} onWorkspaceClick={vi.fn()} />,
+    );
+
+    const noteEl = screen.getByText("Fixed auth flow, needs final review");
+    expect(noteEl).toHaveAttribute("title", "Fixed auth flow, needs final review");
+  });
 });

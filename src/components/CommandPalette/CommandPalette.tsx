@@ -63,7 +63,7 @@ function PaletteItemRow({ item }: { readonly item: PaletteItem }): ReactElement 
   return (
     <>
       <span className="shrink-0 text-fg/50">#{item.number}</span>
-      <span className="truncate">{item.title}</span>
+      <span className="truncate" title={item.title}>{item.title}</span>
       <span className="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs text-fg/60">
         {item.repoName}
       </span>

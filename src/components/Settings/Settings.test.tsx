@@ -390,6 +390,15 @@ describe("Settings", () => {
     expect(await screen.findByText("N/A")).toBeInTheDocument();
   });
 
+  it("should have title attribute on repo name span", async () => {
+    setupMocks(makeConfig(), [makeRepo(1, { name: "my-repo" })]);
+
+    renderWithProviders(<Settings />);
+
+    const repoSpan = await screen.findByText("my-repo");
+    expect(repoSpan).toHaveAttribute("title", "my-repo");
+  });
+
   it("should render Claude Code section", async () => {
     setupMocks();
     renderWithProviders(<Settings />);

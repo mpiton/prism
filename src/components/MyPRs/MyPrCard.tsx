@@ -98,6 +98,7 @@ export function MyPrCard({
           <div className="flex min-w-0 items-center gap-2">
             <span
               className={`min-w-0 truncate text-sm font-medium text-foreground${merged ? " line-through" : ""}`}
+              title={pr.title}
             >
               {pr.title}
             </span>

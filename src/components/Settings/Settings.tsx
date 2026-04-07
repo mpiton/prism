@@ -69,7 +69,7 @@ interface RepoRowProps {
 function RepoRow({ repo, disabled, onToggle }: RepoRowProps): ReactElement {
   return (
     <label className="flex items-center justify-between gap-3 py-1">
-      <span className="min-w-0 truncate font-mono text-sm text-white">{repo.name}</span>
+      <span className="min-w-0 truncate font-mono text-sm text-white" title={repo.name}>{repo.name}</span>
       <input
         type="checkbox"
         checked={repo.enabled}

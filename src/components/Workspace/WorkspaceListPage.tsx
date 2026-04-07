@@ -57,7 +57,7 @@ export function WorkspaceListPage({
 
                 {branch && (
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-dim">
-                    <span className="truncate">{branch}</span>
+                    <span className="truncate" title={branch}>{branch}</span>
                     {(ahead > 0 || behind > 0) && (
                       <span>
                         {ahead > 0 && <span className="text-green">+{ahead}</span>}
@@ -74,7 +74,7 @@ export function WorkspaceListPage({
                 </div>
 
                 {lastNote && (
-                  <p className="mt-1 truncate text-xs text-dim/70">{lastNote}</p>
+                  <p className="mt-1 truncate text-xs text-dim/70" title={lastNote}>{lastNote}</p>
                 )}
               </div>
             </button>

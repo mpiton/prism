@@ -56,8 +56,8 @@ export function ReviewCard({
         <PriorityBar priority={pr.priority} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-medium text-foreground" title={pr.title}>
               {pr.title}
             </span>
             <span className="shrink-0 text-xs text-dim">#{pr.number}</span>

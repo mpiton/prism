@@ -35,13 +35,13 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
           className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATE_DOT_COLOR[issue.state]}`}
         />
         <span className="shrink-0 text-xs text-dim">#{issue.number}</span>
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground" title={issue.title}>
           {issue.title}
         </span>
       </div>
 
       <div className="flex min-w-0 items-center gap-2 pl-[18px]">
-        <span className="shrink-0 truncate text-xs text-dim">{repoName}</span>
+        <span className="min-w-0 truncate text-xs text-dim" title={repoName}>{repoName}</span>
         {issue.labels.length > 0 && (
           <span className="flex min-w-0 items-center gap-1 overflow-hidden">
             {issue.labels.map((label) => (
