@@ -36,6 +36,7 @@ tracing-appender = "0.2.4"
 tauri-plugin-opener = "2.5.3"
 futures = "0.3.32"
 tauri-plugin-pilot = "0.1.0"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 page_size = "0.6.0"

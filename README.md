@@ -1,13 +1,24 @@
-# PRism
+<p align="center">
+  <img src="src-tauri/icons/prism-logo.svg" width="128" height="128" alt="PRism logo">
+</p>
 
-[![CI](https://github.com/mpiton/prism/actions/workflows/ci.yml/badge.svg)](https://github.com/mpiton/prism/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">PRism</h1>
 
-GitHub Review Dashboard & PR Workspaces — a Tauri desktop app for centralized code review.
+<p align="center">
+  GitHub Review Dashboard & PR Workspaces
+</p>
 
-PRism aggregates your GitHub review requests, pull requests, issues, and activity into a single real-time dashboard with priority scoring. PR Workspaces provide isolated development environments (git worktrees + embedded terminal + persistent Claude Code sessions) for instant context switching.
+<p align="center">
+  <a href="https://github.com/mpiton/prism/actions/workflows/ci.yml"><img src="https://github.com/mpiton/prism/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Tauri-2.10-blue?logo=tauri" alt="Tauri 2.10">
+  <img src="https://img.shields.io/badge/React-19-blue?logo=react" alt="React 19">
+  <img src="https://img.shields.io/badge/Rust-stable-orange?logo=rust" alt="Rust">
+</p>
 
-<!-- TODO: Add screenshot -->
+---
+
+A Tauri desktop app that aggregates your GitHub review requests, pull requests, issues, and activity into a single real-time dashboard with priority scoring. PR Workspaces provide isolated development environments (git worktrees + embedded terminal + persistent Claude Code sessions) for instant context switching.
 
 ## Features
 
@@ -19,11 +30,13 @@ PRism aggregates your GitHub review requests, pull requests, issues, and activit
 - [ ] PR Workspaces with embedded terminal and Claude Code sessions
 - [ ] Offline-first with SQLite cache
 
-## Tech Stack
+## Tech stack
 
-- **Backend**: Rust, Tauri 2.10, tokio, sqlx (SQLite), octocrab, graphql_client
-- **Frontend**: React 19, TypeScript, Zustand, TanStack Query v5, Tailwind CSS 4
-- **Tooling**: oxlint, Vitest, cargo test
+| Layer | Technologies |
+|-------|-------------|
+| **Backend** | Rust, Tauri 2.10, tokio, sqlx (SQLite), octocrab, graphql_client |
+| **Frontend** | React 19, TypeScript, Zustand, TanStack Query v5, Tailwind CSS 4 |
+| **Tooling** | oxlint, oxfmt, Vitest, cargo test |
 
 ## Prerequisites
 
