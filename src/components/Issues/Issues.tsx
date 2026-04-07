@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactElement, useMemo, useRef, useState } from "react";
+import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { listRepos } from "../../lib/tauri";
 import type { Issue } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
@@ -27,6 +27,10 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
   const parentRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    parentRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [tab]);
+
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
   const repoMap = useMemo<Map<string, string>>(() => {
@@ -51,6 +55,7 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
     count: visible.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 72,
+    gap: 4,
     overscan: 3,
     // React 19 triggers "flushSync inside lifecycle" warnings with the default (true)
     useFlushSync: false,
