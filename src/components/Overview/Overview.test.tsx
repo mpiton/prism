@@ -11,6 +11,19 @@ import type {
 } from "../../lib/types";
 import { Overview } from "./Overview";
 
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (opts: { count: number; estimateSize: (i: number) => number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: opts.count }, (_, i) => ({
+        index: i,
+        key: i,
+        start: i * opts.estimateSize(i),
+        size: opts.estimateSize(i),
+      })),
+    getTotalSize: () => opts.count * opts.estimateSize(0),
+  }),
+}));
+
 vi.mock("../../hooks/useGitHubData", () => ({
   useGitHubData: vi.fn(),
 }));
@@ -200,14 +213,14 @@ describe("Overview", () => {
     expect(screen.queryByText("PR #15")).not.toBeInTheDocument();
   });
 
-  it("should limit issues to 3 items", () => {
+  it("should pass all issues without limit", () => {
     const issues = Array.from({ length: 6 }, (_, i) => makeIssue(i + 1));
     setupMock(makeDashboard({ assignedIssues: issues }));
 
     renderWithProviders(<Overview />);
 
     expect(screen.getByText("Issue #3")).toBeInTheDocument();
-    expect(screen.queryByText("Issue #4")).not.toBeInTheDocument();
+    expect(screen.getByText("Issue #6")).toBeInTheDocument();
   });
 
   it("should limit activity to 5 items", () => {

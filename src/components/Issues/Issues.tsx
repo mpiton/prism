@@ -1,5 +1,6 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactElement, useMemo, useState } from "react";
+import { type ReactElement, useMemo, useRef, useState } from "react";
 import { listRepos } from "../../lib/tauri";
 import type { Issue } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
@@ -24,6 +25,7 @@ function isClosed(issue: Issue): boolean {
 
 export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
+  const parentRef = useRef<HTMLDivElement>(null);
 
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
@@ -44,6 +46,15 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
   const openIssues = issues.filter(isOpen);
   const closedIssues = issues.filter(isClosed);
   const visible = tab === "open" ? openIssues : closedIssues;
+
+  const virtualizer = useVirtualizer({
+    count: visible.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 72,
+    overscan: 3,
+    // React 19 triggers "flushSync inside lifecycle" warnings with the default (true)
+    useFlushSync: false,
+  });
 
   const navItems = useMemo(
     () =>
@@ -88,10 +99,35 @@ export function Issues({ issues, onOpen }: IssuesProps): ReactElement {
       {visible.length === 0 ? (
         <EmptyState icon="◎" message="No issues to display" />
       ) : (
-        <div className="flex flex-col gap-1">
-          {visible.map((issue) => (
-            <IssueCard key={issue.id} issue={issue} repoName={repoMap.get(issue.repoId) ?? issue.repoId} onOpen={onOpen} />
-          ))}
+        <div
+          ref={parentRef}
+          className="max-h-[600px] overflow-y-auto"
+        >
+          <div
+            className="relative w-full"
+            style={{ height: `${virtualizer.getTotalSize()}px` }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const issue = visible[virtualItem.index];
+              if (!issue) return <div key={virtualItem.key} style={{ height: `${virtualItem.size}px` }} />;
+              return (
+                <div
+                  key={virtualItem.key}
+                  className="absolute left-0 top-0 w-full"
+                  style={{
+                    height: `${virtualItem.size}px`,
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <IssueCard
+                    issue={issue}
+                    repoName={repoMap.get(issue.repoId) ?? issue.repoId}
+                    onOpen={onOpen}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </section>
