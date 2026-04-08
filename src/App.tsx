@@ -25,6 +25,7 @@ import { useKeyboard } from "./hooks/useKeyboard";
 import { useDashboardStore } from "./stores/dashboard";
 import { useWorkspaceEnriched } from "./hooks/useWorkspaceEnriched";
 import { useWorkspacesStore } from "./stores/workspaces";
+import { openUrl as tauriOpen } from "@tauri-apps/plugin-opener";
 import type { DashboardView } from "./stores/dashboard";
 
 const WorkspaceView = lazy(() =>
@@ -35,7 +36,9 @@ const Settings = lazy(() =>
 );
 
 function openUrl(url: string): void {
-  window.open(url, "_blank", "noopener,noreferrer");
+  tauriOpen(url).catch((err: unknown) => {
+    console.warn("[openUrl] failed to open", url, err);
+  });
 }
 
 function LazyFallback(): ReactElement {

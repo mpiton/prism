@@ -4,6 +4,10 @@ import { userEvent } from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CommandPalette } from "./CommandPalette";
 
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../hooks/useGitHubData", () => ({
   useGitHubData: vi.fn(),
 }));
@@ -279,7 +283,8 @@ describe("CommandPalette", () => {
   });
 
   it("should open selected item in browser on Cmd+Enter", async () => {
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const { openUrl: mockedOpenUrl } = await import("@tauri-apps/plugin-opener");
+    vi.mocked(mockedOpenUrl).mockClear();
     const pr = makePr();
 
     (useGitHubData as Mock).mockReturnValue({
@@ -299,15 +304,11 @@ describe("CommandPalette", () => {
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{Meta>}{Enter}{/Meta}");
 
-    expect(openSpy).toHaveBeenCalledWith(
+    expect(mockedOpenUrl).toHaveBeenCalledWith(
       "https://github.com/org/repo/pull/42",
-      "_blank",
-      "noopener,noreferrer",
     );
     expect(mockSetView).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
-
-    openSpy.mockRestore();
   });
 
   it("should show empty state when no results match", async () => {

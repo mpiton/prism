@@ -11,6 +11,10 @@ import type {
 } from "../../lib/types";
 import { Overview } from "./Overview";
 
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (opts: { count: number; estimateSize: (i: number) => number }) => ({
     getVirtualItems: () =>
@@ -320,7 +324,8 @@ describe("Overview", () => {
   });
 
   it("should open URL when a PR card is clicked", async () => {
-    const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const { openUrl: mockedOpenUrl } = await import("@tauri-apps/plugin-opener");
+    vi.mocked(mockedOpenUrl).mockClear();
     const user = userEvent.setup();
     setupMock(
       makeDashboard({
@@ -332,12 +337,8 @@ describe("Overview", () => {
 
     await user.click(screen.getByRole("link"));
 
-    expect(windowOpenSpy).toHaveBeenCalledWith(
+    expect(mockedOpenUrl).toHaveBeenCalledWith(
       "https://github.com/org/repo/pull/1",
-      "_blank",
-      "noopener,noreferrer",
     );
-
-    windowOpenSpy.mockRestore();
   });
 });
