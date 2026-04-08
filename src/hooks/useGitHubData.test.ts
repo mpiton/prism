@@ -168,7 +168,9 @@ describe("useGitHubData", () => {
 
     unmount();
     // All 4 listeners should be cleaned up (updated, expired, restored, sync_error)
-    expect(unlistenFn).toHaveBeenCalledTimes(4);
+    await waitFor(() => {
+      expect(unlistenFn).toHaveBeenCalledTimes(4);
+    });
   });
 
   it("should set syncError on github:sync_error and clear on github:updated", async () => {
@@ -204,10 +206,10 @@ describe("useGitHubData", () => {
     const updatedCall = (onEvent as Mock).mock.calls.find(
       (c: unknown[]) => c[0] === "github:updated",
     );
-    const updatedCallback = updatedCall![1] as () => void;
+    const updatedCallback = updatedCall![1] as () => Promise<void>;
 
-    await act(() => {
-      updatedCallback();
+    await act(async () => {
+      await updatedCallback();
     });
 
     expect(result.current.syncError).toBeNull();
