@@ -13,6 +13,9 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use sqlx::SqlitePool;
+
+/// Label of the main application window — shared between tray and app setup.
+pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 use tauri::Manager;
 use tracing::info;
 
@@ -185,6 +188,9 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_pilot::init());
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.on_menu_event(tray::handle_menu_event);
+
     builder
         .setup(|app| {
             // Initialize SQLite database
@@ -209,7 +215,7 @@ pub fn run() {
             app.manage(SyncInFlight::default());
 
             // Set window icon from bundled PNG
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 let png_bytes = include_bytes!("../icons/icon.png");
                 if let Ok(img) =
                     image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
