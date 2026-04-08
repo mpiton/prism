@@ -12,6 +12,7 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
     pullRequestId: "pr-42",
     issueId: null,
     message: "Looks good, just one small nit on the error handling path",
+    isRead: false,
     createdAt: "2026-03-28T10:00:00Z",
     ...overrides,
   };
@@ -71,5 +72,23 @@ describe("ActivityItem", () => {
     render(<ActivityItem activity={makeActivity({ activityType: "pr_merged" })} />);
 
     expect(screen.getByTestId("activity-action")).toHaveTextContent(/merged/i);
+  });
+
+  it("should show unread dot when activity is not read", () => {
+    render(<ActivityItem activity={makeActivity({ isRead: false })} />);
+
+    expect(screen.getByTestId("unread-dot")).toBeInTheDocument();
+  });
+
+  it("should not show unread dot when activity is read", () => {
+    render(<ActivityItem activity={makeActivity({ isRead: true })} />);
+
+    expect(screen.queryByTestId("unread-dot")).not.toBeInTheDocument();
+  });
+
+  it("should apply reduced opacity when activity is read", () => {
+    render(<ActivityItem activity={makeActivity({ isRead: true })} />);
+
+    expect(screen.getByTestId("activity-item").className).toContain("opacity-50");
   });
 });

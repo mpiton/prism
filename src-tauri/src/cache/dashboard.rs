@@ -661,6 +661,7 @@ mod tests {
             pull_request_id: Some("pr-4".to_string()),
             issue_id: None,
             message: "Bob opened PR".to_string(),
+            is_read: false,
             created_at: "2026-03-20T10:00:00Z".to_string(),
         };
         insert_activity(&pool, &act1).await.unwrap();
@@ -672,6 +673,7 @@ mod tests {
             pull_request_id: None,
             issue_id: Some("issue-1".to_string()),
             message: "Charlie commented".to_string(),
+            is_read: false,
             created_at: "2026-03-20T11:00:00Z".to_string(),
         };
         insert_activity(&pool, &act2).await.unwrap();

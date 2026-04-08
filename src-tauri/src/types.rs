@@ -190,6 +190,7 @@ pub struct Activity {
     pub pull_request_id: Option<String>,
     pub issue_id: Option<String>,
     pub message: String,
+    pub is_read: bool,
     pub created_at: String,
 }
 
@@ -835,6 +836,7 @@ mod tests {
             pull_request_id: Some("pr-1".to_string()),
             issue_id: None,
             message: "Opened PR #42".to_string(),
+            is_read: false,
             created_at: "2026-03-24T10:00:00Z".to_string(),
         };
         let json = serde_json::to_string(&activity).unwrap();

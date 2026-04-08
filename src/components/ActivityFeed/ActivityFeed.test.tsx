@@ -13,6 +13,7 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
     pullRequestId: "pr-1",
     issueId: null,
     message: "Some comment",
+    isRead: false,
     createdAt: "2026-03-28T10:00:00Z",
     ...overrides,
   };

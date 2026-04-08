@@ -38,7 +38,12 @@ function truncate(text: string, max: number): string {
 
 export function ActivityItem({ activity }: ActivityItemProps): ReactElement {
   return (
-    <div data-testid="activity-item" className="flex items-start gap-2 rounded border border-border px-3 py-2">
+    <div data-testid="activity-item" className={`flex items-start gap-2 rounded border border-border px-3 py-2${activity.isRead ? " opacity-50" : ""}`}>
+      {activity.isRead ? (
+        <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0" />
+      ) : (
+        <span data-testid="unread-dot" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+      )}
       <span data-testid="activity-icon" aria-hidden="true" className="shrink-0 text-sm text-dim">
         {ACTIVITY_ICON[activity.activityType]}
       </span>

@@ -107,6 +107,7 @@ function makeActivity(n: number): Activity {
     pullRequestId: `pr-${n}`,
     issueId: null,
     message: `Comment on PR #${n}`,
+    isRead: false,
     createdAt: "2026-03-26T10:00:00Z",
   };
 }
