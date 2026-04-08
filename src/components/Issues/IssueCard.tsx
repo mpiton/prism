@@ -39,7 +39,7 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
           <span
             data-testid="external-link-indicator"
             aria-hidden="true"
-            className="ml-0.5 opacity-0 transition-opacity group-hover/card:opacity-100"
+            className="ml-0.5 opacity-70 transition-opacity group-hover/card:opacity-100 group-focus-visible/card:opacity-100"
           >
             ↗
           </span>
