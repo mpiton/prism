@@ -9,7 +9,7 @@ use sqlx::SqlitePool;
 
 use crate::cache::activity::upsert_activity;
 use crate::cache::dashboard::{compute_dashboard_stats, get_latest_sync_at};
-use crate::cache::issues::upsert_issue;
+use crate::cache::issues::{delete_issues_not_in, upsert_issue};
 use crate::cache::pull_requests::upsert_pull_request;
 use crate::cache::repos::{list_repos, upsert_repo};
 use crate::cache::reviews::upsert_review;
@@ -164,7 +164,7 @@ pub async fn sync_dashboard(
     let mut tx = pool.begin().await?;
 
     #[allow(clippy::explicit_auto_deref)] // &mut *tx required: Transaction → SqliteConnection
-    persist_response(&mut *tx, &data).await?;
+    let synced_issue_ids = persist_response(&mut *tx, &data).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
     for repo in &enabled {
@@ -177,6 +177,13 @@ pub async fn sync_dashboard(
     }
 
     tx.commit().await?;
+
+    // Stale issue cleanup is best-effort — don't fail dashboard sync if it errors.
+    match delete_issues_not_in(pool, &synced_issue_ids).await {
+        Ok(n) if n > 0 => tracing::info!("stale issue cleanup: {n} removed"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!("stale issue cleanup failed: {e}"),
+    }
 
     // Activity sync is best-effort — don't fail dashboard sync if it errors.
     match sync_activity(client, pool, username, &activity_since).await {
@@ -264,7 +271,7 @@ fn build_query_variables(
 async fn persist_response(
     conn: &mut sqlx::SqliteConnection,
     data: &dashboard_data::ResponseData,
-) -> Result<(), AppError> {
+) -> Result<Vec<String>, AppError> {
     let mut seen_pr_ids: HashSet<String> = HashSet::new();
 
     if let Some(nodes) = &data.review_requests.nodes {
@@ -287,16 +294,19 @@ async fn persist_response(
         }
     }
 
+    let mut synced_issue_ids: Vec<String> = Vec::new();
+
     if let Some(nodes) = &data.assigned_issues.nodes {
         for node in nodes.iter().filter_map(|n| n.as_ref()) {
             if let Some(issue_fields) = node.as_issue_fields() {
                 let issue = map_issue(issue_fields)?;
+                synced_issue_ids.push(issue.id.clone());
                 upsert_issue(&mut *conn, &issue).await?;
             }
         }
     }
 
-    Ok(())
+    Ok(synced_issue_ids)
 }
 
 /// Persist a single PR with its associated reviews and review requests.

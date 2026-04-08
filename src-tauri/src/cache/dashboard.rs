@@ -9,7 +9,7 @@ use crate::types::{
 };
 
 use super::activity::get_recent_activity;
-use super::issues::get_issues_for_author;
+use super::issues::get_all_issues;
 use super::pull_requests::{PR_COLS, PullRequestRow};
 use super::reviews::{compute_review_summary, get_review_requests_for_user};
 use super::workspaces::list_workspaces;
@@ -50,9 +50,9 @@ pub async fn assemble_dashboard_data(
     let my_prs = fetch_prs_by_author(pool, username).await?;
     let my_pull_requests = enrich_prs(pool, my_prs, &workspace_map).await?;
 
-    // 4. Issues authored by user (the issues table has no assignee column;
-    //    in this schema "assigned" maps to "authored" for the current user)
-    let assigned_issues = get_issues_for_author(pool, username).await?;
+    // 4. Issues assigned to user — the sync fetches by assignee, so all
+    //    issues in the table belong to the current user regardless of author.
+    let assigned_issues = get_all_issues(pool).await?;
 
     // 5. Recent activity
     let recent_activity = get_recent_activity(pool, 50, 0).await?;
@@ -221,7 +221,7 @@ fn count_to_u32(count: i64) -> u32 {
 /// Returns a [`DashboardStats`] with counts of:
 /// - `pending_reviews`: review requests for the user with status `pending` (open/draft PRs only)
 /// - `open_prs`: pull requests authored by the user in `open` or `draft` state
-/// - `open_issues`: issues authored by the user in `open` state
+/// - `open_issues`: all issues in `open` state (sync fetches by assignee, so all rows belong to the user)
 /// - `total_workspaces`: all workspaces in `active` or `suspended` state (excludes archived) (global, not user-scoped)
 /// - `unread_activity`: all activity events with `is_read = 0` (global, not user-scoped)
 pub async fn compute_dashboard_stats(
@@ -235,7 +235,7 @@ pub async fn compute_dashboard_stats(
           WHERE rr.reviewer = $1 AND rr.status = 'pending' \
           AND pr.state IN ('open', 'draft')), \
          (SELECT COUNT(*) FROM pull_requests WHERE author = $1 AND state IN ('open', 'draft')), \
-         (SELECT COUNT(*) FROM issues WHERE author = $1 AND state = 'open'), \
+         (SELECT COUNT(*) FROM issues WHERE state = 'open'), \
          (SELECT COUNT(*) FROM workspaces WHERE state IN ('active', 'suspended')), \
          (SELECT COUNT(*) FROM activity WHERE is_read = 0)",
     )
@@ -581,7 +581,8 @@ mod tests {
         };
         upsert_review_request(&pool, &rr_approved).await.unwrap();
 
-        // 1 open issue by alice, 1 closed (should not count)
+        // 1 open issue by alice, 1 open by bob (both count — sync fetches by assignee),
+        // 1 closed by alice (should not count)
         let issue_open = Issue {
             id: "issue-1".to_string(),
             number: 1,
@@ -596,6 +597,21 @@ mod tests {
             updated_at: "2026-03-20T15:00:00Z".to_string(),
         };
         upsert_issue(&pool, &issue_open).await.unwrap();
+        // Issue authored by bob but assigned to alice — still counted
+        let issue_bob = Issue {
+            id: "issue-3".to_string(),
+            number: 3,
+            title: "Bob's issue assigned to alice".to_string(),
+            author: "bob".to_string(),
+            state: IssueState::Open,
+            priority: Priority::High,
+            repo_id: "repo-1".to_string(),
+            url: "https://github.com/mpiton/prism/issues/3".to_string(),
+            labels: vec![],
+            created_at: "2026-03-01T10:00:00Z".to_string(),
+            updated_at: "2026-03-20T15:00:00Z".to_string(),
+        };
+        upsert_issue(&pool, &issue_bob).await.unwrap();
         let issue_closed = Issue {
             id: "issue-2".to_string(),
             number: 2,
@@ -670,7 +686,7 @@ mod tests {
 
         assert_eq!(stats.pending_reviews, 1, "only pending review requests");
         assert_eq!(stats.open_prs, 2, "only open/draft PRs by alice");
-        assert_eq!(stats.open_issues, 1, "only open issues by alice");
+        assert_eq!(stats.open_issues, 2, "all open issues regardless of author");
         assert_eq!(stats.total_workspaces, 2, "active + suspended workspaces");
         assert_eq!(stats.unread_activity, 1, "only unread activity");
         pool.close().await;

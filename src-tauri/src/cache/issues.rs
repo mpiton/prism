@@ -151,6 +151,81 @@ pub async fn get_issues_for_author(
     rows.into_iter().map(Issue::try_from).collect()
 }
 
+/// Return all issues in the database, ordered by `updated_at DESC`.
+///
+/// No author filter — sync fetches issues assigned to the current user,
+/// so all rows in the table belong to them regardless of the `author` field.
+pub async fn get_all_issues(pool: &SqlitePool) -> Result<Vec<Issue>, AppError> {
+    let sql = format!("SELECT {ISSUE_COLS} FROM issues ORDER BY updated_at DESC");
+    let rows: Vec<IssueRow> = sqlx::query_as(&sql).fetch_all(pool).await?;
+
+    rows.into_iter().map(Issue::try_from).collect()
+}
+
+/// Delete issues whose IDs are not in `current_ids`, across all repos.
+/// Returns the number of deleted rows.
+///
+/// When `current_ids` is empty, treats it as a no-op and returns 0. An empty
+/// list likely signals a partial GraphQL response (null `assigned_issues`),
+/// not "the user has zero assigned issues" — wiping the table would be unsafe.
+///
+/// Uses a fetch-then-delete strategy: fetches all existing IDs, computes the
+/// set difference in Rust, then deletes stale IDs in chunks of 998 to stay
+/// under `SQLite`'s parameter limit (999).
+///
+/// Accepts a pool reference (runs outside the sync transaction — stale
+/// cleanup is best-effort, similar to activity sync).
+pub async fn delete_issues_not_in(
+    pool: &SqlitePool,
+    current_ids: &[String],
+) -> Result<u64, AppError> {
+    const CHUNK_SIZE: usize = 998;
+
+    // Empty current_ids is treated as a no-op: a partial GraphQL response
+    // may omit the assigned_issues field entirely, yielding an empty Vec.
+    // Wiping the table in that case would be data-destructive.
+    if current_ids.is_empty() {
+        return Ok(0);
+    }
+
+    // Fetch all existing issue IDs
+    let existing: Vec<(String,)> = sqlx::query_as("SELECT id FROM issues")
+        .fetch_all(pool)
+        .await?;
+
+    // Compute stale IDs (exist in DB but not in current_ids)
+    let keep: std::collections::HashSet<&str> = current_ids.iter().map(String::as_str).collect();
+    let stale_ids: Vec<&str> = existing
+        .iter()
+        .map(|(id,)| id.as_str())
+        .filter(|id| !keep.contains(id))
+        .collect();
+
+    if stale_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let mut total_deleted: u64 = 0;
+
+    for chunk in stale_ids.chunks(CHUNK_SIZE) {
+        let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("${i}")).collect();
+        let sql = format!(
+            "DELETE FROM issues WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut query = sqlx::query(&sql);
+        for id in chunk {
+            query = query.bind(id);
+        }
+
+        let result = query.execute(pool).await?;
+        total_deleted += result.rows_affected();
+    }
+
+    Ok(total_deleted)
+}
+
 /// Delete issues for a repo whose IDs are not in `current_ids`.
 /// Returns the number of deleted rows.
 ///
@@ -484,5 +559,88 @@ mod tests {
             priority_from_str("CRITICAL").is_err(),
             "wrong case should fail"
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_all_issues_returns_all_regardless_of_author() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let i1 = sample_issue("issue-1", 1, "Alice issue");
+        let mut i2 = sample_issue("issue-2", 2, "Bob issue");
+        i2.author = "bob".to_string();
+        let mut i3 = sample_issue("issue-3", 3, "Carol issue");
+        i3.author = "carol".to_string();
+        i3.updated_at = "2026-04-01T10:00:00Z".to_string();
+
+        upsert_issue(&pool, &i1).await.unwrap();
+        upsert_issue(&pool, &i2).await.unwrap();
+        upsert_issue(&pool, &i3).await.unwrap();
+
+        let all = get_all_issues(&pool).await.unwrap();
+        assert_eq!(
+            all.len(),
+            3,
+            "should return all issues regardless of author"
+        );
+        assert_eq!(all[0].id, "issue-3", "ordered by updated_at DESC");
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_issues_not_in_removes_stale() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let i1 = sample_issue("issue-1", 1, "Keep");
+        let i2 = sample_issue("issue-2", 2, "Delete");
+        let i3 = sample_issue("issue-3", 3, "Keep too");
+
+        upsert_issue(&pool, &i1).await.unwrap();
+        upsert_issue(&pool, &i2).await.unwrap();
+        upsert_issue(&pool, &i3).await.unwrap();
+
+        let current_ids = vec!["issue-1".to_string(), "issue-3".to_string()];
+        let deleted = delete_issues_not_in(&pool, &current_ids).await.unwrap();
+
+        assert_eq!(deleted, 1, "should delete 1 stale issue");
+
+        let remaining = get_all_issues(&pool).await.unwrap();
+        assert_eq!(remaining.len(), 2);
+        let ids: Vec<&str> = remaining.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"issue-1"));
+        assert!(ids.contains(&"issue-3"));
+        assert!(!ids.contains(&"issue-2"));
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_issues_not_in_empty_deletes_all() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        upsert_issue(&pool, &sample_issue("issue-1", 1, "First"))
+            .await
+            .unwrap();
+        upsert_issue(&pool, &sample_issue("issue-2", 2, "Second"))
+            .await
+            .unwrap();
+        upsert_issue(&pool, &sample_issue("issue-3", 3, "Third"))
+            .await
+            .unwrap();
+
+        let deleted = delete_issues_not_in(&pool, &[]).await.unwrap();
+        assert_eq!(deleted, 0, "empty current_ids is a no-op (safety guard)");
+
+        let remaining = get_all_issues(&pool).await.unwrap();
+        assert_eq!(
+            remaining.len(),
+            3,
+            "all issues preserved when current_ids is empty"
+        );
+
+        pool.close().await;
     }
 }

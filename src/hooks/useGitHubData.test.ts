@@ -163,12 +163,12 @@ describe("useGitHubData", () => {
     const { unmount } = renderHook(() => useGitHubData(), { wrapper });
 
     await waitFor(() => {
-      expect(onEvent).toHaveBeenCalledTimes(3);
+      expect(onEvent).toHaveBeenCalledTimes(4);
     });
 
     unmount();
-    // All 3 listeners should be cleaned up
-    expect(unlistenFn).toHaveBeenCalledTimes(3);
+    // All 4 listeners should be cleaned up (updated, expired, restored, sync_error)
+    expect(unlistenFn).toHaveBeenCalledTimes(4);
   });
 
   it("should set authExpired when auth:expired event fires", async () => {

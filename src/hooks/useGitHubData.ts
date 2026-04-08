@@ -21,6 +21,7 @@ function invalidateGitHub(queryClient: ReturnType<typeof useQueryClient>) {
 export function useGitHubData(refetchInterval?: number) {
   const queryClient = useQueryClient();
   const [authExpired, setAuthExpired] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const dashboardQuery = useQuery({
     queryKey: ["github", "dashboard"],
@@ -41,6 +42,7 @@ export function useGitHubData(refetchInterval?: number) {
   const syncMutation = useMutation({
     mutationFn: forceGithubSync,
     onSuccess: async () => {
+      setSyncError(null);
       await invalidateGitHub(queryClient);
     },
   });
@@ -50,6 +52,7 @@ export function useGitHubData(refetchInterval?: number) {
     const unlisteners: (() => void)[] = [];
 
     onEvent(TAURI_EVENTS["github:updated"], async () => {
+      setSyncError(null);
       await invalidateGitHub(queryClient);
     }).then((fn) => {
       if (cancelled) {
@@ -86,6 +89,18 @@ export function useGitHubData(refetchInterval?: number) {
       console.error("[useGitHubData] failed to register auth:restored listener:", err);
     });
 
+    onEvent<string>(TAURI_EVENTS["github:sync_error"], (errorMsg) => {
+      setSyncError(typeof errorMsg === "string" ? errorMsg : "Sync failed");
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+      } else {
+        unlisteners.push(fn);
+      }
+    }).catch((err: unknown) => {
+      console.error("[useGitHubData] failed to register github:sync_error listener:", err);
+    });
+
     return () => {
       cancelled = true;
       for (const unlisten of unlisteners) {
@@ -100,6 +115,7 @@ export function useGitHubData(refetchInterval?: number) {
     isLoading: dashboardQuery.isLoading || statsQuery.isLoading,
     error: dashboardQuery.error ?? statsQuery.error ?? null,
     authExpired,
+    syncError,
     forceSync: syncMutation.mutate,
     isSyncing: syncMutation.isPending,
   };
