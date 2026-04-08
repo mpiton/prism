@@ -260,7 +260,12 @@ fn build_query_variables(
     Ok(dashboard_data::Variables {
         review_query: format!("type:pr {repo_filter} review-requested:{username} state:open"),
         my_prs_query: format!("type:pr {repo_filter} author:{username} sort:updated"),
-        issues_query: format!("type:issue {repo_filter} assignee:{username} sort:updated"),
+        open_issues_query: format!(
+            "type:issue {repo_filter} assignee:{username} state:open sort:updated"
+        ),
+        closed_issues_query: format!(
+            "type:issue {repo_filter} assignee:{username} state:closed sort:updated"
+        ),
         first: 100,
     })
 }
@@ -269,12 +274,12 @@ fn build_query_variables(
 ///
 /// Extracts PRs from `review_requests` and `my_pull_requests` search results,
 /// deduplicates by PR ID, then upserts all entities including reviews
-/// and review requests. Issues are extracted from `assigned_issues`.
+/// and review requests. Issues are extracted from separate `open_issues`
+/// and `closed_issues` search results.
 ///
-/// Returns `Some(ids)` when the issues result is authoritative (nodes present
-/// and not paginated), or `None` when the data is partial (null field or
-/// `has_next_page` is true). The caller uses this to decide whether stale
-/// issue cleanup is safe.
+/// Returns `Some(ids)` when **both** issue searches are authoritative (nodes
+/// present and not paginated), or `None` when either is partial. The caller
+/// uses this to decide whether stale issue cleanup is safe.
 async fn persist_response(
     conn: &mut sqlx::SqliteConnection,
     data: &dashboard_data::ResponseData,
@@ -301,15 +306,33 @@ async fn persist_response(
         }
     }
 
-    // Track whether the issues result is authoritative. If nodes is None
-    // (partial response) or has_next_page is true (paginated — the query
-    // caps at first:100), we cannot safely delete issues not in this set.
-    let issues_authoritative =
-        data.assigned_issues.nodes.is_some() && !data.assigned_issues.page_info.has_next_page;
+    // Both open and closed issue searches must be authoritative (nodes
+    // present and not paginated) for stale cleanup to be safe.
+    //
+    // When only one search is authoritative (e.g. open has nodes but closed
+    // returned null), we still upsert the available issues — upserts are
+    // additive and safe. However we skip stale cleanup because we lack the
+    // full picture: deleting issues absent from a partial result would
+    // incorrectly remove valid issues from the other state.
+    let open_authoritative =
+        data.open_issues.nodes.is_some() && !data.open_issues.page_info.has_next_page;
+    let closed_authoritative =
+        data.closed_issues.nodes.is_some() && !data.closed_issues.page_info.has_next_page;
+    let issues_authoritative = open_authoritative && closed_authoritative;
 
     let mut synced_issue_ids: Vec<String> = Vec::new();
 
-    if let Some(nodes) = &data.assigned_issues.nodes {
+    if let Some(nodes) = &data.open_issues.nodes {
+        for node in nodes.iter().filter_map(|n| n.as_ref()) {
+            if let Some(issue_fields) = node.as_issue_fields() {
+                let issue = map_issue(issue_fields)?;
+                synced_issue_ids.push(issue.id.clone());
+                upsert_issue(&mut *conn, &issue).await?;
+            }
+        }
+    }
+
+    if let Some(nodes) = &data.closed_issues.nodes {
         for node in nodes.iter().filter_map(|n| n.as_ref()) {
             if let Some(issue_fields) = node.as_issue_fields() {
                 let issue = map_issue(issue_fields)?;
@@ -424,10 +447,19 @@ impl AsPrFields for dashboard_data::DashboardDataMyPullRequestsNodes {
     }
 }
 
-impl AsIssueFields for dashboard_data::DashboardDataAssignedIssuesNodes {
+impl AsIssueFields for dashboard_data::DashboardDataOpenIssuesNodes {
     fn as_issue_fields(&self) -> Option<&IssueFields> {
         match self {
-            dashboard_data::DashboardDataAssignedIssuesNodes::Issue(issue) => Some(issue),
+            dashboard_data::DashboardDataOpenIssuesNodes::Issue(issue) => Some(issue),
+            _ => None,
+        }
+    }
+}
+
+impl AsIssueFields for dashboard_data::DashboardDataClosedIssuesNodes {
+    fn as_issue_fields(&self) -> Option<&IssueFields> {
+        match self {
+            dashboard_data::DashboardDataClosedIssuesNodes::Issue(issue) => Some(issue),
             _ => None,
         }
     }
@@ -856,16 +888,20 @@ mod tests {
         assert!(vars.review_query.contains("review-requested:octocat"));
         assert!(vars.review_query.contains("repo:org/repo"));
         assert!(vars.my_prs_query.contains("author:octocat"));
-        assert!(vars.issues_query.contains("assignee:octocat"));
+        assert!(vars.open_issues_query.contains("assignee:octocat"));
+        assert!(vars.closed_issues_query.contains("assignee:octocat"));
         assert_eq!(vars.first, 100);
 
         // review_query keeps state:open (only review open PRs)
         assert!(vars.review_query.contains("state:open"));
-        // my_prs and issues fetch all states (open, closed, merged) sorted by update time
+        // my_prs fetches all states sorted by update time
         assert!(!vars.my_prs_query.contains("state:open"));
-        assert!(!vars.issues_query.contains("state:open"));
         assert!(vars.my_prs_query.contains("sort:updated"));
-        assert!(vars.issues_query.contains("sort:updated"));
+        // issues are split into explicit open/closed queries
+        assert!(vars.open_issues_query.contains("state:open"));
+        assert!(vars.closed_issues_query.contains("state:closed"));
+        assert!(vars.open_issues_query.contains("sort:updated"));
+        assert!(vars.closed_issues_query.contains("sort:updated"));
     }
 
     #[tokio::test]
@@ -921,8 +957,14 @@ mod tests {
                     dashboard_data::DashboardDataMyPullRequestsNodes::PullRequest(pr),
                 )]),
             },
-            assigned_issues: dashboard_data::DashboardDataAssignedIssues {
-                page_info: dashboard_data::DashboardDataAssignedIssuesPageInfo {
+            open_issues: dashboard_data::DashboardDataOpenIssues {
+                page_info: dashboard_data::DashboardDataOpenIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: None,
+            },
+            closed_issues: dashboard_data::DashboardDataClosedIssues {
+                page_info: dashboard_data::DashboardDataClosedIssuesPageInfo {
                     has_next_page: false,
                 },
                 nodes: None,
@@ -1034,8 +1076,14 @@ mod tests {
                 )]),
             },
             my_pull_requests: dashboard_data::DashboardDataMyPullRequests { nodes: None },
-            assigned_issues: dashboard_data::DashboardDataAssignedIssues {
-                page_info: dashboard_data::DashboardDataAssignedIssuesPageInfo {
+            open_issues: dashboard_data::DashboardDataOpenIssues {
+                page_info: dashboard_data::DashboardDataOpenIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: None,
+            },
+            closed_issues: dashboard_data::DashboardDataClosedIssues {
+                page_info: dashboard_data::DashboardDataClosedIssuesPageInfo {
                     has_next_page: false,
                 },
                 nodes: None,
@@ -1059,6 +1107,137 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(repo.last_sync_at.as_deref(), Some("2026-03-26T12:00:00Z"));
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_persist_response_merges_open_and_closed_issues() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let open_issue = make_issue_fields("ISS_1", 10, "Open bug");
+        let mut closed_issue = make_issue_fields("ISS_2", 20, "Fixed bug");
+        closed_issue.state = GqlIssueState::CLOSED;
+
+        let response = dashboard_data::ResponseData {
+            review_requests: dashboard_data::DashboardDataReviewRequests { nodes: None },
+            my_pull_requests: dashboard_data::DashboardDataMyPullRequests { nodes: None },
+            open_issues: dashboard_data::DashboardDataOpenIssues {
+                page_info: dashboard_data::DashboardDataOpenIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: Some(vec![Some(
+                    dashboard_data::DashboardDataOpenIssuesNodes::Issue(open_issue),
+                )]),
+            },
+            closed_issues: dashboard_data::DashboardDataClosedIssues {
+                page_info: dashboard_data::DashboardDataClosedIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: Some(vec![Some(
+                    dashboard_data::DashboardDataClosedIssuesNodes::Issue(closed_issue),
+                )]),
+            },
+        };
+
+        let synced_ids = {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_response(&mut conn, &response).await.unwrap()
+        };
+
+        // Both searches authoritative → stale cleanup IDs returned
+        let ids = synced_ids.expect("should be authoritative");
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"ISS_1".to_string()));
+        assert!(ids.contains(&"ISS_2".to_string()));
+
+        // Both issues persisted in DB
+        let issues = get_issues_by_repo(&pool, "org/repo").await.unwrap();
+        assert_eq!(issues.len(), 2);
+        let open = issues.iter().find(|i| i.number == 10).unwrap();
+        let closed = issues.iter().find(|i| i.number == 20).unwrap();
+        assert_eq!(open.state, IssueState::Open);
+        assert_eq!(closed.state, IssueState::Closed);
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_persist_response_skips_cleanup_when_paginated() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        // Open issues paginated (has_next_page: true) → not authoritative
+        let response = dashboard_data::ResponseData {
+            review_requests: dashboard_data::DashboardDataReviewRequests { nodes: None },
+            my_pull_requests: dashboard_data::DashboardDataMyPullRequests { nodes: None },
+            open_issues: dashboard_data::DashboardDataOpenIssues {
+                page_info: dashboard_data::DashboardDataOpenIssuesPageInfo {
+                    has_next_page: true,
+                },
+                nodes: Some(vec![]),
+            },
+            closed_issues: dashboard_data::DashboardDataClosedIssues {
+                page_info: dashboard_data::DashboardDataClosedIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: Some(vec![]),
+            },
+        };
+
+        let synced_ids = {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_response(&mut conn, &response).await.unwrap()
+        };
+
+        assert!(
+            synced_ids.is_none(),
+            "should not be authoritative when paginated"
+        );
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_persist_response_upserts_partial_but_skips_cleanup() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let open_issue = make_issue_fields("ISS_3", 30, "Partial open");
+
+        // Open issues authoritative, closed issues partial (nodes=None)
+        let response = dashboard_data::ResponseData {
+            review_requests: dashboard_data::DashboardDataReviewRequests { nodes: None },
+            my_pull_requests: dashboard_data::DashboardDataMyPullRequests { nodes: None },
+            open_issues: dashboard_data::DashboardDataOpenIssues {
+                page_info: dashboard_data::DashboardDataOpenIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: Some(vec![Some(
+                    dashboard_data::DashboardDataOpenIssuesNodes::Issue(open_issue),
+                )]),
+            },
+            closed_issues: dashboard_data::DashboardDataClosedIssues {
+                page_info: dashboard_data::DashboardDataClosedIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: None,
+            },
+        };
+
+        let synced_ids = {
+            let mut conn = pool.acquire().await.unwrap();
+            persist_response(&mut conn, &response).await.unwrap()
+        };
+
+        // Not authoritative (closed has no nodes) → no cleanup
+        assert!(
+            synced_ids.is_none(),
+            "should not be authoritative when one search has null nodes"
+        );
+
+        // But the open issue was still upserted (additive)
+        let issues = get_issues_by_repo(&pool, "org/repo").await.unwrap();
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].title, "Partial open");
         pool.close().await;
     }
 

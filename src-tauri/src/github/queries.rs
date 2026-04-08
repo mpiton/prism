@@ -51,13 +51,15 @@ mod tests {
         let vars = dashboard_data::Variables {
             review_query: "type:pr review-requested:octocat state:open".into(),
             my_prs_query: "type:pr author:octocat state:open".into(),
-            issues_query: "type:issue assignee:octocat state:open".into(),
+            open_issues_query: "type:issue assignee:octocat state:open".into(),
+            closed_issues_query: "type:issue assignee:octocat state:closed".into(),
             first: 25,
         };
         assert_eq!(vars.first, 25);
         assert!(vars.review_query.contains("review-requested:octocat"));
         assert!(vars.my_prs_query.contains("author:octocat"));
-        assert!(vars.issues_query.contains("assignee:octocat"));
+        assert!(vars.open_issues_query.contains("assignee:octocat"));
+        assert!(vars.closed_issues_query.contains("assignee:octocat"));
     }
 
     #[test]
