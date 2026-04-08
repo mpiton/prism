@@ -212,7 +212,7 @@ pub fn run() {
             app.manage(SyncInFlight::default());
 
             // Set window icon from bundled PNG
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window(tray::MAIN_WINDOW_LABEL) {
                 let png_bytes = include_bytes!("../icons/icon.png");
                 if let Ok(img) =
                     image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)

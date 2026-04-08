@@ -3,6 +3,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tracing::warn;
 
+pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 pub(crate) const TRAY_ID: &str = "prism_tray";
 pub(crate) const MENU_SHOW: &str = "show_prism";
 pub(crate) const MENU_FORCE_SYNC: &str = "force_sync";
@@ -73,7 +74,7 @@ pub fn update_tray_badge(app_handle: &tauri::AppHandle, pending_count: u32) -> R
 /// failure but does not abort — best-effort on compositors (Wayland) that
 /// restrict focus-stealing.
 fn show_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         // unminimize first — no-op if already normal
         if let Err(e) = window.unminimize() {
             tracing::debug!("tray: unminimize failed (may not be minimized): {e}");
@@ -135,9 +136,10 @@ fn handle_tray_icon_event(tray: &tauri::tray::TrayIcon, event: TrayIconEvent) {
     } = event
     {
         let app = tray.app_handle();
-        if let Some(window) = app.get_webview_window("main") {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
             let visible = window.is_visible().unwrap_or(false);
-            if visible {
+            let minimized = window.is_minimized().unwrap_or(false);
+            if visible && !minimized {
                 if let Err(e) = window.hide() {
                     warn!("tray: failed to hide window: {e}");
                 }
