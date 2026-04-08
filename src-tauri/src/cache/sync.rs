@@ -9,7 +9,7 @@ use sqlx::SqlitePool;
 
 use crate::cache::activity::upsert_activity;
 use crate::cache::dashboard::{compute_dashboard_stats, get_latest_sync_at};
-use crate::cache::issues::upsert_issue;
+use crate::cache::issues::{delete_issues_not_in, upsert_issue};
 use crate::cache::pull_requests::upsert_pull_request;
 use crate::cache::repos::{list_repos, upsert_repo};
 use crate::cache::reviews::upsert_review;
@@ -164,7 +164,7 @@ pub async fn sync_dashboard(
     let mut tx = pool.begin().await?;
 
     #[allow(clippy::explicit_auto_deref)] // &mut *tx required: Transaction → SqliteConnection
-    persist_response(&mut *tx, &data).await?;
+    let synced_issue_ids = persist_response(&mut *tx, &data).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
     for repo in &enabled {
@@ -174,6 +174,15 @@ pub async fn sync_dashboard(
             .bind(&repo.id)
             .execute(&mut *tx)
             .await?;
+    }
+
+    // Stale issue cleanup inside the transaction: only when we have an
+    // authoritative (non-paginated) issue list. None means partial data
+    // (null field or paginated response) — skip cleanup to avoid deleting
+    // valid issues beyond the first page.
+    if let Some(ref ids) = synced_issue_ids {
+        #[allow(clippy::explicit_auto_deref)]
+        delete_issues_not_in(&mut *tx, ids).await?;
     }
 
     tx.commit().await?;
@@ -261,10 +270,15 @@ fn build_query_variables(
 /// Extracts PRs from `review_requests` and `my_pull_requests` search results,
 /// deduplicates by PR ID, then upserts all entities including reviews
 /// and review requests. Issues are extracted from `assigned_issues`.
+///
+/// Returns `Some(ids)` when the issues result is authoritative (nodes present
+/// and not paginated), or `None` when the data is partial (null field or
+/// `has_next_page` is true). The caller uses this to decide whether stale
+/// issue cleanup is safe.
 async fn persist_response(
     conn: &mut sqlx::SqliteConnection,
     data: &dashboard_data::ResponseData,
-) -> Result<(), AppError> {
+) -> Result<Option<Vec<String>>, AppError> {
     let mut seen_pr_ids: HashSet<String> = HashSet::new();
 
     if let Some(nodes) = &data.review_requests.nodes {
@@ -287,16 +301,29 @@ async fn persist_response(
         }
     }
 
+    // Track whether the issues result is authoritative. If nodes is None
+    // (partial response) or has_next_page is true (paginated — the query
+    // caps at first:100), we cannot safely delete issues not in this set.
+    let issues_authoritative =
+        data.assigned_issues.nodes.is_some() && !data.assigned_issues.page_info.has_next_page;
+
+    let mut synced_issue_ids: Vec<String> = Vec::new();
+
     if let Some(nodes) = &data.assigned_issues.nodes {
         for node in nodes.iter().filter_map(|n| n.as_ref()) {
             if let Some(issue_fields) = node.as_issue_fields() {
                 let issue = map_issue(issue_fields)?;
+                synced_issue_ids.push(issue.id.clone());
                 upsert_issue(&mut *conn, &issue).await?;
             }
         }
     }
 
-    Ok(())
+    if issues_authoritative {
+        Ok(Some(synced_issue_ids))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Persist a single PR with its associated reviews and review requests.
@@ -894,7 +921,12 @@ mod tests {
                     dashboard_data::DashboardDataMyPullRequestsNodes::PullRequest(pr),
                 )]),
             },
-            assigned_issues: dashboard_data::DashboardDataAssignedIssues { nodes: None },
+            assigned_issues: dashboard_data::DashboardDataAssignedIssues {
+                page_info: dashboard_data::DashboardDataAssignedIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: None,
+            },
         };
 
         {
@@ -1002,7 +1034,12 @@ mod tests {
                 )]),
             },
             my_pull_requests: dashboard_data::DashboardDataMyPullRequests { nodes: None },
-            assigned_issues: dashboard_data::DashboardDataAssignedIssues { nodes: None },
+            assigned_issues: dashboard_data::DashboardDataAssignedIssues {
+                page_info: dashboard_data::DashboardDataAssignedIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: None,
+            },
         };
 
         let mut tx = pool.begin().await.unwrap();
