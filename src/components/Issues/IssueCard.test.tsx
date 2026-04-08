@@ -108,4 +108,16 @@ describe("IssueCard", () => {
     const repoSpan = screen.getByText("my-repo");
     expect(repoSpan).toHaveAttribute("title", "my-repo");
   });
+
+  it("should render external link indicator", () => {
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
+    const indicator = screen.getByTestId("external-link-indicator");
+    expect(indicator).toHaveTextContent("↗");
+  });
+
+  it("should mark external link indicator as aria-hidden", () => {
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
+    const indicator = screen.getByTestId("external-link-indicator");
+    expect(indicator).toHaveAttribute("aria-hidden", "true");
+  });
 });

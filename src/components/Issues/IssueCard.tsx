@@ -26,7 +26,7 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
       href={issue.url}
       onClick={handleClick}
       aria-label={`Issue #${issue.number}: ${issue.title} (${issue.state})`}
-      className="flex min-w-0 cursor-pointer flex-col gap-1 rounded border border-border px-3 py-2 no-underline hover:bg-surface-hover"
+      className="group/card flex min-w-0 cursor-pointer flex-col gap-1 rounded border border-border px-3 py-2 no-underline hover:bg-surface-hover"
     >
       <div className="flex min-w-0 items-center gap-2">
         <span
@@ -34,7 +34,16 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
           aria-hidden="true"
           className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATE_DOT_COLOR[issue.state]}`}
         />
-        <span className="shrink-0 text-xs text-dim">#{issue.number}</span>
+        <span className="shrink-0 text-xs text-dim">
+          #{issue.number}
+          <span
+            data-testid="external-link-indicator"
+            aria-hidden="true"
+            className="ml-0.5 opacity-0 transition-opacity group-hover/card:opacity-100"
+          >
+            ↗
+          </span>
+        </span>
         <span className="min-w-0 truncate text-sm font-medium text-foreground" title={issue.title}>
           {issue.title}
         </span>
