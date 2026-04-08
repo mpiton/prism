@@ -57,7 +57,8 @@ fragment IssueFields on Issue {
 query DashboardData(
   $reviewQuery: String!
   $myPrsQuery: String!
-  $issuesQuery: String!
+  $openIssuesQuery: String!
+  $closedIssuesQuery: String!
   $first: Int!
 ) {
   # NOTE: Pagination (after/endCursor) intentionally deferred to a future task.
@@ -74,7 +75,14 @@ query DashboardData(
       ... on PullRequest { ...PrFields }
     }
   }
-  assignedIssues: search(query: $issuesQuery, type: ISSUE, first: $first) {
+  openIssues: search(query: $openIssuesQuery, type: ISSUE, first: $first) {
+    pageInfo { hasNextPage }
+    nodes {
+      __typename
+      ... on Issue { ...IssueFields }
+    }
+  }
+  closedIssues: search(query: $closedIssuesQuery, type: ISSUE, first: $first) {
     pageInfo { hasNextPage }
     nodes {
       __typename
