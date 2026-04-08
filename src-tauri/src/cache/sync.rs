@@ -261,10 +261,10 @@ fn build_query_variables(
         review_query: format!("type:pr {repo_filter} review-requested:{username} state:open"),
         my_prs_query: format!("type:pr {repo_filter} author:{username} sort:updated"),
         open_issues_query: format!(
-            "type:issue {repo_filter} assignee:{username} state:open sort:updated"
+            "type:issue {repo_filter} involves:{username} state:open sort:updated"
         ),
         closed_issues_query: format!(
-            "type:issue {repo_filter} assignee:{username} state:closed sort:updated"
+            "type:issue {repo_filter} involves:{username} state:closed sort:updated"
         ),
         first: 100,
     })
@@ -888,8 +888,8 @@ mod tests {
         assert!(vars.review_query.contains("review-requested:octocat"));
         assert!(vars.review_query.contains("repo:org/repo"));
         assert!(vars.my_prs_query.contains("author:octocat"));
-        assert!(vars.open_issues_query.contains("assignee:octocat"));
-        assert!(vars.closed_issues_query.contains("assignee:octocat"));
+        assert!(vars.open_issues_query.contains("involves:octocat"));
+        assert!(vars.closed_issues_query.contains("involves:octocat"));
         assert_eq!(vars.first, 100);
 
         // review_query keeps state:open (only review open PRs)
