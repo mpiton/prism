@@ -1,8 +1,12 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { useDashboardStore } from "./stores/dashboard";
+
+vi.mock("./lib/open", () => ({
+  openUrl: vi.fn(),
+}));
 
 vi.mock("./lib/tauri", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./lib/tauri")>();
@@ -134,9 +138,9 @@ describe("App keyboard shortcuts", () => {
     { url: "https://github.com/org/repo/pull/3" },
   ];
 
-  let openSpy: ReturnType<typeof vi.spyOn>;
+  let mockedOpenUrl: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Use "feed" view — it has no useRegisterNavigableItems hook,
     // so pre-seeded navigableItems are preserved for keyboard tests.
     useDashboardStore.setState({
@@ -145,11 +149,9 @@ describe("App keyboard shortcuts", () => {
       selectedIndex: -1,
       navigableItems: items,
     });
-    openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-  });
-
-  afterEach(() => {
-    openSpy.mockRestore();
+    const { openUrl } = await import("./lib/open");
+    mockedOpenUrl = vi.mocked(openUrl);
+    mockedOpenUrl.mockClear();
   });
 
   it("should navigate list with j/k", async () => {
@@ -172,10 +174,8 @@ describe("App keyboard shortcuts", () => {
     await screen.findByTestId("activity-feed");
 
     act(() => fireKey("Enter"));
-    expect(openSpy).toHaveBeenCalledWith(
+    expect(mockedOpenUrl).toHaveBeenCalledWith(
       "https://github.com/org/repo/pull/2",
-      "_blank",
-      "noopener,noreferrer",
     );
   });
 
@@ -184,7 +184,7 @@ describe("App keyboard shortcuts", () => {
     await screen.findByTestId("activity-feed");
 
     act(() => fireKey("Enter"));
-    expect(openSpy).not.toHaveBeenCalled();
+    expect(mockedOpenUrl).not.toHaveBeenCalled();
   });
 
   it("should return to overview on Escape", async () => {

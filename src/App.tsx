@@ -25,6 +25,7 @@ import { useKeyboard } from "./hooks/useKeyboard";
 import { useDashboardStore } from "./stores/dashboard";
 import { useWorkspaceEnriched } from "./hooks/useWorkspaceEnriched";
 import { useWorkspacesStore } from "./stores/workspaces";
+import { openUrl } from "./lib/open";
 import type { DashboardView } from "./stores/dashboard";
 
 const WorkspaceView = lazy(() =>
@@ -33,10 +34,6 @@ const WorkspaceView = lazy(() =>
 const Settings = lazy(() =>
   import("./components/Settings").then((m) => ({ default: m.Settings })),
 );
-
-function openUrl(url: string): void {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
 
 function LazyFallback(): ReactElement {
   return (

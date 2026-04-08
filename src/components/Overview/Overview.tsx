@@ -8,14 +8,11 @@ import { ReviewQueue } from "../ReviewQueue";
 import { MyPRs } from "../MyPRs";
 import { Issues } from "../Issues";
 import { ActivityFeed } from "../ActivityFeed";
+import { openUrl } from "../../lib/open";
 
 const MAX_REVIEWS = 5;
 const MAX_PRS = 5;
 const MAX_ACTIVITIES = 5;
-
-function openUrl(url: string): void {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
 
 export function Overview(): ReactElement {
   const { dashboard, error } = useGitHubData();
