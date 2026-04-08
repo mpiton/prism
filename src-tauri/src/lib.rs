@@ -185,6 +185,9 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_pilot::init());
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.on_menu_event(tray::handle_menu_event);
+
     builder
         .setup(|app| {
             // Initialize SQLite database
