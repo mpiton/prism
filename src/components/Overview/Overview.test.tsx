@@ -11,8 +11,8 @@ import type {
 } from "../../lib/types";
 import { Overview } from "./Overview";
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openUrl: vi.fn().mockResolvedValue(undefined),
+vi.mock("../../lib/open", () => ({
+  openUrl: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-virtual", () => ({
@@ -324,7 +324,7 @@ describe("Overview", () => {
   });
 
   it("should open URL when a PR card is clicked", async () => {
-    const { openUrl: mockedOpenUrl } = await import("@tauri-apps/plugin-opener");
+    const { openUrl: mockedOpenUrl } = await import("../../lib/open");
     vi.mocked(mockedOpenUrl).mockClear();
     const user = userEvent.setup();
     setupMock(

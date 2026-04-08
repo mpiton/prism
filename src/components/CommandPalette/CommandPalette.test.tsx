@@ -4,8 +4,8 @@ import { userEvent } from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CommandPalette } from "./CommandPalette";
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openUrl: vi.fn().mockResolvedValue(undefined),
+vi.mock("../../lib/open", () => ({
+  openUrl: vi.fn(),
 }));
 
 vi.mock("../../hooks/useGitHubData", () => ({
@@ -283,7 +283,7 @@ describe("CommandPalette", () => {
   });
 
   it("should open selected item in browser on Cmd+Enter", async () => {
-    const { openUrl: mockedOpenUrl } = await import("@tauri-apps/plugin-opener");
+    const { openUrl: mockedOpenUrl } = await import("../../lib/open");
     vi.mocked(mockedOpenUrl).mockClear();
     const pr = makePr();
 
@@ -308,6 +308,33 @@ describe("CommandPalette", () => {
       "https://github.com/org/repo/pull/42",
     );
     expect(mockSetView).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should open selected item in browser on Ctrl+Enter", async () => {
+    const { openUrl: mockedOpenUrl } = await import("../../lib/open");
+    vi.mocked(mockedOpenUrl).mockClear();
+    const pr = makePr();
+
+    (useGitHubData as Mock).mockReturnValue({
+      dashboard: makeDashboard({ reviewRequests: [pr] }),
+      stats: null,
+      isLoading: false,
+      error: null,
+      forceSync: vi.fn(),
+      isSyncing: false,
+    });
+
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    expect(mockedOpenUrl).toHaveBeenCalledWith(
+      "https://github.com/org/repo/pull/42",
+    );
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

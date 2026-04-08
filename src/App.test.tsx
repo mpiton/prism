@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { useDashboardStore } from "./stores/dashboard";
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openUrl: vi.fn().mockResolvedValue(undefined),
+vi.mock("./lib/open", () => ({
+  openUrl: vi.fn(),
 }));
 
 vi.mock("./lib/tauri", async (importOriginal) => {
@@ -149,8 +149,8 @@ describe("App keyboard shortcuts", () => {
       selectedIndex: -1,
       navigableItems: items,
     });
-    const opener = await import("@tauri-apps/plugin-opener");
-    mockedOpenUrl = vi.mocked(opener.openUrl);
+    const { openUrl } = await import("./lib/open");
+    mockedOpenUrl = vi.mocked(openUrl);
     mockedOpenUrl.mockClear();
   });
 

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { listRepos } from "../../lib/tauri";
 import { useDashboardStore } from "../../stores/dashboard";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "../../lib/open";
 import type { DashboardView } from "../../stores/dashboard";
 import type { PullRequestWithReview, Issue } from "../../lib/types";
 
@@ -134,9 +134,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       e.preventDefault();
       const item = findSelectedItem();
       if (item) {
-        openUrl(item.url).catch((err: unknown) => {
-          console.warn("[openUrl] failed to open", item.url, err);
-        });
+        openUrl(item.url);
         onOpenChange(false);
       }
     }
