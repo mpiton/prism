@@ -45,6 +45,9 @@ export function useGitHubData(refetchInterval?: number) {
       setSyncError(null);
       await invalidateGitHub(queryClient);
     },
+    onError: (err: unknown) => {
+      setSyncError(err instanceof Error ? err.message : "Force sync failed");
+    },
   });
 
   useEffect(() => {

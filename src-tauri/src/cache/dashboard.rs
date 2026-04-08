@@ -19,7 +19,7 @@ use super::workspaces::list_workspaces;
 /// Composes data from multiple cache tables into a single [`DashboardData`]:
 /// 1. PRs where the user has a **pending** review request
 /// 2. PRs authored by the user
-/// 3. Issues authored by the user
+/// 3. Issues assigned to the user
 /// 4. Recent activity (last 50 events)
 /// 5. All workspaces
 ///

@@ -75,6 +75,7 @@ query DashboardData(
     }
   }
   assignedIssues: search(query: $issuesQuery, type: ISSUE, first: $first) {
+    pageInfo { hasNextPage }
     nodes {
       __typename
       ... on Issue { ...IssueFields }

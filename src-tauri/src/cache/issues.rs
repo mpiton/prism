@@ -165,32 +165,33 @@ pub async fn get_all_issues(pool: &SqlitePool) -> Result<Vec<Issue>, AppError> {
 /// Delete issues whose IDs are not in `current_ids`, across all repos.
 /// Returns the number of deleted rows.
 ///
-/// When `current_ids` is empty, treats it as a no-op and returns 0. An empty
-/// list likely signals a partial GraphQL response (null `assigned_issues`),
-/// not "the user has zero assigned issues" — wiping the table would be unsafe.
+/// The caller is responsible for distinguishing "no data" from "zero issues".
+/// Pass only authoritative ID lists (i.e. when the GraphQL response was
+/// complete and not paginated). When `current_ids` is empty, all issues are
+/// deleted — the user genuinely has zero assigned issues.
 ///
 /// Uses a fetch-then-delete strategy: fetches all existing IDs, computes the
 /// set difference in Rust, then deletes stale IDs in chunks of 998 to stay
 /// under `SQLite`'s parameter limit (999).
 ///
-/// Accepts a pool reference (runs outside the sync transaction — stale
-/// cleanup is best-effort, similar to activity sync).
+/// Accepts `&mut SqliteConnection` so it can run inside the caller's
+/// transaction, preventing races with concurrent syncs.
 pub async fn delete_issues_not_in(
-    pool: &SqlitePool,
+    conn: &mut sqlx::SqliteConnection,
     current_ids: &[String],
 ) -> Result<u64, AppError> {
     const CHUNK_SIZE: usize = 998;
 
-    // Empty current_ids is treated as a no-op: a partial GraphQL response
-    // may omit the assigned_issues field entirely, yielding an empty Vec.
-    // Wiping the table in that case would be data-destructive.
     if current_ids.is_empty() {
-        return Ok(0);
+        let result = sqlx::query("DELETE FROM issues")
+            .execute(&mut *conn)
+            .await?;
+        return Ok(result.rows_affected());
     }
 
     // Fetch all existing issue IDs
     let existing: Vec<(String,)> = sqlx::query_as("SELECT id FROM issues")
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await?;
 
     // Compute stale IDs (exist in DB but not in current_ids)
@@ -219,7 +220,7 @@ pub async fn delete_issues_not_in(
             query = query.bind(id);
         }
 
-        let result = query.execute(pool).await?;
+        let result = query.execute(&mut *conn).await?;
         total_deleted += result.rows_affected();
     }
 
@@ -602,7 +603,9 @@ mod tests {
         upsert_issue(&pool, &i3).await.unwrap();
 
         let current_ids = vec!["issue-1".to_string(), "issue-3".to_string()];
-        let deleted = delete_issues_not_in(&pool, &current_ids).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        let deleted = delete_issues_not_in(&mut conn, &current_ids).await.unwrap();
+        drop(conn);
 
         assert_eq!(deleted, 1, "should delete 1 stale issue");
 
@@ -631,14 +634,18 @@ mod tests {
             .await
             .unwrap();
 
-        let deleted = delete_issues_not_in(&pool, &[]).await.unwrap();
-        assert_eq!(deleted, 0, "empty current_ids is a no-op (safety guard)");
+        let mut conn = pool.acquire().await.unwrap();
+        let deleted = delete_issues_not_in(&mut conn, &[]).await.unwrap();
+        drop(conn);
+        assert_eq!(
+            deleted, 3,
+            "empty current_ids deletes all (authoritative empty)"
+        );
 
         let remaining = get_all_issues(&pool).await.unwrap();
-        assert_eq!(
-            remaining.len(),
-            3,
-            "all issues preserved when current_ids is empty"
+        assert!(
+            remaining.is_empty(),
+            "all issues deleted on authoritative empty"
         );
 
         pool.close().await;

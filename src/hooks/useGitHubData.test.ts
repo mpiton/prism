@@ -171,6 +171,48 @@ describe("useGitHubData", () => {
     expect(unlistenFn).toHaveBeenCalledTimes(4);
   });
 
+  it("should set syncError on github:sync_error and clear on github:updated", async () => {
+    (getGithubDashboard as Mock).mockResolvedValue(MOCK_DASHBOARD);
+    (getGithubStats as Mock).mockResolvedValue(MOCK_STATS);
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useGitHubData(), { wrapper });
+
+    expect(result.current.syncError).toBeNull();
+
+    await waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "github:sync_error",
+        expect.any(Function),
+      );
+    });
+
+    // Fire sync_error
+    const syncErrorCall = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "github:sync_error",
+    );
+    expect(syncErrorCall).toBeDefined();
+    const syncErrorCallback = syncErrorCall![1] as (payload: string) => void;
+
+    await act(() => {
+      syncErrorCallback("502 Bad Gateway");
+    });
+
+    expect(result.current.syncError).toBe("502 Bad Gateway");
+
+    // Fire github:updated to clear the error
+    const updatedCall = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "github:updated",
+    );
+    const updatedCallback = updatedCall![1] as () => void;
+
+    await act(() => {
+      updatedCallback();
+    });
+
+    expect(result.current.syncError).toBeNull();
+  });
+
   it("should set authExpired when auth:expired event fires", async () => {
     (getGithubDashboard as Mock).mockResolvedValue(MOCK_DASHBOARD);
     (getGithubStats as Mock).mockResolvedValue(MOCK_STATS);

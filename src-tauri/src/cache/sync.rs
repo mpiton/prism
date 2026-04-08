@@ -176,14 +176,16 @@ pub async fn sync_dashboard(
             .await?;
     }
 
-    tx.commit().await?;
-
-    // Stale issue cleanup is best-effort — don't fail dashboard sync if it errors.
-    match delete_issues_not_in(pool, &synced_issue_ids).await {
-        Ok(n) if n > 0 => tracing::info!("stale issue cleanup: {n} removed"),
-        Ok(_) => {}
-        Err(e) => tracing::warn!("stale issue cleanup failed: {e}"),
+    // Stale issue cleanup inside the transaction: only when we have an
+    // authoritative (non-paginated) issue list. None means partial data
+    // (null field or paginated response) — skip cleanup to avoid deleting
+    // valid issues beyond the first page.
+    if let Some(ref ids) = synced_issue_ids {
+        #[allow(clippy::explicit_auto_deref)]
+        delete_issues_not_in(&mut *tx, ids).await?;
     }
+
+    tx.commit().await?;
 
     // Activity sync is best-effort — don't fail dashboard sync if it errors.
     match sync_activity(client, pool, username, &activity_since).await {
@@ -268,10 +270,15 @@ fn build_query_variables(
 /// Extracts PRs from `review_requests` and `my_pull_requests` search results,
 /// deduplicates by PR ID, then upserts all entities including reviews
 /// and review requests. Issues are extracted from `assigned_issues`.
+///
+/// Returns `Some(ids)` when the issues result is authoritative (nodes present
+/// and not paginated), or `None` when the data is partial (null field or
+/// `has_next_page` is true). The caller uses this to decide whether stale
+/// issue cleanup is safe.
 async fn persist_response(
     conn: &mut sqlx::SqliteConnection,
     data: &dashboard_data::ResponseData,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Option<Vec<String>>, AppError> {
     let mut seen_pr_ids: HashSet<String> = HashSet::new();
 
     if let Some(nodes) = &data.review_requests.nodes {
@@ -294,6 +301,12 @@ async fn persist_response(
         }
     }
 
+    // Track whether the issues result is authoritative. If nodes is None
+    // (partial response) or has_next_page is true (paginated — the query
+    // caps at first:100), we cannot safely delete issues not in this set.
+    let issues_authoritative =
+        data.assigned_issues.nodes.is_some() && !data.assigned_issues.page_info.has_next_page;
+
     let mut synced_issue_ids: Vec<String> = Vec::new();
 
     if let Some(nodes) = &data.assigned_issues.nodes {
@@ -306,7 +319,11 @@ async fn persist_response(
         }
     }
 
-    Ok(synced_issue_ids)
+    if issues_authoritative {
+        Ok(Some(synced_issue_ids))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Persist a single PR with its associated reviews and review requests.
@@ -904,7 +921,12 @@ mod tests {
                     dashboard_data::DashboardDataMyPullRequestsNodes::PullRequest(pr),
                 )]),
             },
-            assigned_issues: dashboard_data::DashboardDataAssignedIssues { nodes: None },
+            assigned_issues: dashboard_data::DashboardDataAssignedIssues {
+                page_info: dashboard_data::DashboardDataAssignedIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: None,
+            },
         };
 
         {
@@ -1012,7 +1034,12 @@ mod tests {
                 )]),
             },
             my_pull_requests: dashboard_data::DashboardDataMyPullRequests { nodes: None },
-            assigned_issues: dashboard_data::DashboardDataAssignedIssues { nodes: None },
+            assigned_issues: dashboard_data::DashboardDataAssignedIssues {
+                page_info: dashboard_data::DashboardDataAssignedIssuesPageInfo {
+                    has_next_page: false,
+                },
+                nodes: None,
+            },
         };
 
         let mut tx = pool.begin().await.unwrap();
