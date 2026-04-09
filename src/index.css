@@ -20,6 +20,7 @@
   --color-white: #eeece6;
   --color-foreground: var(--color-text);
   --color-accent: #c8ff00;
+  --color-accent-glow: color-mix(in srgb, var(--color-accent) 16%, transparent);
 
   /* ── Couleurs sémantiques ───────────────────── */
   --color-red: #ff4d4d;

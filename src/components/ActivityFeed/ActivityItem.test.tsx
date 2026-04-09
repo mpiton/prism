@@ -80,15 +80,27 @@ describe("ActivityItem", () => {
     expect(screen.getByTestId("unread-dot")).toBeInTheDocument();
   });
 
+  it("should highlight unread activity with accent styling", () => {
+    render(<ActivityItem activity={makeActivity({ isRead: false })} />);
+
+    expect(screen.getByTestId("activity-item")).toHaveClass(
+      "border-accent/30",
+      "bg-surface",
+      "shadow-[inset_3px_0_0_var(--color-accent)]",
+    );
+    expect(screen.getByTestId("activity-item")).not.toHaveClass("opacity-60");
+    expect(screen.getByTestId("unread-dot")).toHaveClass("bg-accent");
+  });
+
   it("should not show unread dot when activity is read", () => {
     render(<ActivityItem activity={makeActivity({ isRead: true })} />);
 
     expect(screen.queryByTestId("unread-dot")).not.toBeInTheDocument();
   });
 
-  it("should apply reduced opacity when activity is read", () => {
+  it("should apply muted styling when activity is read", () => {
     render(<ActivityItem activity={makeActivity({ isRead: true })} />);
 
-    expect(screen.getByTestId("activity-item").className).toContain("opacity-50");
+    expect(screen.getByTestId("activity-item")).toHaveClass("bg-bg", "opacity-60");
   });
 });
