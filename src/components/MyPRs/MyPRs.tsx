@@ -1,4 +1,6 @@
-import { type ReactElement, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { listRepos } from "../../lib/tauri";
 import type { PullRequestWithReview } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
@@ -42,17 +44,40 @@ export function MyPRs({
   onWorkspaceAction,
 }: MyPRsProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
+  const [searchQuery, setSearchQuery] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
-  const openPrs = prs.filter(isOpen);
-  const mergedPrs = prs.filter(isMerged);
+  const repoMap = useMemo<Map<string, string>>(() => {
+    if (!repos) return new Map();
+    return new Map(repos.map((repo) => [repo.id, repo.fullName]));
+  }, [repos]);
+
+  const matchesSearch = (pr: PullRequestWithReview): boolean => {
+    if (normalizedQuery.length === 0) return true;
+    const repoName = repoMap.get(pr.pullRequest.repoId) ?? pr.pullRequest.repoId;
+
+    return [
+      pr.pullRequest.title,
+      pr.pullRequest.author,
+      repoName,
+      ...pr.pullRequest.labels,
+    ].some((value) => value.toLowerCase().includes(normalizedQuery));
+  };
+
+  const matchingPrs = prs.filter(matchesSearch);
+  const openPrs = matchingPrs.filter(isOpen);
+  const mergedPrs = matchingPrs.filter(isMerged);
   const visible = tab === "open" ? openPrs : mergedPrs;
 
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [tab, normalizedQuery]);
+
   const navItems = useMemo(
-    () =>
-      prs
-        .filter(tab === "open" ? isOpen : isMerged)
-        .map((pr) => ({ url: pr.pullRequest.url })),
-    [prs, tab],
+    () => visible.map((pr) => ({ url: pr.pullRequest.url })),
+    [visible],
   );
   useRegisterNavigableItems(navItems);
 
@@ -86,6 +111,15 @@ export function MyPRs({
         </>
       ) : (
         <>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter PRs..."
+            aria-label="Filter PRs"
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted"
+          />
+
           <div className="flex gap-1" role="group" aria-label="Filter by state">
             <button
               type="button"
@@ -116,15 +150,20 @@ export function MyPRs({
           {visible.length === 0 ? (
             <EmptyState icon="↗" message="No pull requests to display" />
           ) : (
-            <div className="flex flex-col gap-1">
-              {visible.map((pr) => (
-                <MyPrCard
-                  key={pr.pullRequest.id}
-                  data={pr}
-                  onOpen={onOpen}
-                  onWorkspaceAction={onWorkspaceAction}
-                />
-              ))}
+            <div
+              ref={listRef}
+              className="max-h-[600px] overflow-y-auto"
+            >
+              <div className="flex flex-col gap-1">
+                {visible.map((pr) => (
+                  <MyPrCard
+                    key={pr.pullRequest.id}
+                    data={pr}
+                    onOpen={onOpen}
+                    onWorkspaceAction={onWorkspaceAction}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </>

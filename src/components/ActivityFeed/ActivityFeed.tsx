@@ -1,4 +1,6 @@
-import { type ReactElement, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { type ReactElement, useMemo, useState } from "react";
+import { listRepos } from "../../lib/tauri";
 import type { Activity, ActivityType } from "../../lib/types";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
@@ -53,8 +55,24 @@ export function ActivityFeed({
   onMarkAllRead,
 }: ActivityFeedProps): ReactElement {
   const [filter, setFilter] = useState<FilterType>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
-  const visible = activities.filter((a) => matchesFilter(a, filter));
+  const repoMap = useMemo<Map<string, string>>(() => {
+    if (!repos) return new Map();
+    return new Map(repos.map((repo) => [repo.id, repo.fullName]));
+  }, [repos]);
+
+  const visible = activities.filter((activity) => {
+    if (!matchesFilter(activity, filter)) return false;
+    if (normalizedQuery.length === 0) return true;
+    const repoName = repoMap.get(activity.repoId) ?? activity.repoId;
+
+    return [activity.actor, repoName, activity.message].some((value) =>
+      value.toLowerCase().includes(normalizedQuery),
+    );
+  });
 
   return (
     <section
@@ -86,6 +104,15 @@ export function ActivityFeed({
         </>
       ) : (
         <>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter activity..."
+            aria-label="Filter activity"
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted"
+          />
+
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by type">
               {FILTER_LABELS.map((f) => (

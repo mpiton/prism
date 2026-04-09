@@ -1,15 +1,41 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Activity } from "../../lib/types";
+import type { Activity, Repo } from "../../lib/types";
 import { ActivityFeed } from "./ActivityFeed";
+
+const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
+
+vi.mock("@tanstack/react-query", async () => {
+  const actual = await vi.importActual("@tanstack/react-query");
+  return {
+    ...actual,
+    useQuery: mockUseQuery,
+  };
+});
+
+function makeRepo(overrides: Partial<Repo> = {}): Repo {
+  return {
+    id: "repo-1",
+    org: "org",
+    name: "repo",
+    fullName: "org/repo",
+    url: "https://github.com/org/repo",
+    defaultBranch: "main",
+    isArchived: false,
+    enabled: true,
+    localPath: null,
+    lastSyncAt: null,
+    ...overrides,
+  };
+}
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {
   return {
     id: "act-1",
     activityType: "comment_added",
     actor: "alice",
-    repoId: "org/repo",
+    repoId: "repo-1",
     pullRequestId: "pr-1",
     issueId: null,
     message: "Some comment",
@@ -32,6 +58,7 @@ const onMarkAllRead = vi.fn();
 
 beforeEach(() => {
   onMarkAllRead.mockClear();
+  mockUseQuery.mockReturnValue({ data: [makeRepo()] });
 });
 
 describe("ActivityFeed", () => {
@@ -67,6 +94,36 @@ describe("ActivityFeed", () => {
     await user.click(screen.getByRole("button", { name: /mention/i }));
 
     expect(screen.getAllByTestId("activity-item")).toHaveLength(1);
+  });
+
+  it("should filter activities by actor, repo, and message", async () => {
+    const user = userEvent.setup();
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    const input = screen.getByPlaceholderText("Filter activity...");
+
+    await user.type(input, "approved");
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(1);
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "org/repo");
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(6);
+
+    await user.clear(input);
+    await user.type(input, "alice");
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(6);
+  });
+
+  it("should combine text search with the type filter", async () => {
+    const user = userEvent.setup();
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    await user.click(screen.getByRole("button", { name: /comment/i }));
+    await user.type(screen.getByPlaceholderText("Filter activity..."), "hey");
+
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(1);
+    expect(screen.getByText(/hey @alice check this out/i)).toBeInTheDocument();
   });
 
   it("should mark all as read when button is clicked", async () => {
