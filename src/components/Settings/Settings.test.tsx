@@ -39,9 +39,7 @@ function renderWithProviders(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
@@ -163,11 +161,7 @@ describe("Settings", () => {
   });
 
   it("should display auth status when connected", async () => {
-    setupMocks(
-      makeConfig(),
-      [],
-      makeAuthStatus({ connected: true, username: "alice" }),
-    );
+    setupMocks(makeConfig(), [], makeAuthStatus({ connected: true, username: "alice" }));
 
     renderWithProviders(<Settings />);
 
@@ -258,9 +252,14 @@ describe("Settings", () => {
 
     const reposSection = screen.getByTestId("settings-repos");
     const toggles = within(reposSection).getAllByRole("checkbox");
+    const frontendRow = screen.getByText("frontend").closest("label");
+    const backendRow = screen.getByText("backend").closest("label");
+
     expect(toggles).toHaveLength(2);
-    expect(toggles[0]).toBeChecked();
-    expect(toggles[1]).not.toBeChecked();
+    expect(frontendRow).not.toBeNull();
+    expect(backendRow).not.toBeNull();
+    expect(within(frontendRow as HTMLElement).getByRole("checkbox")).toBeChecked();
+    expect(within(backendRow as HTMLElement).getByRole("checkbox")).not.toBeChecked();
   });
 
   it("should call setRepoEnabled when repo toggle is clicked", async () => {
@@ -427,40 +426,103 @@ describe("Settings", () => {
     expect(screen.queryByText("mobile")).not.toBeInTheDocument();
   });
 
-  it("should show only first 10 repos when more than 10 exist", async () => {
-    const repos = Array.from({ length: 15 }, (_, i) => makeRepo(i + 1));
-    setupMocks(makeConfig(), repos);
+  it("should show enabled repositories count", async () => {
+    setupMocks(makeConfig(), [
+      makeRepo(1, { enabled: true }),
+      makeRepo(2, { enabled: false }),
+      makeRepo(3, { enabled: true }),
+    ]);
 
     renderWithProviders(<Settings />);
 
-    await screen.findByText("repo-1");
-
-    const reposSection = screen.getByTestId("settings-repos");
-    const checkboxes = within(reposSection).getAllByRole("checkbox");
-    expect(checkboxes).toHaveLength(10);
-    expect(screen.getByText("Show 5 more")).toBeInTheDocument();
+    expect(await screen.findByText("2 of 3 repositories enabled")).toBeInTheDocument();
   });
 
-  it("should show all repos when 'Show N more' button is clicked", async () => {
-    const user = userEvent.setup();
-    const repos = Array.from({ length: 15 }, (_, i) => makeRepo(i + 1));
-    setupMocks(makeConfig(), repos);
+  it("should group repositories by organization", async () => {
+    setupMocks(makeConfig(), [
+      makeRepo(1, { org: "zeta", name: "api", fullName: "zeta/api" }),
+      makeRepo(2, { org: "alpha", name: "web", fullName: "alpha/web" }),
+      makeRepo(3, { org: "alpha", name: "cli", fullName: "alpha/cli", enabled: false }),
+    ]);
 
     renderWithProviders(<Settings />);
 
-    await screen.findByText("Show 5 more");
-    await user.click(screen.getByText("Show 5 more"));
+    expect(await screen.findByText("alpha/")).toBeInTheDocument();
+    expect(screen.getByText("zeta/")).toBeInTheDocument();
+    expect(screen.getByText("1/2 enabled")).toBeInTheDocument();
+    expect(screen.getByText("1/1 enabled")).toBeInTheDocument();
+  });
 
-    const reposSection = screen.getByTestId("settings-repos");
-    const checkboxes = within(reposSection).getAllByRole("checkbox");
-    expect(checkboxes).toHaveLength(15);
-    expect(screen.queryByText("Show 5 more")).not.toBeInTheDocument();
+  it("should batch enable repositories matching the current filter", async () => {
+    const repos = [
+      makeRepo(1, { org: "org", name: "frontend", fullName: "org/frontend", enabled: false }),
+      makeRepo(2, {
+        org: "org",
+        name: "frontend-docs",
+        fullName: "org/frontend-docs",
+        enabled: true,
+      }),
+      makeRepo(3, { org: "org", name: "backend", fullName: "org/backend", enabled: false }),
+    ];
+    setupMocks(makeConfig(), repos);
+    mockedSetRepoEnabled.mockImplementation(async (repoId, enabled) => {
+      const repo = repos.find((candidate) => candidate.id === repoId);
+      return { ...(repo ?? makeRepo(99)), id: repoId, enabled };
+    });
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByText("frontend");
+    vi.useFakeTimers();
+
+    const input = screen.getByPlaceholderText("Filter repositories...");
+    act(() => {
+      fireEvent.change(input, { target: { value: "front" } });
+      vi.advanceTimersByTime(200);
+    });
+    vi.useRealTimers();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+
+    await waitFor(() => expect(mockedSetRepoEnabled).toHaveBeenCalledTimes(1));
+    expect(mockedSetRepoEnabled).toHaveBeenCalledWith("repo-1", true);
+    expect(mockedSetRepoEnabled).not.toHaveBeenCalledWith("repo-3", true);
+    expect(screen.getByText("2 matching current filter")).toBeInTheDocument();
+  });
+
+  it("should invert the current filtered selection", async () => {
+    const repos = [
+      makeRepo(1, { name: "frontend", fullName: "org/frontend", enabled: true }),
+      makeRepo(2, { name: "frontend-api", fullName: "org/frontend-api", enabled: false }),
+      makeRepo(3, { name: "backend", fullName: "org/backend", enabled: true }),
+    ];
+    setupMocks(makeConfig(), repos);
+    mockedSetRepoEnabled.mockImplementation(async (repoId, enabled) => {
+      const repo = repos.find((candidate) => candidate.id === repoId);
+      return { ...(repo ?? makeRepo(99)), id: repoId, enabled };
+    });
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByText("frontend");
+    vi.useFakeTimers();
+
+    const input = screen.getByPlaceholderText("Filter repositories...");
+    act(() => {
+      fireEvent.change(input, { target: { value: "front" } });
+      vi.advanceTimersByTime(200);
+    });
+    vi.useRealTimers();
+
+    fireEvent.click(screen.getByRole("button", { name: "Invert selection" }));
+
+    await waitFor(() => expect(mockedSetRepoEnabled).toHaveBeenCalledTimes(2));
+    expect(mockedSetRepoEnabled).toHaveBeenCalledWith("repo-1", false);
+    expect(mockedSetRepoEnabled).toHaveBeenCalledWith("repo-2", true);
   });
 
   it("should show no-match message when search returns empty", async () => {
-    setupMocks(makeConfig(), [
-      makeRepo(1, { name: "frontend", fullName: "org/frontend" }),
-    ]);
+    setupMocks(makeConfig(), [makeRepo(1, { name: "frontend", fullName: "org/frontend" })]);
 
     renderWithProviders(<Settings />);
 
@@ -476,5 +538,4 @@ describe("Settings", () => {
 
     expect(screen.getByText("No repos match")).toBeInTheDocument();
   });
-
 });
