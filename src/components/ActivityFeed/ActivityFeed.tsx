@@ -2,10 +2,12 @@ import { type ReactElement, useState } from "react";
 import type { Activity, ActivityType } from "../../lib/types";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
+import { ListItemSkeleton, Skeleton } from "../atoms/Skeleton";
 import { ActivityItem } from "./ActivityItem";
 
 interface ActivityFeedProps {
   readonly activities: readonly Activity[];
+  readonly isLoading?: boolean;
   readonly onMarkAllRead: () => void;
 }
 
@@ -30,51 +32,83 @@ function matchesFilter(activity: Activity, filter: FilterType): boolean {
   return FILTER_MATCH[filter].includes(activity.activityType);
 }
 
-export function ActivityFeed({ activities, onMarkAllRead }: ActivityFeedProps): ReactElement {
+export function ActivityFeed({
+  activities,
+  isLoading = false,
+  onMarkAllRead,
+}: ActivityFeedProps): ReactElement {
   const [filter, setFilter] = useState<FilterType>("all");
 
   const visible = activities.filter((a) => matchesFilter(a, filter));
 
   return (
-    <section data-testid="activity-feed" className="flex flex-col gap-2">
-      <SectionHead title="Activity" count={visible.length} />
+    <section
+      data-testid="activity-feed"
+      aria-busy={isLoading ? "true" : undefined}
+      className="flex flex-col gap-2"
+    >
+      <SectionHead title="Activity" count={isLoading ? undefined : visible.length} />
 
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by type">
-          {FILTER_LABELS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={filter === f}
-              onClick={() => setFilter(f)}
-              className={`rounded px-2 py-2 text-xs capitalize transition-colors ${
-                filter === f
-                  ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-                  : "text-dim hover:bg-surface-hover hover:text-foreground"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+      {isLoading ? (
+        <>
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <Skeleton className="h-8 w-11" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-8 w-12" />
+            <Skeleton className="ml-auto h-8 w-24" />
+          </div>
 
-        <button
-          type="button"
-          onClick={onMarkAllRead}
-          className="ml-auto rounded px-2 py-2 text-xs text-dim hover:text-foreground"
-        >
-          Mark all read
-        </button>
-      </div>
-
-      {visible.length === 0 ? (
-        <EmptyState icon="◌" message="No activity to display" />
+          <div data-testid="activity-feed-loading" className="flex flex-col gap-1">
+            {Array.from({ length: 4 }, (_, index) => (
+              <ListItemSkeleton
+                key={`activity-skeleton-${index}`}
+                testId="activity-item-skeleton"
+                showBodyLine
+                showPill={false}
+              />
+            ))}
+          </div>
+        </>
       ) : (
-        <div className="flex flex-col gap-1">
-          {visible.map((activity) => (
-            <ActivityItem key={activity.id} activity={activity} />
-          ))}
-        </div>
+        <>
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by type">
+              {FILTER_LABELS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={filter === f}
+                  onClick={() => setFilter(f)}
+                  className={`rounded px-2 py-2 text-xs capitalize transition-colors ${
+                    filter === f
+                      ? "bg-accent text-bg font-semibold hover:bg-accent/80"
+                      : "text-dim hover:bg-surface-hover hover:text-foreground"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={onMarkAllRead}
+              className="ml-auto rounded px-2 py-2 text-xs text-dim hover:text-foreground"
+            >
+              Mark all read
+            </button>
+          </div>
+
+          {visible.length === 0 ? (
+            <EmptyState icon="◌" message="No activity to display" />
+          ) : (
+            <div className="flex flex-col gap-1">
+              {visible.map((activity) => (
+                <ActivityItem key={activity.id} activity={activity} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );

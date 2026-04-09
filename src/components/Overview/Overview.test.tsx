@@ -253,7 +253,12 @@ describe("Overview", () => {
 
     renderWithProviders(<Overview />);
 
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.getByTestId("overview")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("review-queue")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("my-prs")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("issues")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("activity-feed")).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
   });
 
   it("should show error state when dashboard is absent and error exists", () => {
