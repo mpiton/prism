@@ -58,15 +58,15 @@ impl TryFrom<ActivityRow> for Activity {
             pull_request_id: row.pull_request_id,
             issue_id: row.issue_id,
             message: row.message,
+            is_read: row.is_read != 0,
             created_at: row.created_at,
         })
     }
 }
 
 /// Explicit column list for all queries on `activity`.
-/// `is_read` is populated by `ActivityRow` (DB DEFAULT 0 on INSERT) but
-/// discarded by `TryFrom<Activity>` — it is a DB-internal flag, not part
-/// of the domain struct.
+/// `is_read` is selected via `ActivityRow` and
+/// mapped to `Activity.is_read` via `TryFrom`.
 const ACTIVITY_COLS: &str =
     "id, activity_type, actor, repo_id, pull_request_id, issue_id, message, is_read, created_at";
 
@@ -74,8 +74,8 @@ const ACTIVITY_COLS: &str =
 #[allow(dead_code)]
 pub async fn insert_activity(pool: &SqlitePool, activity: &Activity) -> Result<Activity, AppError> {
     let sql = format!(
-        "INSERT INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "INSERT INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, is_read, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING {ACTIVITY_COLS}"
     );
 
@@ -87,6 +87,7 @@ pub async fn insert_activity(pool: &SqlitePool, activity: &Activity) -> Result<A
         .bind(&activity.pull_request_id)
         .bind(&activity.issue_id)
         .bind(&activity.message)
+        .bind(i64::from(activity.is_read))
         .bind(&activity.created_at)
         .fetch_one(pool)
         .await?;
@@ -139,8 +140,8 @@ where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     let result = sqlx::query(
-        "INSERT OR IGNORE INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, created_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT OR IGNORE INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, is_read, created_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(&activity.id)
     .bind(activity_type_to_str(&activity.activity_type))
@@ -149,6 +150,7 @@ where
     .bind(&activity.pull_request_id)
     .bind(&activity.issue_id)
     .bind(&activity.message)
+    .bind(i64::from(activity.is_read))
     .bind(&activity.created_at)
     .execute(executor)
     .await?;
@@ -220,6 +222,7 @@ mod tests {
             pull_request_id: None,
             issue_id: None,
             message: message.to_string(),
+            is_read: false,
             created_at: "2026-03-20T10:00:00Z".to_string(),
         }
     }
@@ -239,6 +242,7 @@ mod tests {
         assert_eq!(result.pull_request_id, None);
         assert_eq!(result.issue_id, None);
         assert_eq!(result.message, "Opened PR #42");
+        assert!(!result.is_read);
         assert_eq!(result.created_at, "2026-03-20T10:00:00Z");
 
         // Duplicate insert should fail (PRIMARY KEY constraint)
@@ -340,6 +344,52 @@ mod tests {
         // Mark all again — none should be updated
         let count = mark_all_read(&pool).await.unwrap();
         assert_eq!(count, 0);
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_is_read_roundtrip_after_mark_read() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let activity = sample_activity("act-1", ActivityType::CommentAdded, "Comment");
+        insert_activity(&pool, &activity).await.unwrap();
+
+        // Freshly inserted → is_read should be false
+        let before = get_activity_by_id(&pool, "act-1").await.unwrap().unwrap();
+        assert!(!before.is_read);
+
+        // Mark as read
+        mark_read(&pool, "act-1").await.unwrap();
+
+        // Fetched again → is_read should be true
+        let after = get_activity_by_id(&pool, "act-1").await.unwrap().unwrap();
+        assert!(after.is_read);
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_is_read_roundtrip_after_mark_all_read() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let a1 = sample_activity("act-1", ActivityType::PrOpened, "PR");
+        let a2 = sample_activity("act-2", ActivityType::PrMerged, "Merge");
+        insert_activity(&pool, &a1).await.unwrap();
+        insert_activity(&pool, &a2).await.unwrap();
+
+        // Both unread
+        let all = get_recent_activity(&pool, 10, 0).await.unwrap();
+        assert!(all.iter().all(|a| !a.is_read));
+
+        // Mark all read
+        mark_all_read(&pool).await.unwrap();
+
+        // Both should now be read
+        let all = get_recent_activity(&pool, 10, 0).await.unwrap();
+        assert!(all.iter().all(|a| a.is_read));
 
         pool.close().await;
     }

@@ -95,6 +95,7 @@ export interface Activity {
   readonly pullRequestId: string | null;
   readonly issueId: string | null;
   readonly message: string;
+  readonly isRead: boolean;
   readonly createdAt: string;
 }
 

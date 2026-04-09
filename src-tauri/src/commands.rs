@@ -2073,6 +2073,7 @@ mod tests {
             pull_request_id: None,
             issue_id: None,
             message: "Opened PR #42".into(),
+            is_read: false,
             created_at: "2026-03-27T10:00:00Z".into(),
         };
         crate::cache::activity::insert_activity(&pool, &activity)
@@ -2125,6 +2126,7 @@ mod tests {
             pull_request_id: None,
             issue_id: None,
             message: "First".into(),
+            is_read: false,
             created_at: "2026-03-27T10:00:00Z".into(),
         };
         let a2 = crate::types::Activity {
@@ -2135,6 +2137,7 @@ mod tests {
             pull_request_id: None,
             issue_id: None,
             message: "Second".into(),
+            is_read: false,
             created_at: "2026-03-27T11:00:00Z".into(),
         };
         crate::cache::activity::insert_activity(&pool, &a1)

@@ -558,6 +558,7 @@ fn map_activity_nodes(data: &recent_activity::ResponseData) -> Vec<Activity> {
                     pull_request_id: None,
                     issue_id: None,
                     message: format!("PR #{}: {}", pr.number, pr.title),
+                    is_read: false,
                     created_at: pr.updated_at.clone(),
                 });
             }
@@ -579,6 +580,7 @@ fn map_activity_nodes(data: &recent_activity::ResponseData) -> Vec<Activity> {
                     pull_request_id: None,
                     issue_id: None,
                     message: format!("Issue #{}: {}", issue.number, issue.title),
+                    is_read: false,
                     created_at: issue.updated_at.clone(),
                 });
             }
