@@ -86,6 +86,17 @@ describe("MyPRs", () => {
     expect(mergedTab).toHaveTextContent("2"); // mergedPr1, mergedPr2
   });
 
+  it("should keep state filters at the minimum touch target size", () => {
+    render(<MyPRs prs={allPrs} onOpen={onOpen} />);
+
+    const group = screen.getByRole("group", { name: /filter by state/i });
+    const buttons = within(group).getAllByRole("button");
+
+    for (const button of buttons) {
+      expect(button).toHaveClass("min-h-11", "min-w-11");
+    }
+  });
+
   it("should show empty state when no PRs match current tab", () => {
     render(<MyPRs prs={[mergedPr1]} onOpen={onOpen} />);
 

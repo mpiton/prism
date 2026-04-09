@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Activity } from "../../lib/types";
@@ -101,6 +101,23 @@ describe("ActivityFeed", () => {
 
     expect(screen.getByText("Activity")).toBeInTheDocument();
     expect(screen.getByText("6")).toBeInTheDocument();
+  });
+
+  it("should keep filter buttons at the minimum touch target size", () => {
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    const filterGroup = screen.getByRole("group", { name: /filter by type/i });
+    const buttons = within(filterGroup).getAllByRole("button");
+
+    for (const button of buttons) {
+      expect(button).toHaveClass("min-h-11", "min-w-11");
+    }
+  });
+
+  it("should keep the mark all read action at the minimum touch target height", () => {
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    expect(screen.getByRole("button", { name: /mark all read/i })).toHaveClass("min-h-11");
   });
 
   it("should set aria-pressed correctly when filter button is clicked", async () => {

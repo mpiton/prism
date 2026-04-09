@@ -170,6 +170,17 @@ describe("ReviewQueue", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
   });
 
+  it("should keep priority filters at the minimum touch target size", () => {
+    render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
+
+    const filterGroup = screen.getByRole("group", { name: /filter by priority/i });
+    const buttons = within(filterGroup).getAllByRole("button");
+
+    for (const button of buttons) {
+      expect(button).toHaveClass("min-h-11", "min-w-11");
+    }
+  });
+
   it("should show empty state when filter matches nothing", async () => {
     const user = userEvent.setup();
     const reviews = [highPr];
@@ -231,6 +242,12 @@ describe("ReviewQueue", () => {
     );
 
     expect(screen.getByText("4")).toBeInTheDocument();
+  });
+
+  it("should keep the repo filter select at the minimum touch target height", () => {
+    render(<ReviewQueue reviews={multiRepoReviews} onOpen={vi.fn()} />);
+
+    expect(screen.getByRole("combobox", { name: /filter by repo/i })).toHaveClass("min-h-11");
   });
 
   it("should clear stale repo filter when selected repo disappears from reviews", async () => {
