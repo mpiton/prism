@@ -88,6 +88,7 @@ describe("ActivityItem", () => {
       "bg-surface",
       "shadow-[inset_3px_0_0_var(--color-accent)]",
     );
+    expect(screen.getByTestId("activity-item")).not.toHaveClass("opacity-60");
     expect(screen.getByTestId("unread-dot")).toHaveClass("bg-accent");
   });
 

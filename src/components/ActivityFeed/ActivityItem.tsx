@@ -51,7 +51,7 @@ export function ActivityItem({ activity }: ActivityItemProps): ReactElement {
       ) : (
         <span
           data-testid="unread-dot"
-          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_0_4px_rgba(200,255,0,0.16)]"
+          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_0_4px_var(--color-accent-glow)]"
         />
       )}
       <span data-testid="activity-icon" aria-hidden="true" className="shrink-0 text-sm text-dim">
