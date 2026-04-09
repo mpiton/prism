@@ -133,14 +133,17 @@ describe("Issues", () => {
     await user.clear(input);
     await user.type(input, "bob");
     expect(screen.getByText("Refine search flow")).toBeInTheDocument();
+    expect(screen.queryByText("Open issue one")).not.toBeInTheDocument();
 
     await user.clear(input);
     await user.type(input, "console");
     expect(screen.getByText("Refine search flow")).toBeInTheDocument();
+    expect(screen.queryByText("Open issue one")).not.toBeInTheDocument();
 
     await user.clear(input);
     await user.type(input, "ux");
     expect(screen.getByText("Refine search flow")).toBeInTheDocument();
+    expect(screen.queryByText("Open issue one")).not.toBeInTheDocument();
   });
 
   it("should keep state filters at the minimum touch target size", () => {

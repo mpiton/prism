@@ -1,8 +1,34 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PullRequestWithReview } from "../../lib/types";
+import type { PullRequestWithReview, Repo } from "../../lib/types";
 import { MyPRs } from "./MyPRs";
+
+const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
+
+vi.mock("@tanstack/react-query", async () => {
+  const actual = await vi.importActual("@tanstack/react-query");
+  return {
+    ...actual,
+    useQuery: mockUseQuery,
+  };
+});
+
+function makeRepo(overrides: Partial<Repo> = {}): Repo {
+  return {
+    id: "repo-1",
+    org: "org",
+    name: "repo",
+    fullName: "org/repo",
+    url: "https://github.com/org/repo",
+    defaultBranch: "main",
+    isArchived: false,
+    enabled: true,
+    localPath: null,
+    lastSyncAt: null,
+    ...overrides,
+  };
+}
 
 function makePr(
   overrides: Partial<PullRequestWithReview["pullRequest"]> = {},
@@ -49,6 +75,7 @@ const onOpen = vi.fn();
 
 beforeEach(() => {
   onOpen.mockClear();
+  mockUseQuery.mockReturnValue({ data: [makeRepo()] });
 });
 
 describe("MyPRs", () => {
@@ -92,9 +119,15 @@ describe("MyPRs", () => {
       number: 6,
       title: "Refine search interaction",
       author: "alice",
-      repoId: "acme/console",
+      repoId: "repo-2",
       labels: ["ux"],
       state: "open",
+    });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
     });
 
     render(<MyPRs prs={[openPr1, labeledPr, mergedPr1]} onOpen={onOpen} />);
@@ -108,14 +141,17 @@ describe("MyPRs", () => {
     await user.clear(input);
     await user.type(input, "alice");
     expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
+    expect(screen.queryByText("Open PR one")).not.toBeInTheDocument();
 
     await user.clear(input);
     await user.type(input, "console");
     expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
+    expect(screen.queryByText("Open PR one")).not.toBeInTheDocument();
 
     await user.clear(input);
     await user.type(input, "ux");
     expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
+    expect(screen.queryByText("Open PR one")).not.toBeInTheDocument();
   });
 
   it("should keep state filters at the minimum touch target size", () => {

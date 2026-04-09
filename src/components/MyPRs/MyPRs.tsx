@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { type ReactElement, useMemo, useState } from "react";
+import { listRepos } from "../../lib/tauri";
 import type { PullRequestWithReview } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
@@ -44,14 +46,21 @@ export function MyPRs({
   const [tab, setTab] = useState<Tab>("open");
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
+
+  const repoMap = useMemo<Map<string, string>>(() => {
+    if (!repos) return new Map();
+    return new Map(repos.map((repo) => [repo.id, repo.fullName]));
+  }, [repos]);
 
   const matchesSearch = (pr: PullRequestWithReview): boolean => {
     if (normalizedQuery.length === 0) return true;
+    const repoName = repoMap.get(pr.pullRequest.repoId) ?? pr.pullRequest.repoId;
 
     return [
       pr.pullRequest.title,
       pr.pullRequest.author,
-      pr.pullRequest.repoId,
+      repoName,
       ...pr.pullRequest.labels,
     ].some((value) => value.toLowerCase().includes(normalizedQuery));
   };
