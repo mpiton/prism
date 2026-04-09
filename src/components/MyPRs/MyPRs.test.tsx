@@ -92,6 +92,15 @@ describe("MyPRs", () => {
     expect(screen.getByText(/no pull requests/i)).toBeInTheDocument();
   });
 
+  it("should render card skeletons while loading", () => {
+    render(<MyPRs prs={[]} isLoading onOpen={onOpen} />);
+
+    expect(screen.getByTestId("my-prs")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getAllByTestId("my-pr-card-skeleton")).toHaveLength(3);
+    expect(screen.queryByText(/no pull requests/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /filter by state/i })).not.toBeInTheDocument();
+  });
+
   it("should render SectionHead with title and total count", () => {
     render(<MyPRs prs={allPrs} onOpen={onOpen} />);
 

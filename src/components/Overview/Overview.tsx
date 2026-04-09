@@ -15,7 +15,7 @@ const MAX_PRS = 5;
 const MAX_ACTIVITIES = 5;
 
 export function Overview(): ReactElement {
-  const { dashboard, error } = useGitHubData();
+  const { dashboard, error, isLoading } = useGitHubData();
   const queryClient = useQueryClient();
 
   const markAllRead = useMutation({
@@ -84,29 +84,41 @@ export function Overview(): ReactElement {
     );
   }
 
-  if (!dashboard) {
-    return (
-      <div className="flex h-full items-center justify-center text-dim">
-        Loading...
-      </div>
-    );
-  }
+  const showLoadingState = !dashboard && !error;
 
-  const reviews = dashboard.reviewRequests.slice(0, MAX_REVIEWS);
-  const prs = dashboard.myPullRequests.slice(0, MAX_PRS);
-  const issues = dashboard.assignedIssues;
-  const activities = dashboard.recentActivity.slice(0, MAX_ACTIVITIES);
+  const reviews = dashboard?.reviewRequests.slice(0, MAX_REVIEWS) ?? [];
+  const prs = dashboard?.myPullRequests.slice(0, MAX_PRS) ?? [];
+  const issues = dashboard?.assignedIssues ?? [];
+  const activities = dashboard?.recentActivity.slice(0, MAX_ACTIVITIES) ?? [];
 
   return (
-    <div data-testid="overview" className="flex h-full gap-6 overflow-y-auto p-4">
+    <div
+      data-testid="overview"
+      aria-busy={showLoadingState || isLoading ? "true" : undefined}
+      className="flex h-full gap-6 overflow-y-auto p-4"
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-6">
-        <ReviewQueue reviews={reviews} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />
-        <MyPRs prs={prs} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />
+        <ReviewQueue
+          reviews={reviews}
+          isLoading={showLoadingState}
+          onOpen={openUrl}
+          onWorkspaceAction={handleWorkspaceAction}
+        />
+        <MyPRs
+          prs={prs}
+          isLoading={showLoadingState}
+          onOpen={openUrl}
+          onWorkspaceAction={handleWorkspaceAction}
+        />
       </div>
 
       <div className="flex w-[300px] min-w-0 flex-col gap-6">
-        <Issues issues={issues} onOpen={openUrl} />
-        <ActivityFeed activities={activities} onMarkAllRead={() => markAllRead.mutate()} />
+        <Issues issues={issues} isLoading={showLoadingState} onOpen={openUrl} />
+        <ActivityFeed
+          activities={activities}
+          isLoading={showLoadingState}
+          onMarkAllRead={() => markAllRead.mutate()}
+        />
       </div>
     </div>
   );

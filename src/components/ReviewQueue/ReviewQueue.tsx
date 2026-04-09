@@ -2,6 +2,7 @@ import { type ReactElement, useEffect, useMemo } from "react";
 import type { Priority, PullRequestWithReview } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { useDashboardStore } from "../../stores/dashboard";
+import { CardSkeleton, Skeleton } from "../atoms/Skeleton";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { ReviewCard } from "./ReviewCard";
@@ -16,6 +17,7 @@ interface WorkspaceActionParams {
 
 interface ReviewQueueProps {
   readonly reviews: readonly PullRequestWithReview[];
+  readonly isLoading?: boolean;
   readonly onOpen: (url: string) => void;
   readonly onWorkspaceAction?: (params: WorkspaceActionParams) => void;
 }
@@ -58,6 +60,7 @@ function getUniqueRepos(
 
 export function ReviewQueue({
   reviews,
+  isLoading = false,
   onOpen,
   onWorkspaceAction,
 }: ReviewQueueProps): ReactElement {
@@ -102,62 +105,93 @@ export function ReviewQueue({
   useRegisterNavigableItems(navItems);
 
   return (
-    <section data-testid="review-queue" className="flex flex-col gap-2">
-      <SectionHead title="Reviews" count={sorted.length} />
+    <section
+      data-testid="review-queue"
+      aria-busy={isLoading ? "true" : undefined}
+      className="flex flex-col gap-2"
+    >
+      <SectionHead title="Reviews" count={isLoading ? undefined : sorted.length} />
 
-      <div className="flex items-center gap-3">
-        <div className="flex gap-1" role="group" aria-label="Filter by priority">
-          {PRIORITY_FILTERS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={priorityFilter === f}
-              onClick={() =>
-                setFilter({ priority: f === "all" ? undefined : f })
-              }
-              className={`rounded px-2 py-2 text-xs transition-colors ${
-                priorityFilter === f
-                  ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-                  : "text-dim hover:bg-surface-hover hover:text-foreground"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+      {isLoading ? (
+        <>
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-8 w-11" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-8 w-14" />
+            <Skeleton className="h-8 w-12" />
+          </div>
 
-        {repos.length > 1 && (
-          <select
-            aria-label="Filter by repo"
-            value={repoFilter}
-            onChange={(e) =>
-              setFilter({ repo: e.target.value || undefined })
-            }
-            className="cursor-pointer rounded border border-border bg-surface px-2 py-2 text-xs text-foreground transition-colors hover:border-foreground"
+          <div
+            data-testid="review-queue-loading"
+            className="flex flex-col gap-1"
           >
-            <option value="">All repos</option>
-            {repos.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
+            {Array.from({ length: 3 }, (_, index) => (
+              <CardSkeleton
+                key={`review-skeleton-${index}`}
+                testId="review-card-skeleton"
+                showPriorityBar
+                showTrailingBadge
+              />
             ))}
-          </select>
-        )}
-      </div>
-
-      {sorted.length === 0 ? (
-        <EmptyState icon="✓" message="No pending reviews — you're all caught up!" />
+          </div>
+        </>
       ) : (
-        <div className="flex flex-col gap-1">
-          {sorted.map((review) => (
-            <ReviewCard
-              key={review.pullRequest.id}
-              data={review}
-              onOpen={onOpen}
-              onWorkspaceAction={onWorkspaceAction}
-            />
-          ))}
-        </div>
+        <>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1" role="group" aria-label="Filter by priority">
+              {PRIORITY_FILTERS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={priorityFilter === f}
+                  onClick={() =>
+                    setFilter({ priority: f === "all" ? undefined : f })
+                  }
+                  className={`rounded px-2 py-2 text-xs transition-colors ${
+                    priorityFilter === f
+                      ? "bg-accent text-bg font-semibold hover:bg-accent/80"
+                      : "text-dim hover:bg-surface-hover hover:text-foreground"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {repos.length > 1 && (
+              <select
+                aria-label="Filter by repo"
+                value={repoFilter}
+                onChange={(e) =>
+                  setFilter({ repo: e.target.value || undefined })
+                }
+                className="cursor-pointer rounded border border-border bg-surface px-2 py-2 text-xs text-foreground transition-colors hover:border-foreground"
+              >
+                <option value="">All repos</option>
+                {repos.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {sorted.length === 0 ? (
+            <EmptyState icon="✓" message="No pending reviews — you're all caught up!" />
+          ) : (
+            <div className="flex flex-col gap-1">
+              {sorted.map((review) => (
+                <ReviewCard
+                  key={review.pullRequest.id}
+                  data={review}
+                  onOpen={onOpen}
+                  onWorkspaceAction={onWorkspaceAction}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, type ReactElement } from "react";
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { useDashboardStore } from "../../stores/dashboard";
+import { StatsBarSkeleton } from "../atoms/Skeleton";
 
 const TICK_INTERVAL = 10_000;
 
@@ -42,7 +43,7 @@ function StatItem({ label, value, testId, highlight }: StatItemProps): ReactElem
 }
 
 export function StatsBar(): ReactElement {
-  const { stats, dashboard, isSyncing } = useGitHubData();
+  const { stats, dashboard, isLoading, isSyncing } = useGitHubData();
   const focusMode = useDashboardStore((s) => s.focusMode);
   const [now, setNow] = useState(() => Date.now());
 
@@ -53,11 +54,16 @@ export function StatsBar(): ReactElement {
 
   const syncedAt = dashboard?.syncedAt ?? null;
 
+  if (isLoading && !stats) {
+    return <StatsBarSkeleton focusMode={focusMode} />;
+  }
+
   return (
     <div
       data-testid="stats-bar"
       role="region"
       aria-label="Statistics"
+      aria-busy={isLoading ? "true" : undefined}
       className="flex items-center justify-between border-b border-border px-4 py-2"
     >
       <div className="flex items-center gap-6">

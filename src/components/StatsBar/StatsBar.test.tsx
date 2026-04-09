@@ -87,7 +87,7 @@ describe("StatsBar", () => {
     expect(pendingValue).toHaveClass("text-accent");
   });
 
-  it("should show placeholder when stats are null", () => {
+  it("should render stats skeletons while loading", () => {
     (useGitHubData as Mock).mockReturnValue({
       stats: null,
       dashboard: null,
@@ -98,8 +98,12 @@ describe("StatsBar", () => {
 
     render(<StatsBar />, { wrapper: createWrapper() });
 
-    const values = screen.getAllByText("—");
-    expect(values.length).toBe(4);
+    expect(screen.getByTestId("stats-bar")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("stat-pending-reviews-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("stat-open-prs-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("stat-issues-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("stat-workspaces-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("stats-bar-sync-skeleton")).toBeInTheDocument();
   });
 
   it("should show minutes format when synced over 60s ago", () => {

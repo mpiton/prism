@@ -87,6 +87,15 @@ describe("ActivityFeed", () => {
     expect(screen.getByText(/no activity/i)).toBeInTheDocument();
   });
 
+  it("should render list skeletons while loading", () => {
+    render(<ActivityFeed activities={[]} isLoading onMarkAllRead={onMarkAllRead} />);
+
+    expect(screen.getByTestId("activity-feed")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getAllByTestId("activity-item-skeleton")).toHaveLength(4);
+    expect(screen.queryByText(/no activity/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /filter by type/i })).not.toBeInTheDocument();
+  });
+
   it("should render SectionHead with filtered count when activities are provided", () => {
     render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
 

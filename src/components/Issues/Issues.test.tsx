@@ -112,6 +112,15 @@ describe("Issues", () => {
     expect(screen.getByText(/no issues/i)).toBeInTheDocument();
   });
 
+  it("should render list skeletons while loading", () => {
+    render(<Issues issues={[]} isLoading onOpen={onOpen} />);
+
+    expect(screen.getByTestId("issues")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getAllByTestId("issue-card-skeleton")).toHaveLength(4);
+    expect(screen.queryByText(/no issues/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /filter by state/i })).not.toBeInTheDocument();
+  });
+
   it("should show empty state on closed tab when no closed issues", async () => {
     const user = userEvent.setup();
     render(<Issues issues={[openIssue1]} onOpen={onOpen} />);
