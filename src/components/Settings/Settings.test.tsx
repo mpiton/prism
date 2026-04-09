@@ -1,8 +1,8 @@
 import { type ReactElement } from "react";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { render, screen, within, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { AppConfig, AuthStatus, PersonalStats, Repo } from "../../lib/types";
 
 vi.mock("../../lib/tauri", () => ({
@@ -120,6 +120,10 @@ beforeEach(async () => {
 });
 
 describe("Settings", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("should render all config sections", async () => {
     setupMocks();
 
@@ -397,6 +401,80 @@ describe("Settings", () => {
 
     const repoSpan = await screen.findByText("my-repo");
     expect(repoSpan).toHaveAttribute("title", "my-repo");
+  });
+
+  it("should filter repos by search input", async () => {
+    setupMocks(makeConfig(), [
+      makeRepo(1, { name: "frontend", fullName: "org/frontend" }),
+      makeRepo(2, { name: "backend", fullName: "org/backend" }),
+      makeRepo(3, { name: "mobile", fullName: "org/mobile" }),
+    ]);
+
+    renderWithProviders(<Settings />);
+
+    // Wait for repos to load, then activate fake timers for debounce
+    await screen.findByText("frontend");
+    vi.useFakeTimers();
+
+    const input = screen.getByPlaceholderText("Filter repositories...");
+    act(() => {
+      fireEvent.change(input, { target: { value: "front" } });
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(screen.getByText("frontend")).toBeInTheDocument();
+    expect(screen.queryByText("backend")).not.toBeInTheDocument();
+    expect(screen.queryByText("mobile")).not.toBeInTheDocument();
+  });
+
+  it("should show only first 10 repos when more than 10 exist", async () => {
+    const repos = Array.from({ length: 15 }, (_, i) => makeRepo(i + 1));
+    setupMocks(makeConfig(), repos);
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByText("repo-1");
+
+    const reposSection = screen.getByTestId("settings-repos");
+    const checkboxes = within(reposSection).getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(10);
+    expect(screen.getByText("Show 5 more")).toBeInTheDocument();
+  });
+
+  it("should show all repos when 'Show N more' button is clicked", async () => {
+    const user = userEvent.setup();
+    const repos = Array.from({ length: 15 }, (_, i) => makeRepo(i + 1));
+    setupMocks(makeConfig(), repos);
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByText("Show 5 more");
+    await user.click(screen.getByText("Show 5 more"));
+
+    const reposSection = screen.getByTestId("settings-repos");
+    const checkboxes = within(reposSection).getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(15);
+    expect(screen.queryByText("Show 5 more")).not.toBeInTheDocument();
+  });
+
+  it("should show no-match message when search returns empty", async () => {
+    setupMocks(makeConfig(), [
+      makeRepo(1, { name: "frontend", fullName: "org/frontend" }),
+    ]);
+
+    renderWithProviders(<Settings />);
+
+    // Wait for repos to load, then activate fake timers for debounce
+    await screen.findByText("frontend");
+    vi.useFakeTimers();
+
+    const input = screen.getByPlaceholderText("Filter repositories...");
+    act(() => {
+      fireEvent.change(input, { target: { value: "zzznomatch" } });
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(screen.getByText("No repos match")).toBeInTheDocument();
   });
 
 });

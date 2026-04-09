@@ -10,6 +10,7 @@ import type { PartialAppConfig, Repo } from "../../lib/types";
 import { AuthSetup } from "../AuthSetup/AuthSetup";
 import { Stats } from "./Stats";
 import { DebugInfo } from "./DebugInfo";
+import { useDebounce } from "../../hooks/useDebounce";
 
 function useConfigQuery() {
   return useQuery({ queryKey: ["config"], queryFn: getConfig });
@@ -89,6 +90,13 @@ export function Settings(): ReactElement {
   const reposQuery = useReposQuery();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
+  const [repoSearch, setRepoSearch] = useState("");
+  const [showAllRepos, setShowAllRepos] = useState(false);
+  const debouncedRepoSearch = useDebounce(repoSearch, 150);
+
+  useEffect(() => {
+    setShowAllRepos(false);
+  }, [debouncedRepoSearch]);
 
   const configMutation = useMutation({
     mutationFn: (partial: PartialAppConfig) => setConfig(partial),
@@ -135,6 +143,16 @@ export function Settings(): ReactElement {
   }
 
   const config = configQuery.data;
+  const allRepos = reposQuery.data ?? [];
+  const searchLower = debouncedRepoSearch.toLowerCase();
+  const filteredSettingsRepos = allRepos.filter(
+    (r) =>
+      r.name.toLowerCase().includes(searchLower) ||
+      r.fullName.toLowerCase().includes(searchLower),
+  );
+  const visibleSettingsRepos = showAllRepos
+    ? filteredSettingsRepos
+    : filteredSettingsRepos.slice(0, 10);
 
   return (
     <section data-testid="settings" className="flex h-full flex-col gap-6 overflow-y-auto p-4">
@@ -167,15 +185,24 @@ export function Settings(): ReactElement {
 
       <div data-testid="settings-repos" className="flex flex-col gap-3">
         <h2 className="text-accent text-sm font-semibold uppercase tracking-wider">Repositories</h2>
+        <input
+          type="search"
+          placeholder="Filter repositories..."
+          value={repoSearch}
+          onChange={(e) => setRepoSearch(e.target.value)}
+          className="bg-surface border-border rounded border px-2 py-1 text-sm text-white placeholder:text-muted outline-none"
+        />
         {reposQuery.isLoading ? (
           <span className="text-dim text-sm">Loading repositories...</span>
         ) : reposQuery.error ? (
           <span className="text-sm text-red-400">Failed to load repositories</span>
-        ) : (reposQuery.data ?? []).length === 0 ? (
+        ) : allRepos.length === 0 ? (
           <span className="text-dim text-sm">No repositories synced</span>
+        ) : filteredSettingsRepos.length === 0 ? (
+          <span className="text-dim text-sm">No repos match</span>
         ) : (
           <div className="flex flex-col gap-1">
-            {(reposQuery.data ?? []).map((repo) => (
+            {visibleSettingsRepos.map((repo) => (
               <RepoRow
                 key={repo.id}
                 repo={repo}
@@ -185,6 +212,15 @@ export function Settings(): ReactElement {
                 }
               />
             ))}
+            {!showAllRepos && filteredSettingsRepos.length > 10 && (
+              <button
+                type="button"
+                onClick={() => setShowAllRepos(true)}
+                className="text-xs text-muted hover:text-foreground transition-colors"
+              >
+                Show {filteredSettingsRepos.length - 10} more
+              </button>
+            )}
           </div>
         )}
       </div>
