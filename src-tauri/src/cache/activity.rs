@@ -87,7 +87,7 @@ pub async fn insert_activity(pool: &SqlitePool, activity: &Activity) -> Result<A
         .bind(&activity.pull_request_id)
         .bind(&activity.issue_id)
         .bind(&activity.message)
-        .bind(if activity.is_read { 1_i64 } else { 0 })
+        .bind(i64::from(activity.is_read))
         .bind(&activity.created_at)
         .fetch_one(pool)
         .await?;
@@ -150,7 +150,7 @@ where
     .bind(&activity.pull_request_id)
     .bind(&activity.issue_id)
     .bind(&activity.message)
-    .bind(if activity.is_read { 1_i64 } else { 0 })
+    .bind(i64::from(activity.is_read))
     .bind(&activity.created_at)
     .execute(executor)
     .await?;
