@@ -23,6 +23,9 @@ interface MyPRsProps {
 
 type Tab = "open" | "merged";
 
+const FILTER_BUTTON_CLASS =
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
+
 function isOpen(pr: PullRequestWithReview): boolean {
   const { state } = pr.pullRequest;
   return state === "open" || state === "draft";
@@ -67,8 +70,8 @@ export function MyPRs({
       {isLoading ? (
         <>
           <div className="flex gap-1">
-            <Skeleton className="h-8 w-16" />
-            <Skeleton className="h-8 w-20" />
+            <Skeleton className="h-11 w-16" />
+            <Skeleton className="h-11 w-20" />
           </div>
 
           <div data-testid="my-prs-loading" className="flex flex-col gap-1">
@@ -88,7 +91,7 @@ export function MyPRs({
               type="button"
               aria-pressed={tab === "open"}
               onClick={() => setTab("open")}
-              className={`rounded px-2 py-2 text-xs transition-colors ${
+              className={`${FILTER_BUTTON_CLASS} ${
                 tab === "open"
                   ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                   : "text-dim hover:bg-surface-hover hover:text-foreground"
@@ -100,7 +103,7 @@ export function MyPRs({
               type="button"
               aria-pressed={tab === "merged"}
               onClick={() => setTab("merged")}
-              className={`rounded px-2 py-2 text-xs transition-colors ${
+              className={`${FILTER_BUTTON_CLASS} ${
                 tab === "merged"
                   ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                   : "text-dim hover:bg-surface-hover hover:text-foreground"

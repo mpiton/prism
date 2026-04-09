@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Issue, Repo } from "../../lib/types";
@@ -104,6 +104,17 @@ describe("Issues", () => {
 
     expect(openTab).toHaveTextContent("2");
     expect(closedTab).toHaveTextContent("2");
+  });
+
+  it("should keep state filters at the minimum touch target size", () => {
+    render(<Issues issues={allIssues} onOpen={onOpen} />);
+
+    const group = screen.getByRole("group", { name: /filter by state/i });
+    const buttons = within(group).getAllByRole("button");
+
+    for (const button of buttons) {
+      expect(button).toHaveClass("min-h-11", "min-w-11");
+    }
   });
 
   it("should show empty state when no open issues", () => {

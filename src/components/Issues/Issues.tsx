@@ -17,6 +17,9 @@ interface IssuesProps {
 
 type Tab = "open" | "closed";
 
+const FILTER_BUTTON_CLASS =
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
+
 function isOpen(issue: Issue): boolean {
   return issue.state === "open";
 }
@@ -78,8 +81,8 @@ export function Issues({
       {isLoading ? (
         <>
           <div className="flex gap-1">
-            <Skeleton className="h-8 w-16" />
-            <Skeleton className="h-8 w-[4.5rem]" />
+            <Skeleton className="h-11 w-16" />
+            <Skeleton className="h-11 w-[4.5rem]" />
           </div>
 
           <div data-testid="issues-loading" className="flex flex-col gap-1">
@@ -99,7 +102,7 @@ export function Issues({
               type="button"
               aria-pressed={tab === "open"}
               onClick={() => setTab("open")}
-              className={`rounded px-2 py-2 text-xs transition-colors ${
+              className={`${FILTER_BUTTON_CLASS} ${
                 tab === "open"
                   ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                   : "text-dim hover:bg-surface-hover hover:text-foreground"
@@ -111,7 +114,7 @@ export function Issues({
               type="button"
               aria-pressed={tab === "closed"}
               onClick={() => setTab("closed")}
-              className={`rounded px-2 py-2 text-xs transition-colors ${
+              className={`${FILTER_BUTTON_CLASS} ${
                 tab === "closed"
                   ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                   : "text-dim hover:bg-surface-hover hover:text-foreground"

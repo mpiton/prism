@@ -41,6 +41,12 @@ const PRIORITY_FILTERS: readonly PriorityFilter[] = [
   "low",
 ];
 
+const FILTER_BUTTON_CLASS =
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
+
+const INLINE_CONTROL_CLASS =
+  "min-h-11 rounded px-3 text-xs transition-colors";
+
 function sortByPriority(
   reviews: readonly PullRequestWithReview[],
 ): readonly PullRequestWithReview[] {
@@ -118,7 +124,7 @@ export function ReviewQueue({
             {PRIORITY_FILTERS.map((filter) => (
               <Skeleton
                 key={`priority-filter-skeleton-${filter}`}
-                className={`h-8 ${
+                className={`h-11 ${
                   filter === "all"
                     ? "w-11"
                     : filter === "critical"
@@ -159,7 +165,7 @@ export function ReviewQueue({
                   onClick={() =>
                     setFilter({ priority: f === "all" ? undefined : f })
                   }
-                  className={`rounded px-2 py-2 text-xs transition-colors ${
+                  className={`${FILTER_BUTTON_CLASS} ${
                     priorityFilter === f
                       ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                       : "text-dim hover:bg-surface-hover hover:text-foreground"
@@ -177,7 +183,7 @@ export function ReviewQueue({
                 onChange={(e) =>
                   setFilter({ repo: e.target.value || undefined })
                 }
-                className="cursor-pointer rounded border border-border bg-surface px-2 py-2 text-xs text-foreground transition-colors hover:border-foreground"
+                className={`cursor-pointer border border-border bg-surface text-foreground hover:border-foreground ${INLINE_CONTROL_CLASS}`}
               >
                 <option value="">All repos</option>
                 {repos.map((id) => (

@@ -24,6 +24,21 @@ const MENTION_PATTERN = /(^|\s)@\w+/;
 
 const FILTER_LABELS = ["all", "comment", "review", "ci", "mention", "other"] as const satisfies readonly FilterType[];
 
+const FILTER_LABEL: Record<FilterType, string> = {
+  all: "all",
+  comment: "comment",
+  review: "review",
+  ci: "CI",
+  mention: "mention",
+  other: "other",
+};
+
+const FILTER_BUTTON_CLASS =
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
+
+const ACTION_BUTTON_CLASS =
+  "inline-flex min-h-11 items-center rounded px-3 text-xs transition-colors";
+
 function matchesFilter(activity: Activity, filter: FilterType): boolean {
   if (filter === "all") return true;
   if (filter === "mention") {
@@ -52,10 +67,10 @@ export function ActivityFeed({
       {isLoading ? (
         <>
           <div className="flex min-w-0 flex-wrap items-center gap-1">
-            <Skeleton className="h-8 w-11" />
-            <Skeleton className="h-8 w-16" />
-            <Skeleton className="h-8 w-12" />
-            <Skeleton className="ml-auto h-8 w-24" />
+            <Skeleton className="h-11 w-11" />
+            <Skeleton className="h-11 w-16" />
+            <Skeleton className="h-11 w-12" />
+            <Skeleton className="ml-auto h-11 w-24" />
           </div>
 
           <div data-testid="activity-feed-loading" className="flex flex-col gap-1">
@@ -79,13 +94,13 @@ export function ActivityFeed({
                   type="button"
                   aria-pressed={filter === f}
                   onClick={() => setFilter(f)}
-                  className={`rounded px-2 py-2 text-xs capitalize transition-colors ${
+                  className={`${FILTER_BUTTON_CLASS} ${
                     filter === f
                       ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                       : "text-dim hover:bg-surface-hover hover:text-foreground"
                   }`}
                 >
-                  {f}
+                  {FILTER_LABEL[f]}
                 </button>
               ))}
             </div>
@@ -93,7 +108,7 @@ export function ActivityFeed({
             <button
               type="button"
               onClick={onMarkAllRead}
-              className="ml-auto rounded px-2 py-2 text-xs text-dim hover:text-foreground"
+              className={`ml-auto text-dim hover:text-foreground ${ACTION_BUTTON_CLASS}`}
             >
               Mark all read
             </button>
