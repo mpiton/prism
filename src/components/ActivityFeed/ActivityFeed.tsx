@@ -1,4 +1,6 @@
-import { type ReactElement, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { type ReactElement, useMemo, useState } from "react";
+import { listRepos } from "../../lib/tauri";
 import type { Activity, ActivityType } from "../../lib/types";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
@@ -55,12 +57,19 @@ export function ActivityFeed({
   const [filter, setFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
+
+  const repoMap = useMemo<Map<string, string>>(() => {
+    if (!repos) return new Map();
+    return new Map(repos.map((repo) => [repo.id, repo.fullName]));
+  }, [repos]);
 
   const visible = activities.filter((activity) => {
     if (!matchesFilter(activity, filter)) return false;
     if (normalizedQuery.length === 0) return true;
+    const repoName = repoMap.get(activity.repoId) ?? activity.repoId;
 
-    return [activity.actor, activity.repoId, activity.message].some((value) =>
+    return [activity.actor, repoName, activity.message].some((value) =>
       value.toLowerCase().includes(normalizedQuery),
     );
   });

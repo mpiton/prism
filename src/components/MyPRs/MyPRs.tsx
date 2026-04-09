@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ReactElement, useMemo, useState } from "react";
+import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { listRepos } from "../../lib/tauri";
 import type { PullRequestWithReview } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
@@ -45,6 +45,7 @@ export function MyPRs({
 }: MyPRsProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
   const [searchQuery, setSearchQuery] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
@@ -69,6 +70,10 @@ export function MyPRs({
   const openPrs = matchingPrs.filter(isOpen);
   const mergedPrs = matchingPrs.filter(isMerged);
   const visible = tab === "open" ? openPrs : mergedPrs;
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [tab, normalizedQuery]);
 
   const navItems = useMemo(
     () => visible.map((pr) => ({ url: pr.pullRequest.url })),
@@ -145,15 +150,20 @@ export function MyPRs({
           {visible.length === 0 ? (
             <EmptyState icon="↗" message="No pull requests to display" />
           ) : (
-            <div className="flex flex-col gap-1">
-              {visible.map((pr) => (
-                <MyPrCard
-                  key={pr.pullRequest.id}
-                  data={pr}
-                  onOpen={onOpen}
-                  onWorkspaceAction={onWorkspaceAction}
-                />
-              ))}
+            <div
+              ref={listRef}
+              className="max-h-[600px] overflow-y-auto"
+            >
+              <div className="flex flex-col gap-1">
+                {visible.map((pr) => (
+                  <MyPrCard
+                    key={pr.pullRequest.id}
+                    data={pr}
+                    onOpen={onOpen}
+                    onWorkspaceAction={onWorkspaceAction}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </>

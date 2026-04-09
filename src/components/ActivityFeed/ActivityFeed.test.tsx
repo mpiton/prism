@@ -1,15 +1,41 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Activity } from "../../lib/types";
+import type { Activity, Repo } from "../../lib/types";
 import { ActivityFeed } from "./ActivityFeed";
+
+const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
+
+vi.mock("@tanstack/react-query", async () => {
+  const actual = await vi.importActual("@tanstack/react-query");
+  return {
+    ...actual,
+    useQuery: mockUseQuery,
+  };
+});
+
+function makeRepo(overrides: Partial<Repo> = {}): Repo {
+  return {
+    id: "repo-1",
+    org: "org",
+    name: "repo",
+    fullName: "org/repo",
+    url: "https://github.com/org/repo",
+    defaultBranch: "main",
+    isArchived: false,
+    enabled: true,
+    localPath: null,
+    lastSyncAt: null,
+    ...overrides,
+  };
+}
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {
   return {
     id: "act-1",
     activityType: "comment_added",
     actor: "alice",
-    repoId: "org/repo",
+    repoId: "repo-1",
     pullRequestId: "pr-1",
     issueId: null,
     message: "Some comment",
@@ -32,6 +58,7 @@ const onMarkAllRead = vi.fn();
 
 beforeEach(() => {
   onMarkAllRead.mockClear();
+  mockUseQuery.mockReturnValue({ data: [makeRepo()] });
 });
 
 describe("ActivityFeed", () => {

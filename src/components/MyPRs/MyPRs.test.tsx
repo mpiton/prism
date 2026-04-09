@@ -152,6 +152,12 @@ describe("MyPRs", () => {
     await user.type(input, "ux");
     expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
     expect(screen.queryByText("Open PR one")).not.toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "merged");
+    await user.click(screen.getByRole("button", { name: /merged/i }));
+    expect(screen.getByText("Merged PR one")).toBeInTheDocument();
+    expect(screen.queryByText("Refine search interaction")).not.toBeInTheDocument();
   });
 
   it("should keep state filters at the minimum touch target size", () => {
