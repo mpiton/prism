@@ -1,3 +1,4 @@
+import { CircleCheck, CircleX, Eye, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, type ReactElement } from "react";
 import { useNotifications } from "../../hooks/useNotifications";
 import type { Notification } from "../../hooks/useNotifications";
@@ -8,11 +9,11 @@ const AUTO_DISMISS_MS = 5_000;
 
 const NOTIFICATION_META: Record<
   Notification["type"],
-  { label: string; icon: string; view: DashboardView }
+  { label: string; Icon: LucideIcon; view: DashboardView }
 > = {
-  review_request: { label: "Review Request", icon: "👀", view: "reviews" },
-  ci_failure: { label: "CI Failure", icon: "❌", view: "mine" },
-  pr_approved: { label: "PR Approved", icon: "✅", view: "mine" },
+  review_request: { label: "Review Request", Icon: Eye, view: "reviews" },
+  ci_failure: { label: "CI Failure", Icon: CircleX, view: "mine" },
+  pr_approved: { label: "PR Approved", Icon: CircleCheck, view: "mine" },
 };
 
 interface ToastItemProps {
@@ -41,6 +42,7 @@ function extractPayloadSummary(payload: unknown): string | undefined {
 function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): ReactElement {
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
   const meta = NOTIFICATION_META[notification.type];
+  const Icon = meta.Icon;
   const summary = extractPayloadSummary(notification.payload);
 
   useEffect(() => {
@@ -70,7 +72,16 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
       onClick={handleClick}
       className="flex w-72 items-center gap-3 rounded-lg border border-border bg-bg-secondary p-3 shadow-lg transition-opacity hover:opacity-80"
     >
-      <span className="text-lg" aria-hidden="true">{meta.icon}</span>
+      <span
+        className="flex h-5 w-5 items-center justify-center text-fg"
+        aria-hidden="true"
+      >
+        <Icon
+          data-testid={`toast-icon-${notification.type}`}
+          className="h-5 w-5"
+          strokeWidth={1.9}
+        />
+      </span>
       <div className="flex flex-col items-start">
         <span className="text-sm font-medium text-fg">{meta.label}</span>
         {summary !== undefined && (

@@ -54,6 +54,7 @@ describe("Toast", () => {
     render(<Toast />);
 
     expect(screen.getByText("Review Request")).toBeInTheDocument();
+    expect(screen.getByTestId("toast-icon-review_request")).toBeInTheDocument();
   });
 
   it("should show toast on ci_failure event", () => {
@@ -71,6 +72,7 @@ describe("Toast", () => {
     render(<Toast />);
 
     expect(screen.getByText("CI Failure")).toBeInTheDocument();
+    expect(screen.getByTestId("toast-icon-ci_failure")).toBeInTheDocument();
   });
 
   it("should show toast on pr_approved event", () => {
@@ -88,6 +90,7 @@ describe("Toast", () => {
     render(<Toast />);
 
     expect(screen.getByText("PR Approved")).toBeInTheDocument();
+    expect(screen.getByTestId("toast-icon-pr_approved")).toBeInTheDocument();
   });
 
   it("should auto-dismiss after 5s", () => {
