@@ -73,4 +73,28 @@ describe("NavItem", () => {
     const button = screen.getByRole("button");
     expect(button).not.toHaveAttribute("aria-label");
   });
+
+  it("should pass through keyboard and focus props", async () => {
+    const handleFocus = vi.fn();
+    const handleKeyDown = vi.fn();
+    render(
+      <NavItem
+        label="Overview"
+        view="overview"
+        isActive={false}
+        onClick={vi.fn()}
+        tabIndex={-1}
+        onFocus={handleFocus}
+        onKeyDown={handleKeyDown}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /overview/i });
+    button.focus();
+    await userEvent.keyboard("{ArrowDown}");
+
+    expect(button).toHaveAttribute("tabindex", "-1");
+    expect(handleFocus).toHaveBeenCalledTimes(1);
+    expect(handleKeyDown).toHaveBeenCalled();
+  });
 });

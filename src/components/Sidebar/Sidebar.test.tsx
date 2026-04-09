@@ -237,4 +237,60 @@ describe("Sidebar", () => {
     expect(reposHeader).toHaveAccessibleName("Repos 1");
     expect(reposHeader).toHaveTextContent(/^Repos 1\s*▸$/);
   });
+
+  it("should use roving tab index for sidebar navigation", () => {
+    renderSidebar();
+
+    expect(screen.getByRole("button", { name: /overview/i })).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("button", { name: /to review \(3\)/i })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: /my prs \(7\)/i })).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("should move focus to the next nav item on ArrowDown", async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    const overviewButton = screen.getByRole("button", { name: /overview/i });
+    const reviewButton = screen.getByRole("button", { name: /to review \(3\)/i });
+
+    overviewButton.focus();
+    await user.keyboard("{ArrowDown}");
+
+    expect(reviewButton).toHaveFocus();
+    expect(reviewButton).toHaveAttribute("tabindex", "0");
+    expect(overviewButton).toHaveAttribute("tabindex", "-1");
+    expect(useDashboardStore.getState().currentView).toBe("overview");
+  });
+
+  it("should move focus to the previous nav item on ArrowUp", async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    const overviewButton = screen.getByRole("button", { name: /overview/i });
+    const settingsButton = screen.getByRole("button", { name: /settings/i });
+
+    overviewButton.focus();
+    await user.keyboard("{ArrowUp}");
+
+    expect(settingsButton).toHaveFocus();
+    expect(settingsButton).toHaveAttribute("tabindex", "0");
+  });
+
+  it("should move focus to the first and last nav item with Home and End", async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    const overviewButton = screen.getByRole("button", { name: /overview/i });
+    const activityButton = screen.getByRole("button", { name: /activity \(4\)/i });
+    const settingsButton = screen.getByRole("button", { name: /settings/i });
+
+    activityButton.focus();
+    await user.keyboard("{End}");
+    expect(settingsButton).toHaveFocus();
+
+    await user.keyboard("{Home}");
+    expect(overviewButton).toHaveFocus();
+    expect(overviewButton).toHaveAttribute("tabindex", "0");
+    expect(settingsButton).toHaveAttribute("tabindex", "-1");
+  });
 });

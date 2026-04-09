@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDashboardStore } from "../../stores/dashboard";
@@ -72,6 +72,8 @@ export function Sidebar(): ReactElement {
   }
 
   const [isReposExpanded, setIsReposExpanded] = useState(false);
+  const [focusedView, setFocusedView] = useState<DashboardView>(currentView);
+  const navItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const workspaces = (dashboard?.workspaces ?? []).filter(
     (ws) => ws.state !== "archived",
@@ -79,6 +81,10 @@ export function Sidebar(): ReactElement {
   const repos = reposQuery.data ?? [];
   const enabledRepos = repos.filter((r) => r.enabled);
   const username = authQuery.data?.username ?? null;
+
+  useEffect(() => {
+    setFocusedView(currentView);
+  }, [currentView]);
 
   async function handleSelectAll() {
     const toEnable = repos.filter((r) => !r.enabled);
@@ -104,6 +110,38 @@ export function Sidebar(): ReactElement {
     }
   }
 
+  function focusNavItem(index: number) {
+    const item = NAV_ITEMS[index];
+    if (!item) return;
+    setFocusedView(item.view);
+    navItemRefs.current[index]?.focus();
+  }
+
+  function handleNavKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, index: number) {
+    const count = NAV_ITEMS.length;
+    let nextIndex: number | null = null;
+
+    switch (event.key) {
+      case "ArrowDown":
+        nextIndex = (index + 1) % count;
+        break;
+      case "ArrowUp":
+        nextIndex = (index - 1 + count) % count;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = count - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    focusNavItem(nextIndex);
+  }
+
   return (
     <nav data-testid="sidebar" aria-label="Main navigation" className="flex h-full flex-col gap-4 p-3">
       {/* Logo */}
@@ -113,15 +151,21 @@ export function Sidebar(): ReactElement {
       </div>
 
       {/* Navigation */}
-      <div className="flex flex-col gap-0.5">
-        {NAV_ITEMS.map((item) => (
+      <div className="flex flex-col gap-0.5" role="toolbar" aria-label="Primary views" aria-orientation="vertical">
+        {NAV_ITEMS.map((item, index) => (
           <NavItem
             key={item.view}
+            buttonRef={(element) => {
+              navItemRefs.current[index] = element;
+            }}
             label={item.label}
             view={item.view}
             count={item.countKey && stats ? stats[item.countKey] : undefined}
             isActive={currentView === item.view}
+            tabIndex={focusedView === item.view ? 0 : -1}
             onClick={handleNavClick}
+            onFocus={() => setFocusedView(item.view)}
+            onKeyDown={(event) => handleNavKeyDown(event, index)}
           />
         ))}
       </div>
