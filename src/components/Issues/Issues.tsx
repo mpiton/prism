@@ -34,11 +34,13 @@ export function Issues({
   onOpen,
 }: IssuesProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
+  const [searchQuery, setSearchQuery] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
 
   useEffect(() => {
     parentRef.current?.scrollTo({ top: 0, behavior: "instant" });
-  }, [tab]);
+  }, [tab, normalizedQuery]);
 
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
@@ -47,8 +49,18 @@ export function Issues({
     return new Map(repos.map((repo) => [repo.id, repo.fullName]));
   }, [repos]);
 
-  const openIssues = issues.filter(isOpen);
-  const closedIssues = issues.filter(isClosed);
+  const matchesSearch = (issue: Issue): boolean => {
+    if (normalizedQuery.length === 0) return true;
+
+    const repoName = repoMap.get(issue.repoId) ?? issue.repoId;
+    return [issue.title, issue.author, repoName, ...issue.labels].some((value) =>
+      value.toLowerCase().includes(normalizedQuery),
+    );
+  };
+
+  const matchingIssues = issues.filter(matchesSearch);
+  const openIssues = matchingIssues.filter(isOpen);
+  const closedIssues = matchingIssues.filter(isClosed);
   const visible = tab === "open" ? openIssues : closedIssues;
 
   const virtualizer = useVirtualizer({
@@ -62,11 +74,8 @@ export function Issues({
   });
 
   const navItems = useMemo(
-    () =>
-      issues
-        .filter(tab === "open" ? isOpen : isClosed)
-        .map((issue) => ({ url: issue.url })),
-    [issues, tab],
+    () => visible.map((issue) => ({ url: issue.url })),
+    [visible],
   );
   useRegisterNavigableItems(navItems);
 
@@ -76,7 +85,7 @@ export function Issues({
       aria-busy={isLoading ? "true" : undefined}
       className="flex flex-col gap-2"
     >
-      <SectionHead title="Issues" count={isLoading ? undefined : issues.length} />
+      <SectionHead title="Issues" count={isLoading ? undefined : matchingIssues.length} />
 
       {isLoading ? (
         <>
@@ -97,6 +106,15 @@ export function Issues({
         </>
       ) : (
         <>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter issues..."
+            aria-label="Filter issues"
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted"
+          />
+
           <div className="flex gap-1" role="group" aria-label="Filter by state">
             <button
               type="button"

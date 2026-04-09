@@ -69,6 +69,36 @@ describe("ActivityFeed", () => {
     expect(screen.getAllByTestId("activity-item")).toHaveLength(1);
   });
 
+  it("should filter activities by actor, repo, and message", async () => {
+    const user = userEvent.setup();
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    const input = screen.getByPlaceholderText("Filter activity...");
+
+    await user.type(input, "approved");
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(1);
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "org/repo");
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(6);
+
+    await user.clear(input);
+    await user.type(input, "alice");
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(6);
+  });
+
+  it("should combine text search with the type filter", async () => {
+    const user = userEvent.setup();
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    await user.click(screen.getByRole("button", { name: /comment/i }));
+    await user.type(screen.getByPlaceholderText("Filter activity..."), "hey");
+
+    expect(screen.getAllByTestId("activity-item")).toHaveLength(1);
+    expect(screen.getByText(/hey @alice check this out/i)).toBeInTheDocument();
+  });
+
   it("should mark all as read when button is clicked", async () => {
     const user = userEvent.setup();
     render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);

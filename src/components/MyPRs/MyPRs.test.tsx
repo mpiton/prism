@@ -86,6 +86,38 @@ describe("MyPRs", () => {
     expect(mergedTab).toHaveTextContent("2"); // mergedPr1, mergedPr2
   });
 
+  it("should filter PRs by title, author, repo, and labels", async () => {
+    const user = userEvent.setup();
+    const labeledPr = makePr({
+      number: 6,
+      title: "Refine search interaction",
+      author: "alice",
+      repoId: "acme/console",
+      labels: ["ux"],
+      state: "open",
+    });
+
+    render(<MyPRs prs={[openPr1, labeledPr, mergedPr1]} onOpen={onOpen} />);
+
+    const input = screen.getByPlaceholderText("Filter PRs...");
+
+    await user.type(input, "refine");
+    expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
+    expect(screen.queryByText("Open PR one")).not.toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "alice");
+    expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "console");
+    expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "ux");
+    expect(screen.getByText("Refine search interaction")).toBeInTheDocument();
+  });
+
   it("should keep state filters at the minimum touch target size", () => {
     render(<MyPRs prs={allPrs} onOpen={onOpen} />);
 

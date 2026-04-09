@@ -106,6 +106,43 @@ describe("Issues", () => {
     expect(closedTab).toHaveTextContent("2");
   });
 
+  it("should filter issues by title, author, repo name, and labels", async () => {
+    const user = userEvent.setup();
+    const labeledIssue = makeIssue({
+      number: 5,
+      title: "Refine search flow",
+      author: "bob",
+      repoId: "repo-2",
+      labels: ["ux"],
+    });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
+    });
+
+    render(<Issues issues={[openIssue1, labeledIssue]} onOpen={onOpen} />);
+
+    const input = screen.getByPlaceholderText("Filter issues...");
+
+    await user.type(input, "search");
+    expect(screen.getByText("Refine search flow")).toBeInTheDocument();
+    expect(screen.queryByText("Open issue one")).not.toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "bob");
+    expect(screen.getByText("Refine search flow")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "console");
+    expect(screen.getByText("Refine search flow")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "ux");
+    expect(screen.getByText("Refine search flow")).toBeInTheDocument();
+  });
+
   it("should keep state filters at the minimum touch target size", () => {
     render(<Issues issues={allIssues} onOpen={onOpen} />);
 

@@ -42,17 +42,28 @@ export function MyPRs({
   onWorkspaceAction,
 }: MyPRsProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
+  const [searchQuery, setSearchQuery] = useState("");
+  const normalizedQuery = searchQuery.trim().toLowerCase();
 
-  const openPrs = prs.filter(isOpen);
-  const mergedPrs = prs.filter(isMerged);
+  const matchesSearch = (pr: PullRequestWithReview): boolean => {
+    if (normalizedQuery.length === 0) return true;
+
+    return [
+      pr.pullRequest.title,
+      pr.pullRequest.author,
+      pr.pullRequest.repoId,
+      ...pr.pullRequest.labels,
+    ].some((value) => value.toLowerCase().includes(normalizedQuery));
+  };
+
+  const matchingPrs = prs.filter(matchesSearch);
+  const openPrs = matchingPrs.filter(isOpen);
+  const mergedPrs = matchingPrs.filter(isMerged);
   const visible = tab === "open" ? openPrs : mergedPrs;
 
   const navItems = useMemo(
-    () =>
-      prs
-        .filter(tab === "open" ? isOpen : isMerged)
-        .map((pr) => ({ url: pr.pullRequest.url })),
-    [prs, tab],
+    () => visible.map((pr) => ({ url: pr.pullRequest.url })),
+    [visible],
   );
   useRegisterNavigableItems(navItems);
 
@@ -86,6 +97,15 @@ export function MyPRs({
         </>
       ) : (
         <>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter PRs..."
+            aria-label="Filter PRs"
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted"
+          />
+
           <div className="flex gap-1" role="group" aria-label="Filter by state">
             <button
               type="button"
