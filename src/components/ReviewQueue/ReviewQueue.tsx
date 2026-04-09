@@ -99,8 +99,8 @@ export function ReviewQueue({
   }, [reviews, focusMode, priorityFilter, repoFilter]);
 
   const navItems = useMemo(
-    () => sorted.map((r) => ({ url: r.pullRequest.url })),
-    [sorted],
+    () => (isLoading ? [] : sorted.map((r) => ({ url: r.pullRequest.url }))),
+    [isLoading, sorted],
   );
   useRegisterNavigableItems(navItems);
 
@@ -115,10 +115,22 @@ export function ReviewQueue({
       {isLoading ? (
         <>
           <div className="flex items-center gap-3">
-            <Skeleton className="h-8 w-11" />
-            <Skeleton className="h-8 w-16" />
-            <Skeleton className="h-8 w-14" />
-            <Skeleton className="h-8 w-12" />
+            {PRIORITY_FILTERS.map((filter) => (
+              <Skeleton
+                key={`priority-filter-skeleton-${filter}`}
+                className={`h-8 ${
+                  filter === "all"
+                    ? "w-11"
+                    : filter === "critical"
+                      ? "w-16"
+                      : filter === "high"
+                        ? "w-12"
+                        : filter === "medium"
+                          ? "w-14"
+                          : "w-10"
+                }`}
+              />
+            ))}
           </div>
 
           <div

@@ -102,7 +102,7 @@ export function ListItemSkeleton({
 
 function StatSkeleton({ testId }: { readonly testId: string }): ReactElement {
   return (
-    <div data-testid={testId} className="flex flex-col gap-1">
+    <div aria-hidden="true" data-testid={testId} className="flex flex-col gap-1">
       <Skeleton className="h-6 w-10" />
       <Skeleton className="h-3 w-16" />
     </div>

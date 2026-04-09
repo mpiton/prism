@@ -131,6 +131,16 @@ describe("ReviewQueue", () => {
     expect(screen.queryByRole("group", { name: /filter by priority/i })).not.toBeInTheDocument();
   });
 
+  it("should suppress navigable review content while loading with reviews present", () => {
+    render(<ReviewQueue reviews={[highPr]} isLoading onOpen={vi.fn()} />);
+
+    expect(screen.getByTestId("review-queue")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getAllByTestId("review-card-skeleton")).toHaveLength(3);
+    expect(screen.queryByText("High feature")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /filter by priority/i })).not.toBeInTheDocument();
+  });
+
   it("should show section header with count", () => {
     render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
 
