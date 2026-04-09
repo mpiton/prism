@@ -212,7 +212,7 @@ export function Overview(): ReactElement {
               type="button"
               data-testid="overview-activity-toggle"
               aria-expanded={isActivityExpanded}
-              aria-controls="overview-activity-content"
+              aria-controls={isActivityExpanded ? "overview-activity-content" : undefined}
               onClick={() => setIsActivityExpanded((current) => !current)}
               className="rounded-full border border-border px-3 py-1 text-xs text-dim transition-colors hover:border-foreground hover:text-foreground"
             >
