@@ -145,12 +145,17 @@ export function Sidebar(): ReactElement {
           <button
             type="button"
             aria-expanded={isReposExpanded}
+            aria-label={`Repos ${enabledRepos.length}`}
             onClick={() => setIsReposExpanded((prev) => !prev)}
             className="flex w-full items-center justify-between px-2 text-[10px] font-semibold uppercase tracking-wider text-dim hover:text-foreground"
           >
-            <span id="sidebar-repos-heading">
-              Repos
-              <span className="ml-1 text-dim/60">{enabledRepos.length}</span>
+            <span
+              id="sidebar-repos-heading"
+              aria-label={`Repos ${enabledRepos.length}`}
+              className="inline-flex items-baseline"
+            >
+              <span>Repos</span>
+              <span className="text-dim/60"> {enabledRepos.length}</span>
             </span>
             <span aria-hidden="true">{isReposExpanded ? "▾" : "▸"}</span>
           </button>

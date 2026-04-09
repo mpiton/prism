@@ -233,6 +233,7 @@ describe("Sidebar", () => {
     const reposHeader = await screen.findByRole("button", { name: /repos/i });
     expect(reposHeader).toBeInTheDocument();
     // The mock provides 1 enabled repo — exact match to avoid false positives
-    expect(reposHeader).toHaveTextContent(/^Repos\s*1\s*▸$/);
+    expect(reposHeader).toHaveAccessibleName("Repos 1");
+    expect(reposHeader).toHaveTextContent(/^Repos 1\s*▸$/);
   });
 });
