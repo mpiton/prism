@@ -121,6 +121,11 @@ describe("Sidebar", () => {
   it("should toggle repos", async () => {
     const { setRepoEnabled } = await import("../../lib/tauri");
     renderSidebar();
+
+    // Repos are collapsed by default — expand first
+    const reposHeader = await screen.findByRole("button", { name: /repos/i });
+    await userEvent.click(reposHeader);
+
     const checkbox = await screen.findByRole("checkbox");
     expect(checkbox).toBeChecked();
 
@@ -196,5 +201,38 @@ describe("Sidebar", () => {
     renderSidebar();
     const section = await screen.findByRole("region", { name: /repos/i });
     expect(section).toBeInTheDocument();
+  });
+
+  it("should show repos section collapsed by default", async () => {
+    renderSidebar();
+    const reposHeader = await screen.findByRole("button", { name: /repos/i });
+    expect(reposHeader).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByPlaceholderText("Filter repos...")).not.toBeInTheDocument();
+  });
+
+  it("should expand repos section when header is clicked", async () => {
+    renderSidebar();
+    const reposHeader = await screen.findByRole("button", { name: /repos/i });
+    await userEvent.click(reposHeader);
+    expect(reposHeader).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByPlaceholderText("Filter repos...")).toBeInTheDocument();
+  });
+
+  it("should collapse repos section when header is clicked again", async () => {
+    renderSidebar();
+    const reposHeader = await screen.findByRole("button", { name: /repos/i });
+    await userEvent.click(reposHeader);
+    await userEvent.click(reposHeader);
+    expect(reposHeader).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByPlaceholderText("Filter repos...")).not.toBeInTheDocument();
+  });
+
+  it("should show repo count in collapsed header", async () => {
+    renderSidebar();
+    // Wait for repos to load — the header shows the enabled count
+    const reposHeader = await screen.findByRole("button", { name: /repos/i });
+    expect(reposHeader).toBeInTheDocument();
+    // The mock provides 1 enabled repo
+    expect(reposHeader.textContent).toMatch("1");
   });
 });

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ReactElement } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDashboardStore } from "../../stores/dashboard";
@@ -70,12 +71,30 @@ export function Sidebar(): ReactElement {
     toggleRepoMutation.mutate({ repoId, enabled });
   }
 
+  const [isReposExpanded, setIsReposExpanded] = useState(false);
+
   const workspaces = (dashboard?.workspaces ?? []).filter(
     (ws) => ws.state !== "archived",
   );
   const repos = reposQuery.data ?? [];
   const enabledRepos = repos.filter((r) => r.enabled);
   const username = authQuery.data?.username ?? null;
+
+  async function handleSelectAll() {
+    const toEnable = repos.filter((r) => !r.enabled);
+    await Promise.all(
+      toEnable.map((r) => setRepoEnabled(r.id, true)),
+    );
+    await queryClient.invalidateQueries({ queryKey: ["repos"] });
+  }
+
+  async function handleDeselectAll() {
+    const toDisable = repos.filter((r) => r.enabled);
+    await Promise.all(
+      toDisable.map((r) => setRepoEnabled(r.id, false)),
+    );
+    await queryClient.invalidateQueries({ queryKey: ["repos"] });
+  }
 
   return (
     <nav data-testid="sidebar" aria-label="Main navigation" className="flex h-full flex-col gap-4 p-3">
@@ -112,16 +131,32 @@ export function Sidebar(): ReactElement {
         </div>
       )}
 
-      {/* Repos section — enabled repos only; full management in Settings */}
-      {enabledRepos.length > 0 && (
+      {/* Repos section — collapsible; full management in Settings */}
+      {repos.length > 0 && (
         <div role="region" aria-labelledby="sidebar-repos-heading" className="flex min-h-0 flex-col gap-1">
-          <h3 id="sidebar-repos-heading" className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim">
-            Repos
-            <span className="ml-1 text-dim/60">{enabledRepos.length}</span>
-          </h3>
-          <div className="max-h-[200px] overflow-y-auto">
-            <RepoList repos={enabledRepos} onToggleRepo={handleToggleRepo} />
-          </div>
+          <button
+            type="button"
+            id="sidebar-repos-heading"
+            aria-expanded={isReposExpanded}
+            onClick={() => setIsReposExpanded((prev) => !prev)}
+            className="flex w-full items-center justify-between px-2 text-[10px] font-semibold uppercase tracking-wider text-dim hover:text-foreground"
+          >
+            <span>
+              Repos
+              <span className="ml-1 text-dim/60">{enabledRepos.length}</span>
+            </span>
+            <span aria-hidden="true">{isReposExpanded ? "▾" : "▸"}</span>
+          </button>
+          {isReposExpanded && (
+            <div className="max-h-[200px] overflow-y-auto">
+              <RepoList
+                repos={repos}
+                onToggleRepo={handleToggleRepo}
+                onSelectAll={handleSelectAll}
+                onDeselectAll={handleDeselectAll}
+              />
+            </div>
+          )}
         </div>
       )}
 
