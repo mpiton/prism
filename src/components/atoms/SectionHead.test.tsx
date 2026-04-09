@@ -11,6 +11,7 @@ describe("SectionHead", () => {
   it("should render count", () => {
     render(<SectionHead title="Reviews" count={5} />);
     expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Reviews 5" })).toBeInTheDocument();
   });
 
   it("should omit count when it is not provided", () => {
