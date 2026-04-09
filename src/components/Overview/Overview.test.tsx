@@ -1,14 +1,9 @@
 import { type ReactElement } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type {
-  Activity,
-  DashboardData,
-  Issue,
-  PullRequestWithReview,
-} from "../../lib/types";
+import type { Activity, DashboardData, Issue, PullRequestWithReview } from "../../lib/types";
 import { Overview } from "./Overview";
 
 vi.mock("../../lib/open", () => ({
@@ -47,9 +42,7 @@ function renderWithProviders(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
 function makePr(n: number): PullRequestWithReview {
@@ -199,12 +192,29 @@ describe("Overview", () => {
     expect(screen.getByText("Comment on PR #2")).toBeInTheDocument();
   });
 
+  it("should group my PRs and issues inside the secondary grid", () => {
+    setupMock(
+      makeDashboard({
+        myPullRequests: [makePr(10)],
+        assignedIssues: [makeIssue(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    const secondaryGrid = screen.getByTestId("overview-secondary-grid");
+
+    expect(within(secondaryGrid).getByTestId("my-prs")).toBeInTheDocument();
+    expect(within(secondaryGrid).getByTestId("issues")).toBeInTheDocument();
+  });
+
   it("should limit review queue to 5 items", () => {
     const reviews = Array.from({ length: 8 }, (_, i) => makePr(i + 1));
     setupMock(makeDashboard({ reviewRequests: reviews }));
 
     renderWithProviders(<Overview />);
 
+    expect(screen.getByText("8 in queue")).toBeInTheDocument();
     expect(screen.getByText("PR #5")).toBeInTheDocument();
     expect(screen.queryByText("PR #6")).not.toBeInTheDocument();
   });
@@ -258,7 +268,10 @@ describe("Overview", () => {
     expect(screen.getByTestId("my-prs")).toHaveAttribute("aria-busy", "true");
     expect(screen.getByTestId("issues")).toHaveAttribute("aria-busy", "true");
     expect(screen.getByTestId("activity-feed")).toHaveAttribute("aria-busy", "true");
-    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("review-queue-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("my-prs-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("issues-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("activity-feed-loading")).toBeInTheDocument();
   });
 
   it("should show error state when dashboard is absent and error exists", () => {
@@ -329,6 +342,32 @@ describe("Overview", () => {
     expect(mockedMarkAllActivityRead).toHaveBeenCalledOnce();
   });
 
+  it("should collapse and expand the activity widget", async () => {
+    const user = userEvent.setup();
+    setupMock(
+      makeDashboard({
+        recentActivity: [makeActivity(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    const toggle = screen.getByTestId("overview-activity-toggle");
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("activity-feed")).not.toBeInTheDocument();
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("activity-feed")).toBeInTheDocument();
+  });
+
   it("should open URL when a PR card is clicked", async () => {
     const { openUrl: mockedOpenUrl } = await import("../../lib/open");
     vi.mocked(mockedOpenUrl).mockClear();
@@ -343,8 +382,6 @@ describe("Overview", () => {
 
     await user.click(screen.getByRole("link"));
 
-    expect(mockedOpenUrl).toHaveBeenCalledWith(
-      "https://github.com/org/repo/pull/1",
-    );
+    expect(mockedOpenUrl).toHaveBeenCalledWith("https://github.com/org/repo/pull/1");
   });
 });
