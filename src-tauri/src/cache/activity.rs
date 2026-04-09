@@ -65,7 +65,7 @@ impl TryFrom<ActivityRow> for Activity {
 }
 
 /// Explicit column list for all queries on `activity`.
-/// `is_read` is populated by `ActivityRow` (DB DEFAULT 0 on INSERT) and
+/// `is_read` is selected via `ActivityRow` and
 /// mapped to `Activity.is_read` via `TryFrom`.
 const ACTIVITY_COLS: &str =
     "id, activity_type, actor, repo_id, pull_request_id, issue_id, message, is_read, created_at";
@@ -74,8 +74,8 @@ const ACTIVITY_COLS: &str =
 #[allow(dead_code)]
 pub async fn insert_activity(pool: &SqlitePool, activity: &Activity) -> Result<Activity, AppError> {
     let sql = format!(
-        "INSERT INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "INSERT INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, is_read, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING {ACTIVITY_COLS}"
     );
 
@@ -87,6 +87,7 @@ pub async fn insert_activity(pool: &SqlitePool, activity: &Activity) -> Result<A
         .bind(&activity.pull_request_id)
         .bind(&activity.issue_id)
         .bind(&activity.message)
+        .bind(if activity.is_read { 1_i64 } else { 0 })
         .bind(&activity.created_at)
         .fetch_one(pool)
         .await?;
@@ -139,8 +140,8 @@ where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     let result = sqlx::query(
-        "INSERT OR IGNORE INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, created_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT OR IGNORE INTO activity (id, activity_type, actor, repo_id, pull_request_id, issue_id, message, is_read, created_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(&activity.id)
     .bind(activity_type_to_str(&activity.activity_type))
@@ -149,6 +150,7 @@ where
     .bind(&activity.pull_request_id)
     .bind(&activity.issue_id)
     .bind(&activity.message)
+    .bind(if activity.is_read { 1_i64 } else { 0 })
     .bind(&activity.created_at)
     .execute(executor)
     .await?;
