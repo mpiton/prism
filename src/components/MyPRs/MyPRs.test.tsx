@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PullRequestWithReview } from "../../lib/types";
-import { MyPRs } from "./index";
+import { MyPRs } from "./MyPRs";
 
 function makePr(
   overrides: Partial<PullRequestWithReview["pullRequest"]> = {},

@@ -120,6 +120,12 @@ describe("ActivityFeed", () => {
     expect(screen.getByRole("button", { name: /mark all read/i })).toHaveClass("min-h-11");
   });
 
+  it("should render the ci filter label in uppercase", () => {
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+
+    expect(screen.getByRole("button", { name: "CI" })).toBeInTheDocument();
+  });
+
   it("should set aria-pressed correctly when filter button is clicked", async () => {
     const user = userEvent.setup();
     render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);

@@ -24,8 +24,17 @@ const MENTION_PATTERN = /(^|\s)@\w+/;
 
 const FILTER_LABELS = ["all", "comment", "review", "ci", "mention", "other"] as const satisfies readonly FilterType[];
 
+const FILTER_LABEL: Record<FilterType, string> = {
+  all: "all",
+  comment: "comment",
+  review: "review",
+  ci: "CI",
+  mention: "mention",
+  other: "other",
+};
+
 const FILTER_BUTTON_CLASS =
-  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs capitalize leading-none transition-colors";
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
 
 const ACTION_BUTTON_CLASS =
   "inline-flex min-h-11 items-center rounded px-3 text-xs transition-colors";
@@ -91,7 +100,7 @@ export function ActivityFeed({
                       : "text-dim hover:bg-surface-hover hover:text-foreground"
                   }`}
                 >
-                  {f}
+                  {FILTER_LABEL[f]}
                 </button>
               ))}
             </div>
