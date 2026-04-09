@@ -26,8 +26,11 @@ export function RepoList({
     setShowAll(false);
   }, [debouncedQuery]);
 
-  const filteredRepos = repos.filter((repo) =>
-    repo.fullName.toLowerCase().includes(debouncedQuery.toLowerCase()),
+  const searchLower = debouncedQuery.toLowerCase();
+  const filteredRepos = repos.filter(
+    (repo) =>
+      repo.name.toLowerCase().includes(searchLower) ||
+      repo.fullName.toLowerCase().includes(searchLower),
   );
 
   const visibleRepos =
@@ -35,7 +38,7 @@ export function RepoList({
       ? filteredRepos.slice(0, VISIBLE_LIMIT)
       : filteredRepos;
 
-  const hiddenCount = filteredRepos.length - VISIBLE_LIMIT;
+  const hiddenCount = Math.max(0, filteredRepos.length - VISIBLE_LIMIT);
 
   return (
     <div className="flex flex-col gap-0.5">

@@ -232,7 +232,7 @@ describe("Sidebar", () => {
     // Wait for repos to load — the header shows the enabled count
     const reposHeader = await screen.findByRole("button", { name: /repos/i });
     expect(reposHeader).toBeInTheDocument();
-    // The mock provides 1 enabled repo
-    expect(reposHeader.textContent).toMatch("1");
+    // The mock provides 1 enabled repo — exact match to avoid false positives
+    expect(reposHeader).toHaveTextContent(/^Repos\s*1\s*▸$/);
   });
 });

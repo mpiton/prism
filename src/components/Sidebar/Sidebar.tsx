@@ -82,18 +82,26 @@ export function Sidebar(): ReactElement {
 
   async function handleSelectAll() {
     const toEnable = repos.filter((r) => !r.enabled);
-    await Promise.all(
+    const results = await Promise.allSettled(
       toEnable.map((r) => setRepoEnabled(r.id, true)),
     );
     await queryClient.invalidateQueries({ queryKey: ["repos"] });
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length > 0) {
+      console.error("[Sidebar] batch enable failed for", failures.length, "repos");
+    }
   }
 
   async function handleDeselectAll() {
     const toDisable = repos.filter((r) => r.enabled);
-    await Promise.all(
+    const results = await Promise.allSettled(
       toDisable.map((r) => setRepoEnabled(r.id, false)),
     );
     await queryClient.invalidateQueries({ queryKey: ["repos"] });
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length > 0) {
+      console.error("[Sidebar] batch disable failed for", failures.length, "repos");
+    }
   }
 
   return (
@@ -136,12 +144,11 @@ export function Sidebar(): ReactElement {
         <div role="region" aria-labelledby="sidebar-repos-heading" className="flex min-h-0 flex-col gap-1">
           <button
             type="button"
-            id="sidebar-repos-heading"
             aria-expanded={isReposExpanded}
             onClick={() => setIsReposExpanded((prev) => !prev)}
             className="flex w-full items-center justify-between px-2 text-[10px] font-semibold uppercase tracking-wider text-dim hover:text-foreground"
           >
-            <span>
+            <span id="sidebar-repos-heading">
               Repos
               <span className="ml-1 text-dim/60">{enabledRepos.length}</span>
             </span>
