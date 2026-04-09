@@ -25,6 +25,10 @@ interface RepoGroup {
   readonly repos: readonly Repo[];
 }
 
+interface RepoBatchUpdateError extends Error {
+  failedRepoIds: readonly string[];
+}
+
 interface NumberFieldProps {
   readonly label: string;
   readonly value: number;
@@ -118,14 +122,36 @@ function buildRepoUpdates(
   repos: readonly Repo[],
   getNextEnabled: (repo: Repo) => boolean,
 ): readonly RepoUpdate[] {
-  return repos
-    .map((repo) => ({
-      repoId: repo.id,
-      enabled: getNextEnabled(repo),
-      currentEnabled: repo.enabled,
-    }))
-    .filter((update) => update.enabled !== update.currentEnabled)
-    .map(({ repoId, enabled }) => ({ repoId, enabled }));
+  const updates: RepoUpdate[] = [];
+
+  for (const repo of repos) {
+    const enabled = getNextEnabled(repo);
+    if (enabled !== repo.enabled) {
+      updates.push({ repoId: repo.id, enabled });
+    }
+  }
+
+  return updates;
+}
+
+function createRepoBatchUpdateError(failedRepoIds: readonly string[]): RepoBatchUpdateError {
+  const error = new Error("Failed to update some repositories.") as RepoBatchUpdateError;
+  error.failedRepoIds = failedRepoIds;
+  return error;
+}
+
+function getRepoBatchUpdateErrorMessage(err: unknown): string {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "failedRepoIds" in err &&
+    Array.isArray(err.failedRepoIds) &&
+    err.failedRepoIds.length > 0
+  ) {
+    return `Failed to update repositories: ${err.failedRepoIds.join(", ")}`;
+  }
+
+  return "Failed to update repositories. Please retry.";
 }
 
 const sectionClass = "flex flex-col gap-3 border-b border-border pb-4";
@@ -158,15 +184,31 @@ export function Settings(): ReactElement {
 
   const repoToggleMutation = useMutation({
     mutationFn: async (updates: readonly RepoUpdate[]) => {
-      await Promise.all(updates.map(({ repoId, enabled }) => setRepoEnabled(repoId, enabled)));
+      const results = await Promise.allSettled(
+        updates.map(({ repoId, enabled }) => setRepoEnabled(repoId, enabled)),
+      );
+      const failedRepoIds: string[] = [];
+
+      for (const [index, result] of results.entries()) {
+        const update = updates[index];
+        if (result.status === "rejected" && update) {
+          failedRepoIds.push(update.repoId);
+        }
+      }
+
+      if (failedRepoIds.length > 0) {
+        throw createRepoBatchUpdateError(failedRepoIds);
+      }
     },
     onSuccess: () => {
       setSaveError(null);
-      queryClient.invalidateQueries({ queryKey: ["repos"] });
     },
     onError: (err: unknown) => {
       console.error("[Settings] repo toggle failed:", err);
-      setSaveError("Failed to update repositories. Please retry.");
+      setSaveError(getRepoBatchUpdateErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["repos"] });
     },
   });
 
@@ -278,7 +320,7 @@ export function Settings(): ReactElement {
           >
             Invert selection
           </button>
-          {repoSearch.trim() ? (
+          {debouncedRepoSearch.trim() ? (
             <span className="text-dim text-xs">
               {filteredSettingsRepos.length} matching current filter
             </span>

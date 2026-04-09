@@ -426,6 +426,32 @@ describe("Settings", () => {
     expect(screen.queryByText("mobile")).not.toBeInTheDocument();
   });
 
+  it("should wait for the debounced search before showing the match count label", async () => {
+    setupMocks(makeConfig(), [
+      makeRepo(1, { name: "frontend", fullName: "org/frontend" }),
+      makeRepo(2, { name: "frontend-api", fullName: "org/frontend-api" }),
+      makeRepo(3, { name: "backend", fullName: "org/backend" }),
+    ]);
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByText("frontend");
+    vi.useFakeTimers();
+
+    const input = screen.getByPlaceholderText("Filter repositories...");
+    act(() => {
+      fireEvent.change(input, { target: { value: "front" } });
+    });
+
+    expect(screen.queryByText(/matching current filter/i)).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(screen.getByText("2 matching current filter")).toBeInTheDocument();
+  });
+
   it("should show enabled repositories count", async () => {
     setupMocks(makeConfig(), [
       makeRepo(1, { enabled: true }),
@@ -519,6 +545,64 @@ describe("Settings", () => {
     await waitFor(() => expect(mockedSetRepoEnabled).toHaveBeenCalledTimes(2));
     expect(mockedSetRepoEnabled).toHaveBeenCalledWith("repo-1", false);
     expect(mockedSetRepoEnabled).toHaveBeenCalledWith("repo-2", true);
+  });
+
+  it("should refetch repos and show failed repo ids after a partial batch failure", async () => {
+    const initialRepos = [
+      makeRepo(1, { name: "frontend", fullName: "org/frontend", enabled: false }),
+      makeRepo(2, { name: "frontend-api", fullName: "org/frontend-api", enabled: false }),
+    ];
+    const refetchedRepos = [
+      makeRepo(1, { name: "frontend", fullName: "org/frontend", enabled: true }),
+      makeRepo(2, { name: "frontend-api", fullName: "org/frontend-api", enabled: false }),
+    ];
+
+    mockedGetConfig.mockResolvedValue(makeConfig());
+    mockedAuthGetStatus.mockResolvedValue(makeAuthStatus());
+    mockedSetConfig.mockResolvedValue(makeConfig());
+    mockedGetPersonalStats.mockResolvedValue(makePersonalStats());
+    mockedGetMemoryUsage.mockResolvedValue({
+      rssBytes: 50_000_000,
+      dbSizeBytes: 1_048_576,
+    });
+    mockedListRepos.mockResolvedValueOnce(initialRepos).mockResolvedValueOnce(refetchedRepos);
+    mockedSetRepoEnabled.mockImplementation(async (repoId, enabled) => {
+      if (repoId === "repo-2") {
+        throw new Error("toggle failed");
+      }
+
+      return (
+        refetchedRepos.find((repo) => repo.id === repoId) ??
+        makeRepo(99, { id: repoId, enabled, name: "fallback", fullName: `org/${repoId}` })
+      );
+    });
+
+    renderWithProviders(<Settings />);
+
+    await screen.findByText("frontend");
+    vi.useFakeTimers();
+
+    const input = screen.getByPlaceholderText("Filter repositories...");
+    act(() => {
+      fireEvent.change(input, { target: { value: "front" } });
+      vi.advanceTimersByTime(200);
+    });
+    vi.useRealTimers();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Failed to update repositories: repo-2",
+    );
+    await waitFor(() => expect(mockedListRepos).toHaveBeenCalledTimes(2));
+
+    const frontendRow = screen.getByText("frontend").closest("label");
+    const frontendApiRow = screen.getByText("frontend-api").closest("label");
+
+    expect(frontendRow).not.toBeNull();
+    expect(frontendApiRow).not.toBeNull();
+    expect(within(frontendRow as HTMLElement).getByRole("checkbox")).toBeChecked();
+    expect(within(frontendApiRow as HTMLElement).getByRole("checkbox")).not.toBeChecked();
   });
 
   it("should show no-match message when search returns empty", async () => {
