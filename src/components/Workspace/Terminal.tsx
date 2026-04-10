@@ -78,8 +78,8 @@ export function Terminal({ ptyId }: TerminalProps) {
         listenerReady = true;
         flushBufferedStdout();
       })
-      .catch(() => {
-        listenerReady = true;
+      .catch((err: unknown) => {
+        console.error("[Terminal] workspace:stdout subscription failed:", err);
         bufferedStdout.length = 0;
       });
 

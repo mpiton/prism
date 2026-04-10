@@ -294,6 +294,6 @@ describe("Terminal", () => {
       handler({ workspaceId: "ws-1", data: "late output" });
     });
 
-    expect(mockWrite).not.toHaveBeenCalledWith("late output");
+    expect(mockWrite).not.toHaveBeenCalled();
   });
 });
