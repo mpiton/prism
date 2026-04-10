@@ -1132,6 +1132,12 @@ pub async fn workspace_resume(
         let pool_bg = pool.inner().clone();
         let ws_id = workspace_id.clone();
         tokio::spawn(async move {
+            // Unlike workspace_open, resume has no preparatory async work before
+            // Claude starts emitting its first frame. Give the frontend a short
+            // window to remount the terminal and subscribe to workspace:stdout
+            // so the initial Claude UI isn't lost during resume.
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
             // Resume or launch Claude first — must not be gated on a rename lookup
             if let Some(sid) = &session_id {
                 if let Err(e) = crate::workspace::claude::resume_claude(&manager, &pty_id, sid) {
