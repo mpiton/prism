@@ -14,7 +14,9 @@ use crate::cache::dashboard::{assemble_dashboard_data, compute_dashboard_stats};
 use crate::cache::repos::{get_repo, list_repos, set_local_path, set_repo_enabled};
 use crate::cache::stats::compute_personal_stats;
 use crate::cache::sync::sync_dashboard;
-use crate::cache::workspaces::{get_notes, list_workspaces, update_workspace_state};
+use crate::cache::workspaces::{
+    get_notes, list_workspaces, suspend_workspace_if_active, update_workspace_state,
+};
 use crate::error::AppError;
 use crate::github::auth;
 use crate::github::client::GitHubClient;
@@ -1321,6 +1323,28 @@ pub async fn workspace_cleanup(
     Ok(u32::try_from(archived_ids.len()).unwrap_or(u32::MAX))
 }
 
+async fn reconcile_missing_pty(
+    pool: &SqlitePool,
+    app_handle: &tauri::AppHandle,
+    workspace_id: &str,
+) {
+    match suspend_workspace_if_active(pool, workspace_id).await {
+        Ok(true) => {
+            let payload = crate::types::WorkspaceStateChanged {
+                workspace_id: workspace_id.to_string(),
+                new_state: WorkspaceState::Suspended,
+            };
+            if let Err(e) = app_handle.emit("workspace:state_changed", &payload) {
+                warn!(
+                    "failed to emit workspace:state_changed while reconciling missing PTY for '{workspace_id}': {e}"
+                );
+            }
+        }
+        Ok(false) => {}
+        Err(e) => warn!("failed to reconcile missing PTY for workspace '{workspace_id}': {e}"),
+    }
+}
+
 /// Writes data to a PTY's stdin and touches `last_active_at` for the
 /// associated workspace so the lifecycle auto-suspend timer is reset.
 ///
@@ -1329,12 +1353,14 @@ pub async fn workspace_cleanup(
 pub async fn pty_write(
     pool: tauri::State<'_, SqlitePool>,
     pty_state: tauri::State<'_, PtyManagerState>,
+    app_handle: tauri::AppHandle,
     workspace_id: String,
     data: String,
 ) -> Result<(), String> {
-    let pty_id = pty_state
-        .lookup_pty_by_workspace(&workspace_id)
-        .ok_or_else(|| format!("no PTY for workspace '{workspace_id}'"))?;
+    let Some(pty_id) = pty_state.lookup_pty_by_workspace(&workspace_id) else {
+        reconcile_missing_pty(&pool, &app_handle, &workspace_id).await;
+        return Err(format!("no PTY for workspace '{workspace_id}'"));
+    };
 
     pty_state
         .manager
@@ -1356,14 +1382,17 @@ pub async fn pty_write(
 /// Tauri 2 renames `workspace_id` → `workspaceId` for the JS caller.
 #[tauri::command]
 pub async fn pty_resize(
+    pool: tauri::State<'_, SqlitePool>,
     pty_state: tauri::State<'_, PtyManagerState>,
+    app_handle: tauri::AppHandle,
     workspace_id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    let pty_id = pty_state
-        .lookup_pty_by_workspace(&workspace_id)
-        .ok_or_else(|| format!("no PTY for workspace '{workspace_id}'"))?;
+    let Some(pty_id) = pty_state.lookup_pty_by_workspace(&workspace_id) else {
+        reconcile_missing_pty(&pool, &app_handle, &workspace_id).await;
+        return Err(format!("no PTY for workspace '{workspace_id}'"));
+    };
 
     pty_state
         .manager
