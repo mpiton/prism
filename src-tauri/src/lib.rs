@@ -401,7 +401,7 @@ mod tests {
                     "http://localhost:1420",
                 ] {
                     assert!(
-                        connect_src.contains(required),
+                        connect_src.split_whitespace().any(|t| t == required),
                         "development CSP connect-src must include {required}"
                     );
                 }
