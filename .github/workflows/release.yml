@@ -20,7 +20,7 @@ jobs:
     name: Build Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901eff44de7bdee10c6be1733d8c3aad33 # v4
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
         run: |
@@ -34,16 +34,16 @@ jobs:
             patchelf
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@9cd00a88a73addc8617147b1a4e4e3c4b9d8007a # stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Node.js
-        uses: actions/setup-node@60edb5dd545a775178f3c3f4d3c2322e492acf75 # v4
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - name: Cache Cargo
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/index/
@@ -58,7 +58,7 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@c0b1cacf625c40df8451bff5a5efac8954fbb648 # v0
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
