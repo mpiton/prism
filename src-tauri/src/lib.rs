@@ -336,4 +336,100 @@ mod tests {
             "after take(), PollingHandle should be None"
         );
     }
+
+    #[test]
+    fn test_csp_config_rejects_unsafe_directives() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let conf_path = std::path::Path::new(manifest_dir).join("tauri.conf.json");
+        let content =
+            std::fs::read_to_string(&conf_path).expect("tauri.conf.json should be readable");
+        let config: serde_json::Value =
+            serde_json::from_str(&content).expect("tauri.conf.json should be valid JSON");
+
+        // Verify both production and development CSP blocks
+        for (key, label) in [("csp", "production"), ("devCsp", "development")] {
+            let csp = &config["app"]["security"][key];
+            assert!(
+                csp.is_object(),
+                "{label} CSP must be a non-null object — XSS can escalate to RCE in Tauri apps"
+            );
+
+            let script_src = csp["script-src"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP script-src must be a string"));
+            assert_eq!(
+                script_src, "'self'",
+                "{label} CSP script-src must be exactly 'self'"
+            );
+
+            let img_src = csp["img-src"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP img-src must be a string"));
+            assert!(
+                !img_src.split_whitespace().any(|t| t == "data:"),
+                "{label} CSP img-src must not contain data:"
+            );
+
+            let object_src = csp["object-src"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP object-src must be a string"));
+            assert_eq!(
+                object_src, "'none'",
+                "{label} CSP object-src must be 'none' — blocks plugin-based code execution"
+            );
+
+            let connect_src = csp["connect-src"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP connect-src must be a string"));
+            assert!(
+                connect_src.contains("ipc:"),
+                "{label} CSP connect-src must include ipc: for Tauri IPC"
+            );
+            assert!(
+                !connect_src.contains('*'),
+                "{label} CSP connect-src must not contain wildcards"
+            );
+            if key == "csp" {
+                assert_eq!(
+                    connect_src, "ipc: http://ipc.localhost",
+                    "production CSP connect-src must not include dev/HMR endpoints"
+                );
+            } else {
+                for required in [
+                    "ws://localhost:1420",
+                    "ws://localhost:1421",
+                    "http://localhost:1420",
+                ] {
+                    assert!(
+                        connect_src.split_whitespace().any(|t| t == required),
+                        "development CSP connect-src must include {required}"
+                    );
+                }
+            }
+
+            let frame_ancestors = csp["frame-ancestors"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP frame-ancestors must be a string"));
+            assert_eq!(
+                frame_ancestors, "'none'",
+                "{label} CSP frame-ancestors must be 'none' — prevents clickjacking"
+            );
+
+            let form_action = csp["form-action"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP form-action must be a string"));
+            assert_eq!(
+                form_action, "'none'",
+                "{label} CSP form-action must be 'none' — prevents form submission to external URLs"
+            );
+
+            let base_uri = csp["base-uri"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP base-uri must be a string"));
+            assert_eq!(
+                base_uri, "'none'",
+                "{label} CSP base-uri must be 'none' — prevents base URL injection"
+            );
+        }
+    }
 }
