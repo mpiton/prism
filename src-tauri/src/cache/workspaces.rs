@@ -213,6 +213,42 @@ pub async fn update_workspace_state(
     require_workspace(row, id)
 }
 
+/// Best-effort self-healing for a workspace that is marked `Active` in the DB
+/// but no longer has a live PTY attached in process memory.
+///
+/// Returns `true` when the workspace was transitioned to `Suspended`,
+/// `false` when it was already in another state or did not exist.
+pub async fn suspend_workspace_if_active(pool: &SqlitePool, id: &str) -> Result<bool, AppError> {
+    let now = now_utc_millis();
+    let result = sqlx::query(
+        "UPDATE workspaces SET state = $1, updated_at = $2 WHERE id = $3 AND state = $4",
+    )
+    .bind(workspace_state_to_str(&WorkspaceState::Suspended))
+    .bind(&now)
+    .bind(id)
+    .bind(workspace_state_to_str(&WorkspaceState::Active))
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Startup reconciliation for process-local PTY state.
+///
+/// PTYs do not survive an app restart, so any persisted `active` workspaces
+/// must be downgraded to `suspended` before the frontend queries them.
+pub async fn suspend_orphaned_active_workspaces(pool: &SqlitePool) -> Result<u64, AppError> {
+    let now = now_utc_millis();
+    let result = sqlx::query("UPDATE workspaces SET state = $1, updated_at = $2 WHERE state = $3")
+        .bind(workspace_state_to_str(&WorkspaceState::Suspended))
+        .bind(&now)
+        .bind(workspace_state_to_str(&WorkspaceState::Active))
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected())
+}
+
 /// Update the Claude Code session ID and `updated_at` timestamp.
 /// Returns the updated workspace via `RETURNING`.
 pub async fn update_claude_session(
@@ -531,6 +567,65 @@ mod tests {
             err.is_err(),
             "guarded transition should reject state mismatch"
         );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_suspend_workspace_if_active_transitions_once() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        let ws = sample_workspace("ws-1", 42);
+        create_workspace(&pool, &ws).await.unwrap();
+
+        let changed = suspend_workspace_if_active(&pool, "ws-1").await.unwrap();
+        assert!(changed, "active workspace should be suspended");
+
+        let updated = get_workspace(&pool, "ws-1").await.unwrap().unwrap();
+        assert_eq!(updated.state, WorkspaceState::Suspended);
+
+        let changed_again = suspend_workspace_if_active(&pool, "ws-1").await.unwrap();
+        assert!(
+            !changed_again,
+            "already-suspended workspace should not report a change"
+        );
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_suspend_orphaned_active_workspaces_only_downgrades_active() {
+        let (pool, _tmp) = test_pool().await;
+        upsert_repo(&pool, &sample_repo()).await.unwrap();
+
+        create_workspace(&pool, &sample_workspace("ws-active", 1))
+            .await
+            .unwrap();
+
+        let ws_suspended = sample_workspace("ws-suspended", 2);
+        create_workspace(&pool, &ws_suspended).await.unwrap();
+        update_workspace_state(&pool, "ws-suspended", &WorkspaceState::Suspended, None)
+            .await
+            .unwrap();
+
+        let ws_archived = sample_workspace("ws-archived", 3);
+        create_workspace(&pool, &ws_archived).await.unwrap();
+        update_workspace_state(&pool, "ws-archived", &WorkspaceState::Archived, None)
+            .await
+            .unwrap();
+
+        let changed = suspend_orphaned_active_workspaces(&pool).await.unwrap();
+        assert_eq!(changed, 1, "only active workspaces should be downgraded");
+
+        let active = get_workspace(&pool, "ws-active").await.unwrap().unwrap();
+        assert_eq!(active.state, WorkspaceState::Suspended);
+
+        let suspended = get_workspace(&pool, "ws-suspended").await.unwrap().unwrap();
+        assert_eq!(suspended.state, WorkspaceState::Suspended);
+
+        let archived = get_workspace(&pool, "ws-archived").await.unwrap().unwrap();
+        assert_eq!(archived.state, WorkspaceState::Archived);
 
         pool.close().await;
     }
