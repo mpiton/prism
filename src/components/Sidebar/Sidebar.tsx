@@ -113,7 +113,6 @@ export function Sidebar(): ReactElement {
   function focusNavItem(index: number) {
     const item = NAV_ITEMS[index];
     if (!item) return;
-    setFocusedView(item.view);
     navItemRefs.current[index]?.focus();
   }
 
@@ -151,7 +150,7 @@ export function Sidebar(): ReactElement {
       </div>
 
       {/* Navigation */}
-      <div className="flex flex-col gap-0.5" role="toolbar" aria-label="Primary views" aria-orientation="vertical">
+      <div className="flex flex-col gap-0.5" role="group" aria-label="Primary views">
         {NAV_ITEMS.map((item, index) => (
           <NavItem
             key={item.view}
