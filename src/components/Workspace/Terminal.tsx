@@ -41,16 +41,53 @@ export function Terminal({ ptyId }: TerminalProps) {
     });
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
+    const bufferedStdout: string[] = [];
+    let disposed = false;
+    let listenerReady = false;
+
+    const flushBufferedStdout = () => {
+      if (disposed || !listenerReady || bufferedStdout.length === 0) return;
+      for (const chunk of bufferedStdout) {
+        term.write(chunk);
+      }
+      bufferedStdout.length = 0;
+    };
+
+    const notifyResize = () => {
+      const dims = fitAddon.proposeDimensions();
+      if (!dims) return;
+
+      ptyResize({ workspaceId: ptyId, cols: dims.cols, rows: dims.rows }).catch(
+        (err: unknown) => {
+          console.error("[Terminal] ptyResize failed:", err);
+        },
+      );
+    };
 
     const unlistenPromise = onEvent<PtyOutput>("workspace:stdout", (payload) => {
-      if (payload.workspaceId !== ptyId) return;
+      if (payload.workspaceId !== ptyId || disposed) return;
+      if (!listenerReady) {
+        bufferedStdout.push(payload.data);
+        return;
+      }
+
       term.write(payload.data);
     });
+    void unlistenPromise
+      .then(() => {
+        listenerReady = true;
+        flushBufferedStdout();
+      })
+      .catch(() => {
+        listenerReady = true;
+        bufferedStdout.length = 0;
+      });
 
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
     term.open(container);
     fitAddon.fit();
+    notifyResize();
 
     // stdin: forward user keystrokes to PTY
     term.onData((data) => {
@@ -62,18 +99,12 @@ export function Terminal({ ptyId }: TerminalProps) {
     // resize: observe container and notify PTY
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
-      const dims = fitAddon.proposeDimensions();
-      if (dims) {
-        ptyResize({ workspaceId: ptyId, cols: dims.cols, rows: dims.rows }).catch(
-          (err: unknown) => {
-            console.error("[Terminal] ptyResize failed:", err);
-          },
-        );
-      }
+      notifyResize();
     });
     resizeObserver.observe(container);
 
     return () => {
+      disposed = true;
       resizeObserver.disconnect();
       unlistenPromise
         .then((unlisten) => unlisten())

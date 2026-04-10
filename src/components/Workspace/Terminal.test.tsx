@@ -10,6 +10,7 @@ const {
   mockLoadAddon,
   mockDispose,
   mockFit,
+  mockPropose,
   MockTerminal,
   MockFitAddon,
   MockWebLinksAddon,
@@ -97,6 +98,17 @@ describe("Terminal", () => {
     expect(screen.getByTestId("terminal-ws-1")).toBeInTheDocument();
   });
 
+  it("should send the initial terminal size to the PTY on mount", () => {
+    render(<Terminal ptyId="ws-1" />);
+
+    expect(mockPropose).toHaveBeenCalledOnce();
+    expect(ptyResize).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      cols: 120,
+      rows: 40,
+    });
+  });
+
   it("should not defer initialization via requestIdleCallback", () => {
     const requestIdleCallbackMock = vi.fn();
     vi.stubGlobal("requestIdleCallback", requestIdleCallbackMock);
@@ -109,7 +121,15 @@ describe("Terminal", () => {
     vi.unstubAllGlobals();
   });
 
-  it("should write stdout received from the matching workspace", async () => {
+  it("should buffer stdout until the event subscription promise resolves", async () => {
+    let resolveUnlisten: ((value: Mock) => void) | undefined;
+    (onEvent as Mock).mockImplementation(
+      () =>
+        new Promise<Mock>((resolve) => {
+          resolveUnlisten = resolve;
+        }),
+    );
+
     render(<Terminal ptyId="ws-1" />);
 
     await vi.waitFor(() => {
@@ -129,10 +149,17 @@ describe("Terminal", () => {
       handler({ workspaceId: "ws-1", data: "boot output" });
     });
 
+    expect(mockWrite).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveUnlisten?.(unlistenStdout);
+      await Promise.resolve();
+    });
+
     expect(mockWrite).toHaveBeenCalledWith("boot output");
   });
 
-  it("should write data from stdout event", async () => {
+  it("should write stdout received from the matching workspace", async () => {
     render(<Terminal ptyId="ws-1" />);
 
     await vi.waitFor(() => {
@@ -213,6 +240,7 @@ describe("Terminal", () => {
 
     render(<Terminal ptyId="ws-1" />);
 
+    vi.mocked(ptyResize).mockClear();
     expect(mockObserve).toHaveBeenCalledOnce();
 
     act(() => {
@@ -242,5 +270,30 @@ describe("Terminal", () => {
     await vi.waitFor(() => {
       expect(unlistenStdout).toHaveBeenCalledOnce();
     });
+  });
+
+  it("should ignore stdout after unmount", async () => {
+    const { unmount } = render(<Terminal ptyId="ws-1" />);
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "workspace:stdout",
+        expect.any(Function),
+      );
+    });
+
+    const call = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "workspace:stdout",
+    );
+    expect(call).toBeDefined();
+    const handler = call![1] as (payload: { workspaceId: string; data: string }) => void;
+
+    unmount();
+
+    act(() => {
+      handler({ workspaceId: "ws-1", data: "late output" });
+    });
+
+    expect(mockWrite).not.toHaveBeenCalledWith("late output");
   });
 });
