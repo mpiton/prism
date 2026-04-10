@@ -67,34 +67,12 @@ import { ptyWrite, ptyResize, onEvent } from "../../lib/tauri";
 
 describe("Terminal", () => {
   let unlistenStdout: Mock;
-  let idleCallback: IdleRequestCallback | null;
-  let cancelIdleCallbackMock: Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
     unlistenStdout = vi.fn();
     (onEvent as Mock).mockResolvedValue(unlistenStdout);
-    idleCallback = null;
-    cancelIdleCallbackMock = vi.fn();
-    vi.stubGlobal(
-      "requestIdleCallback",
-      vi.fn((callback: IdleRequestCallback) => {
-        idleCallback = callback;
-        return 1;
-      }),
-    );
-    vi.stubGlobal("cancelIdleCallback", cancelIdleCallbackMock);
   });
-
-  function flushIdleCallback() {
-    expect(idleCallback).not.toBeNull();
-    act(() => {
-      idleCallback?.({
-        didTimeout: false,
-        timeRemaining: () => 50,
-      } as IdleDeadline);
-    });
-  }
 
   it("should initialize xterm on mount", () => {
     render(<Terminal ptyId="ws-1" />);
@@ -103,8 +81,6 @@ describe("Terminal", () => {
       "workspace:stdout",
       expect.any(Function),
     );
-    flushIdleCallback();
-
     expect(MockTerminal).toHaveBeenCalledWith(
       expect.objectContaining({
         cursorBlink: true,
@@ -116,12 +92,24 @@ describe("Terminal", () => {
       }),
     );
     expect(mockOpen).toHaveBeenCalledOnce();
-    expect(mockLoadAddon).toHaveBeenCalledTimes(2); // FitAddon + WebLinksAddon
+    expect(mockLoadAddon).toHaveBeenCalledTimes(2);
     expect(mockFit).toHaveBeenCalledOnce();
     expect(screen.getByTestId("terminal-ws-1")).toBeInTheDocument();
   });
 
-  it("should buffer stdout received before terminal initialization", async () => {
+  it("should not defer initialization via requestIdleCallback", () => {
+    const requestIdleCallbackMock = vi.fn();
+    vi.stubGlobal("requestIdleCallback", requestIdleCallbackMock);
+
+    render(<Terminal ptyId="ws-1" />);
+
+    expect(MockTerminal).toHaveBeenCalledOnce();
+    expect(requestIdleCallbackMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("should write stdout received from the matching workspace", async () => {
     render(<Terminal ptyId="ws-1" />);
 
     await vi.waitFor(() => {
@@ -141,16 +129,11 @@ describe("Terminal", () => {
       handler({ workspaceId: "ws-1", data: "boot output" });
     });
 
-    expect(mockWrite).not.toHaveBeenCalled();
-
-    flushIdleCallback();
-
     expect(mockWrite).toHaveBeenCalledWith("boot output");
   });
 
   it("should write data from stdout event", async () => {
     render(<Terminal ptyId="ws-1" />);
-    flushIdleCallback();
 
     await vi.waitFor(() => {
       expect(onEvent).toHaveBeenCalledWith(
@@ -174,7 +157,6 @@ describe("Terminal", () => {
 
   it("should not write stdout for different ptyId", async () => {
     render(<Terminal ptyId="ws-1" />);
-    flushIdleCallback();
 
     await vi.waitFor(() => {
       expect(onEvent).toHaveBeenCalledWith(
@@ -198,7 +180,6 @@ describe("Terminal", () => {
 
   it("should call pty_write on keypress", () => {
     render(<Terminal ptyId="ws-1" />);
-    flushIdleCallback();
 
     expect(mockOnData).toHaveBeenCalledOnce();
     const calls = (mockOnData as Mock).mock.calls;
@@ -231,7 +212,6 @@ describe("Terminal", () => {
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
 
     render(<Terminal ptyId="ws-1" />);
-    flushIdleCallback();
 
     expect(mockObserve).toHaveBeenCalledOnce();
 
@@ -251,7 +231,6 @@ describe("Terminal", () => {
 
   it("should cleanup on unmount", async () => {
     const { unmount } = render(<Terminal ptyId="ws-1" />);
-    flushIdleCallback();
 
     await vi.waitFor(() => {
       expect(onEvent).toHaveBeenCalledOnce();
@@ -259,27 +238,7 @@ describe("Terminal", () => {
 
     unmount();
 
-    // dispose is synchronous, unlisten is deferred via .then()
     expect(mockDispose).toHaveBeenCalledOnce();
-    await vi.waitFor(() => {
-      expect(unlistenStdout).toHaveBeenCalledOnce();
-    });
-  });
-
-  it("should cancel deferred initialization on unmount before idle callback", () => {
-    const { unmount } = render(<Terminal ptyId="ws-1" />);
-
-    unmount();
-
-    expect(cancelIdleCallbackMock).toHaveBeenCalledWith(1);
-    expect(MockTerminal).not.toHaveBeenCalled();
-  });
-
-  it("should unlisten stdout on unmount before idle callback", async () => {
-    const { unmount } = render(<Terminal ptyId="ws-1" />);
-
-    unmount();
-
     await vi.waitFor(() => {
       expect(unlistenStdout).toHaveBeenCalledOnce();
     });
