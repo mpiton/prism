@@ -1,4 +1,9 @@
-import type { ReactElement } from "react";
+import type {
+  FocusEventHandler,
+  KeyboardEventHandler,
+  ReactElement,
+  Ref,
+} from "react";
 import type { DashboardView } from "../../stores/dashboard";
 
 interface NavItemProps {
@@ -7,6 +12,10 @@ interface NavItemProps {
   readonly count?: number;
   readonly isActive: boolean;
   readonly onClick: (view: DashboardView) => void;
+  readonly tabIndex?: number;
+  readonly onFocus?: FocusEventHandler<HTMLButtonElement>;
+  readonly onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
+  readonly buttonRef?: Ref<HTMLButtonElement>;
 }
 
 export function NavItem({
@@ -15,13 +24,21 @@ export function NavItem({
   count,
   isActive,
   onClick,
+  tabIndex,
+  onFocus,
+  onKeyDown,
+  buttonRef,
 }: NavItemProps): ReactElement {
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={() => onClick(view)}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
       aria-current={isActive ? "page" : undefined}
       aria-label={count !== undefined && count > 0 ? `${label} (${count})` : undefined}
+      tabIndex={tabIndex}
       className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm ${
         isActive
           ? "bg-surface text-white hover:bg-surface-hover"
