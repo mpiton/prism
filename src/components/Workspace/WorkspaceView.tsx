@@ -1,12 +1,28 @@
-import { useCallback, useState, type ReactElement } from "react";
+import { lazy, Suspense, useCallback, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types";
 import { resumeWorkspace } from "../../lib/tauri";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
-import { Terminal } from "./Terminal";
 import { WorkspaceStatusBar } from "./WorkspaceStatusBar";
 import { WorkspaceListPage } from "./WorkspaceListPage";
+
+const Terminal = lazy(() =>
+  import("./Terminal").then((module) => ({ default: module.Terminal })),
+);
+
+function TerminalLoadingFallback(): ReactElement {
+  return (
+    <div
+      data-testid="workspace-terminal-loading"
+      role="status"
+      aria-live="polite"
+      className="flex h-full items-center justify-center bg-[#0a0a09] text-sm text-neutral-400"
+    >
+      Loading terminal…
+    </div>
+  );
+}
 
 interface WorkspaceViewProps {
   readonly workspaces: readonly Workspace[];
@@ -92,7 +108,9 @@ export function WorkspaceView({
       ) : active ? (
         <>
           <div className="min-h-0 flex-1">
-            <Terminal ptyId={active.id} />
+            <Suspense fallback={<TerminalLoadingFallback />}>
+              <Terminal ptyId={active.id} />
+            </Suspense>
           </div>
           {info && (
             <WorkspaceStatusBar

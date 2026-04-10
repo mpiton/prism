@@ -33,55 +33,86 @@ export function Terminal({ ptyId }: TerminalProps) {
     const container = containerRef.current;
     if (!container) return;
 
-    const term = new XTerm({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      theme: PRISM_THEME,
-    });
+    const idleScheduler = globalThis as typeof globalThis & {
+      requestIdleCallback?: (
+        callback: IdleRequestCallback,
+        options?: IdleRequestOptions,
+      ) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
 
-    const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
+    let disposed = false;
+    let cleanupTerminal: (() => void) | undefined;
 
-    term.loadAddon(fitAddon);
-    term.loadAddon(webLinksAddon);
-    term.open(container);
-    fitAddon.fit();
+    const initializeTerminal = () => {
+      if (disposed || !containerRef.current) return;
 
-    // stdin: forward user keystrokes to PTY
-    term.onData((data) => {
-      ptyWrite({ workspaceId: ptyId, data }).catch((err: unknown) => {
-        console.error("[Terminal] ptyWrite failed:", err);
+      const term = new XTerm({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        theme: PRISM_THEME,
       });
-    });
 
-    // stdout: listen for PTY output events
-    const unlistenPromise = onEvent<PtyOutput>("workspace:stdout", (payload) => {
-      if (payload.workspaceId === ptyId) {
-        term.write(payload.data);
-      }
-    });
+      const fitAddon = new FitAddon();
+      const webLinksAddon = new WebLinksAddon();
 
-    // resize: observe container and notify PTY
-    const resizeObserver = new ResizeObserver(() => {
+      term.loadAddon(fitAddon);
+      term.loadAddon(webLinksAddon);
+      term.open(containerRef.current);
       fitAddon.fit();
-      const dims = fitAddon.proposeDimensions();
-      if (dims) {
-        ptyResize({ workspaceId: ptyId, cols: dims.cols, rows: dims.rows }).catch(
-          (err: unknown) => {
-            console.error("[Terminal] ptyResize failed:", err);
-          },
-        );
-      }
-    });
-    resizeObserver.observe(container);
+
+      // stdin: forward user keystrokes to PTY
+      term.onData((data) => {
+        ptyWrite({ workspaceId: ptyId, data }).catch((err: unknown) => {
+          console.error("[Terminal] ptyWrite failed:", err);
+        });
+      });
+
+      // stdout: listen for PTY output events
+      const unlistenPromise = onEvent<PtyOutput>("workspace:stdout", (payload) => {
+        if (payload.workspaceId === ptyId) {
+          term.write(payload.data);
+        }
+      });
+
+      // resize: observe container and notify PTY
+      const resizeObserver = new ResizeObserver(() => {
+        fitAddon.fit();
+        const dims = fitAddon.proposeDimensions();
+        if (dims) {
+          ptyResize({ workspaceId: ptyId, cols: dims.cols, rows: dims.rows }).catch(
+            (err: unknown) => {
+              console.error("[Terminal] ptyResize failed:", err);
+            },
+          );
+        }
+      });
+      resizeObserver.observe(containerRef.current);
+
+      cleanupTerminal = () => {
+        resizeObserver.disconnect();
+        unlistenPromise
+          .then((unlisten) => unlisten())
+          .catch(() => {});
+        term.dispose();
+      };
+    };
+
+    const cancelInitialization = idleScheduler.requestIdleCallback
+      ? (() => {
+          const handle = idleScheduler.requestIdleCallback(initializeTerminal, { timeout: 200 });
+          return () => idleScheduler.cancelIdleCallback?.(handle);
+        })()
+      : (() => {
+          const handle = window.setTimeout(initializeTerminal, 0);
+          return () => window.clearTimeout(handle);
+        })();
 
     return () => {
-      resizeObserver.disconnect();
-      unlistenPromise
-        .then((unlisten) => unlisten())
-        .catch(() => {});
-      term.dispose();
+      disposed = true;
+      cancelInitialization();
+      cleanupTerminal?.();
     };
   }, [ptyId]);
 
