@@ -199,6 +199,13 @@ pub fn run() {
             let db_path = data_dir.join("prism.db");
             let pool = tauri::async_runtime::block_on(cache::db::init_db(&db_path))
                 .map_err(|e| e.to_string())?;
+            let reconciled = tauri::async_runtime::block_on(
+                cache::workspaces::suspend_orphaned_active_workspaces(&pool),
+            )
+            .map_err(|e| e.to_string())?;
+            if reconciled > 0 {
+                info!("startup: downgraded {reconciled} orphaned active workspace(s) to suspended");
+            }
             let poll_pool = pool.clone();
             app.manage(pool);
 
