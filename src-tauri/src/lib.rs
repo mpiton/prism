@@ -357,13 +357,17 @@ mod tests {
             let script_src = csp["script-src"]
                 .as_str()
                 .unwrap_or_else(|| panic!("{label} CSP script-src must be a string"));
-            assert!(
-                !script_src.contains("unsafe-eval"),
-                "{label} CSP script-src must not contain unsafe-eval"
+            assert_eq!(
+                script_src, "'self'",
+                "{label} CSP script-src must be exactly 'self'"
             );
+
+            let img_src = csp["img-src"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP img-src must be a string"));
             assert!(
-                !script_src.contains("unsafe-inline"),
-                "{label} CSP script-src must not contain unsafe-inline"
+                !img_src.split_whitespace().any(|t| t == "data:"),
+                "{label} CSP img-src must not contain data:"
             );
 
             let object_src = csp["object-src"]
@@ -385,6 +389,23 @@ mod tests {
                 !connect_src.contains('*'),
                 "{label} CSP connect-src must not contain wildcards"
             );
+            if key == "csp" {
+                assert_eq!(
+                    connect_src, "ipc: http://ipc.localhost",
+                    "production CSP connect-src must not include dev/HMR endpoints"
+                );
+            } else {
+                for required in [
+                    "ws://localhost:1420",
+                    "ws://localhost:1421",
+                    "http://localhost:1420",
+                ] {
+                    assert!(
+                        connect_src.contains(required),
+                        "development CSP connect-src must include {required}"
+                    );
+                }
+            }
 
             let frame_ancestors = csp["frame-ancestors"]
                 .as_str()
