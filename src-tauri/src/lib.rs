@@ -381,6 +381,10 @@ mod tests {
                 connect_src.contains("ipc:"),
                 "{label} CSP connect-src must include ipc: for Tauri IPC"
             );
+            assert!(
+                !connect_src.contains('*'),
+                "{label} CSP connect-src must not contain wildcards"
+            );
 
             let frame_ancestors = csp["frame-ancestors"]
                 .as_str()
@@ -396,6 +400,14 @@ mod tests {
             assert_eq!(
                 form_action, "'none'",
                 "{label} CSP form-action must be 'none' — prevents form submission to external URLs"
+            );
+
+            let base_uri = csp["base-uri"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP base-uri must be a string"));
+            assert_eq!(
+                base_uri, "'none'",
+                "{label} CSP base-uri must be 'none' — prevents base URL injection"
             );
         }
     }
