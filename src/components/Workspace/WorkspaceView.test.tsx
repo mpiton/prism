@@ -167,11 +167,11 @@ describe("WorkspaceView", () => {
     );
 
     expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
-    expect(screen.getByTestId("terminal-ws-1")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-statusbar")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-terminal-loading")).toBeInTheDocument();
   });
 
-  it("should switch terminal on workspace change", () => {
+  it("should render the terminal after the chunk loads", async () => {
     renderWithQuery(
       <WorkspaceView
         workspaces={WORKSPACES}
@@ -181,7 +181,20 @@ describe("WorkspaceView", () => {
       />,
     );
 
-    expect(screen.getByTestId("terminal-ws-1")).toBeInTheDocument();
+    expect(await screen.findByTestId("terminal-ws-1")).toBeInTheDocument();
+  });
+
+  it("should switch terminal on workspace change", async () => {
+    renderWithQuery(
+      <WorkspaceView
+        workspaces={WORKSPACES}
+        statusInfo={STATUS_INFO}
+        entries={[]}
+        onBackToDashboard={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByTestId("terminal-ws-1")).toBeInTheDocument();
 
     act(() => {
       useWorkspacesStore.setState({ activeWorkspaceId: "ws-2" });
@@ -191,7 +204,7 @@ describe("WorkspaceView", () => {
     expect(screen.queryByTestId("terminal-ws-1")).not.toBeInTheDocument();
   });
 
-  it("should render terminal without status bar when status info is missing", () => {
+  it("should render terminal without status bar when status info is missing", async () => {
     renderWithQuery(
       <WorkspaceView
         workspaces={WORKSPACES}
@@ -202,7 +215,7 @@ describe("WorkspaceView", () => {
     );
 
     expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
-    expect(screen.getByTestId("terminal-ws-1")).toBeInTheDocument();
+    expect(await screen.findByTestId("terminal-ws-1")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace-statusbar")).not.toBeInTheDocument();
   });
 
