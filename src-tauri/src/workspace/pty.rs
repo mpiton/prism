@@ -9,6 +9,65 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
+/// Environment variables that can cause shells to source arbitrary files.
+/// Removed from the PTY environment to prevent code execution from untrusted repositories.
+///
+/// - `BASH_ENV`: bash sources this file in non-interactive mode
+/// - `ENV`: sh/bash sources this file for non-interactive shells
+/// - `ZDOTDIR`: zsh looks for startup files in this directory instead of `$HOME`
+const DANGEROUS_ENV_VARS: &[&str] = &[
+    "BASH_ENV",       // bash sources this file in non-interactive mode
+    "ENV",            // sh/bash sources this file for non-interactive shells
+    "ZDOTDIR",        // zsh looks for startup files in this directory
+    "PROMPT_COMMAND", // bash executes this before each prompt (interactive)
+    "PS0",            // bash 4.4+ expands this before command execution (supports $(...))
+];
+
+/// Returns shell isolation flags that prevent loading user/system configuration files.
+///
+/// Different shells use different flags to skip startup files:
+/// - bash: `--noprofile --norc` (skip `~/.bash_profile` and `~/.bashrc`)
+/// - zsh: `--no-rcs --no-globalrcs` (skip all zshrc files including `/etc/zshrc`)
+/// - fish: `--no-config` (skip `config.fish`)
+/// - Others: no flags (unknown shells get no isolation)
+fn isolation_flags_for_shell(shell_path: &str) -> Vec<&'static str> {
+    let shell_name = Path::new(shell_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+
+    match shell_name {
+        "bash" => vec!["--noprofile", "--norc"],
+        "zsh" => vec!["--no-rcs", "--no-globalrcs"],
+        "fish" => vec!["--no-config"],
+        _ => vec![],
+    }
+}
+
+/// Configures the command environment to prevent untrusted code execution.
+///
+/// - Removes environment variables that cause shells to source arbitrary files
+/// - Explicitly sets `HOME` to the user's real home directory, ensuring the shell
+///   does not look for configuration files in the worktree directory
+fn configure_safe_environment(cmd: &mut CommandBuilder) {
+    for var in DANGEROUS_ENV_VARS {
+        cmd.env_remove(var);
+    }
+
+    // Bash encodes exported shell functions as BASH_FUNC_<name>%% env vars.
+    // These are loaded by the interpreter before --norc/--noprofile take effect,
+    // so they must be stripped explicitly.
+    for (key, _) in std::env::vars() {
+        if key.starts_with("BASH_FUNC_") {
+            cmd.env_remove(&key);
+        }
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        cmd.env("HOME", &home);
+    }
+}
+
 /// Handle for a single PTY session.
 ///
 /// Holds the writer and master (per-PTY locks), the child process,
@@ -92,6 +151,10 @@ impl PtyManager {
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
         };
         let mut cmd = CommandBuilder::new(&shell);
+        for flag in isolation_flags_for_shell(&shell) {
+            cmd.arg(flag);
+        }
+        configure_safe_environment(&mut cmd);
         cmd.cwd(cwd);
 
         let child = pair
@@ -404,6 +467,53 @@ mod tests {
 
         manager.kill(&id1).unwrap();
         manager.kill(&id3).unwrap();
+    }
+
+    // ── Shell isolation tests ──────────────────────────────────────
+
+    #[test]
+    fn test_isolation_flags_bash() {
+        let flags = isolation_flags_for_shell("/bin/bash");
+        assert_eq!(flags, vec!["--noprofile", "--norc"]);
+    }
+
+    #[test]
+    fn test_isolation_flags_zsh() {
+        let flags = isolation_flags_for_shell("/bin/zsh");
+        assert_eq!(flags, vec!["--no-rcs", "--no-globalrcs"]);
+    }
+
+    #[test]
+    fn test_isolation_flags_fish() {
+        let flags = isolation_flags_for_shell("/usr/bin/fish");
+        assert_eq!(flags, vec!["--no-config"]);
+    }
+
+    #[test]
+    fn test_isolation_flags_unknown_shell() {
+        let flags = isolation_flags_for_shell("/bin/sh");
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn test_isolation_flags_bare_name() {
+        let flags = isolation_flags_for_shell("bash");
+        assert_eq!(flags, vec!["--noprofile", "--norc"]);
+    }
+
+    #[test]
+    fn test_isolation_flags_full_path_with_usr_local() {
+        let flags = isolation_flags_for_shell("/usr/local/bin/zsh");
+        assert_eq!(flags, vec!["--no-rcs", "--no-globalrcs"]);
+    }
+
+    #[test]
+    fn test_dangerous_env_vars_contains_known_threats() {
+        assert!(DANGEROUS_ENV_VARS.contains(&"BASH_ENV"));
+        assert!(DANGEROUS_ENV_VARS.contains(&"ENV"));
+        assert!(DANGEROUS_ENV_VARS.contains(&"ZDOTDIR"));
+        assert!(DANGEROUS_ENV_VARS.contains(&"PROMPT_COMMAND"));
+        assert!(DANGEROUS_ENV_VARS.contains(&"PS0"));
     }
 
     #[tokio::test]
