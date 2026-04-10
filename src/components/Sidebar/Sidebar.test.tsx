@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Sidebar } from "./Sidebar";
@@ -292,5 +292,23 @@ describe("Sidebar", () => {
     expect(overviewButton).toHaveFocus();
     expect(overviewButton).toHaveAttribute("tabindex", "0");
     expect(settingsButton).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("should preserve the roving target while a nav item still has focus", () => {
+    renderSidebar();
+
+    const reviewButton = screen.getByRole("button", { name: /to review \(3\)/i });
+    const settingsButton = screen.getByRole("button", { name: /settings/i });
+
+    reviewButton.focus();
+
+    act(() => {
+      useDashboardStore.setState({ currentView: "settings" });
+    });
+
+    expect(reviewButton).toHaveFocus();
+    expect(reviewButton).toHaveAttribute("tabindex", "0");
+    expect(settingsButton).toHaveAttribute("tabindex", "-1");
+    expect(settingsButton).toHaveAttribute("aria-current", "page");
   });
 });

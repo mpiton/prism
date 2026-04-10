@@ -73,6 +73,7 @@ export function Sidebar(): ReactElement {
 
   const [isReposExpanded, setIsReposExpanded] = useState(false);
   const [focusedView, setFocusedView] = useState<DashboardView>(currentView);
+  const navGroupRef = useRef<HTMLDivElement | null>(null);
   const navItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const workspaces = (dashboard?.workspaces ?? []).filter(
@@ -83,6 +84,9 @@ export function Sidebar(): ReactElement {
   const username = authQuery.data?.username ?? null;
 
   useEffect(() => {
+    if (typeof document !== "undefined" && navGroupRef.current?.contains(document.activeElement)) {
+      return;
+    }
     setFocusedView(currentView);
   }, [currentView]);
 
@@ -150,7 +154,7 @@ export function Sidebar(): ReactElement {
       </div>
 
       {/* Navigation */}
-      <div className="flex flex-col gap-0.5" role="group" aria-label="Primary views">
+      <div ref={navGroupRef} className="flex flex-col gap-0.5" role="group" aria-label="Primary views">
         {NAV_ITEMS.map((item, index) => (
           <NavItem
             key={item.view}
