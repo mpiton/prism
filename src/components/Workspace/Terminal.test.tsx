@@ -98,6 +98,11 @@ describe("Terminal", () => {
 
   it("should initialize xterm on mount", () => {
     render(<Terminal ptyId="ws-1" />);
+
+    expect(onEvent).toHaveBeenCalledWith(
+      "workspace:stdout",
+      expect.any(Function),
+    );
     flushIdleCallback();
 
     expect(MockTerminal).toHaveBeenCalledWith(
@@ -114,6 +119,33 @@ describe("Terminal", () => {
     expect(mockLoadAddon).toHaveBeenCalledTimes(2); // FitAddon + WebLinksAddon
     expect(mockFit).toHaveBeenCalledOnce();
     expect(screen.getByTestId("terminal-ws-1")).toBeInTheDocument();
+  });
+
+  it("should buffer stdout received before terminal initialization", async () => {
+    render(<Terminal ptyId="ws-1" />);
+
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "workspace:stdout",
+        expect.any(Function),
+      );
+    });
+
+    const call = (onEvent as Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === "workspace:stdout",
+    );
+    expect(call).toBeDefined();
+    const handler = call![1] as (payload: { workspaceId: string; data: string }) => void;
+
+    act(() => {
+      handler({ workspaceId: "ws-1", data: "boot output" });
+    });
+
+    expect(mockWrite).not.toHaveBeenCalled();
+
+    flushIdleCallback();
+
+    expect(mockWrite).toHaveBeenCalledWith("boot output");
   });
 
   it("should write data from stdout event", async () => {
@@ -241,5 +273,15 @@ describe("Terminal", () => {
 
     expect(cancelIdleCallbackMock).toHaveBeenCalledWith(1);
     expect(MockTerminal).not.toHaveBeenCalled();
+  });
+
+  it("should unlisten stdout on unmount before idle callback", async () => {
+    const { unmount } = render(<Terminal ptyId="ws-1" />);
+
+    unmount();
+
+    await vi.waitFor(() => {
+      expect(unlistenStdout).toHaveBeenCalledOnce();
+    });
   });
 });

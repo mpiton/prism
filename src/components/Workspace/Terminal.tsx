@@ -43,11 +43,24 @@ export function Terminal({ ptyId }: TerminalProps) {
 
     let disposed = false;
     let cleanupTerminal: (() => void) | undefined;
+    const bufferedStdout: string[] = [];
+    let term: XTerm | undefined;
+
+    const unlistenPromise = onEvent<PtyOutput>("workspace:stdout", (payload) => {
+      if (payload.workspaceId !== ptyId) return;
+
+      if (!term) {
+        bufferedStdout.push(payload.data);
+        return;
+      }
+
+      term.write(payload.data);
+    });
 
     const initializeTerminal = () => {
       if (disposed || !containerRef.current) return;
 
-      const term = new XTerm({
+      term = new XTerm({
         cursorBlink: true,
         fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
@@ -69,12 +82,10 @@ export function Terminal({ ptyId }: TerminalProps) {
         });
       });
 
-      // stdout: listen for PTY output events
-      const unlistenPromise = onEvent<PtyOutput>("workspace:stdout", (payload) => {
-        if (payload.workspaceId === ptyId) {
-          term.write(payload.data);
-        }
-      });
+      for (const chunk of bufferedStdout) {
+        term.write(chunk);
+      }
+      bufferedStdout.length = 0;
 
       // resize: observe container and notify PTY
       const resizeObserver = new ResizeObserver(() => {
@@ -95,7 +106,8 @@ export function Terminal({ ptyId }: TerminalProps) {
         unlistenPromise
           .then((unlisten) => unlisten())
           .catch(() => {});
-        term.dispose();
+        term?.dispose();
+        term = undefined;
       };
     };
 
@@ -113,6 +125,11 @@ export function Terminal({ ptyId }: TerminalProps) {
       disposed = true;
       cancelInitialization();
       cleanupTerminal?.();
+      if (!cleanupTerminal) {
+        unlistenPromise
+          .then((unlisten) => unlisten())
+          .catch(() => {});
+      }
     };
   }, [ptyId]);
 
