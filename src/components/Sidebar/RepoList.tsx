@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { Repo } from "../../lib/types";
+import type { Repo } from "../../lib/types/github";
 import { useDebounce } from "../../hooks/useDebounce";
 
 const VISIBLE_LIMIT = 6;

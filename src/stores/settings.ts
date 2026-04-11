@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AppConfig } from "../lib/types";
+import type { AppConfig } from "../lib/types/config";
 
 interface SettingsUiState {
   readonly config: AppConfig | null;

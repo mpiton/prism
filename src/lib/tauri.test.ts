@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TAURI_COMMANDS } from "./types";
-import type { TauriEventName } from "./types";
+import { TAURI_COMMANDS } from "./types/tauri";
+import type { TauriEventName } from "./types/tauri";
 
 // ── Mocks ────────────────────────────────────────────────────────
 

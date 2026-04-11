@@ -4,7 +4,7 @@ import { type ReactElement, useCallback, useEffect, useMemo, useRef } from "reac
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
-import type { Issue } from "../../lib/types";
+import type { Issue } from "../../lib/types/github";
 import { useFilterableList } from "../../hooks/useFilterableList";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";

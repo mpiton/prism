@@ -1,7 +1,8 @@
 import { type ReactElement, useState } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
-import type { CiStatus, PullRequestWithReview } from "../../lib/types";
+import type { CiStatus } from "../../lib/types/enums";
+import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { CI } from "../atoms/CI";
 import { Diff } from "../atoms/Diff";
 import { WsBadge } from "../atoms/WsBadge";

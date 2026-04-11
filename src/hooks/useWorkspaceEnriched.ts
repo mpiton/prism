@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listWorkspacesEnriched, onEvent } from "../lib/tauri";
-import { TAURI_EVENTS } from "../lib/types";
-import type { WorkspaceListEntry, WorkspaceStatusInfo } from "../lib/types";
+import { TAURI_EVENTS } from "../lib/types/tauri";
+import type { WorkspaceListEntry, WorkspaceStatusInfo } from "../lib/types/workspace";
 
 const STALE_TIME = 30_000;
 

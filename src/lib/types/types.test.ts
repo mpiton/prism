@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { TAURI_COMMANDS, TAURI_EVENTS } from "./types";
+import { TAURI_COMMANDS, TAURI_EVENTS } from "./tauri";
 import type {
   PrState,
   CiStatus,
@@ -8,26 +8,32 @@ import type {
   IssueState,
   ActivityType,
   WorkspaceState,
+} from "./enums";
+import type {
   Repo,
   PullRequest,
   ReviewRequest,
   ReviewSummary,
   Issue,
   Activity,
+} from "./github";
+import type {
   Workspace,
   WorkspaceNote,
   WorkspaceSummary,
-  PullRequestWithReview,
-  DashboardData,
-  DashboardStats,
-  PersonalStats,
   OpenWorkspaceRequest,
   OpenWorkspaceResponse,
   PtyInput,
   PtyOutput,
   PtyResize,
-  AppConfig,
-} from "./types";
+} from "./workspace";
+import type {
+  PullRequestWithReview,
+  DashboardData,
+  DashboardStats,
+  PersonalStats,
+} from "./dashboard";
+import type { AppConfig } from "./config";
 
 // ── Helpers ──────────────────────────────────────────────────────
 

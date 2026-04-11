@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { Issue, Repo } from "../../lib/types";
+import type { Issue, Repo } from "../../lib/types/github";
 import { Issues } from "./Issues";
 
 vi.mock("@tanstack/react-virtual", () => ({

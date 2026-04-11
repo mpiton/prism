@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useSettingsStore } from "./settings";
-import type { AppConfig } from "../lib/types";
+import type { AppConfig } from "../lib/types/config";
 
 const fakeConfig: AppConfig = {
   pollIntervalSecs: 60,

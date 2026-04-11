@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { Workspace, WorkspaceState } from "../../lib/types";
+import type { Workspace } from "../../lib/types/workspace";
+import type { WorkspaceState } from "../../lib/types/enums";
 
 interface WorkspaceListProps {
   readonly workspaces: readonly Workspace[];

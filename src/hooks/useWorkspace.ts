@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listWorkspaces, onEvent } from "../lib/tauri";
-import { TAURI_EVENTS } from "../lib/types";
-import type { Workspace, WorkspaceState } from "../lib/types";
+import { TAURI_EVENTS } from "../lib/types/tauri";
+import type { Workspace } from "../lib/types/workspace";
+import type { WorkspaceState } from "../lib/types/enums";
 import { useWorkspacesStore } from "../stores/workspaces";
 
 const STALE_TIME = 30_000;

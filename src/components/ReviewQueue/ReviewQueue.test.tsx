@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PullRequestWithReview } from "../../lib/types";
+import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { useDashboardStore } from "../../stores/dashboard";
 import { ReviewQueue } from "./ReviewQueue";
 

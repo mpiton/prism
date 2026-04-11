@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { WorkspaceListEntry, WorkspaceState } from "../../lib/types";
+import type { WorkspaceListEntry } from "../../lib/types/workspace";
+import type { WorkspaceState } from "../../lib/types/enums";
 import { CI } from "../atoms/CI";
 import { EmptyState } from "../atoms/EmptyState";
 

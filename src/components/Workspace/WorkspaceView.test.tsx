@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useWorkspacesStore } from "../../stores/workspaces";
-import type { Workspace, WorkspaceListEntry, WorkspaceState, WorkspaceStatusInfo } from "../../lib/types";
+import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types/workspace";
+import type { WorkspaceState } from "../../lib/types/enums";
 
 // ── Mock child components ────────────────────────────────────────
 

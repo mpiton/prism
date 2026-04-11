@@ -2,7 +2,7 @@ import { useState, type ReactElement } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos, setRepoEnabled } from "../../lib/tauri";
-import type { Repo } from "../../lib/types";
+import type { Repo } from "../../lib/types/github";
 import { useDebounce } from "../../hooks/useDebounce";
 
 interface RepoUpdate {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Repo } from "../../lib/types";
+import type { Repo } from "../../lib/types/github";
 import { RepoList } from "./RepoList";
 
 const enabledRepo: Repo = {

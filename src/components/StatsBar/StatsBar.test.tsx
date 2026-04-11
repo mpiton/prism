@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import { StatsBar } from "./StatsBar";
 import { useDashboardStore } from "../../stores/dashboard";
-import type { DashboardStats } from "../../lib/types";
+import type { DashboardStats } from "../../lib/types/dashboard";
 
 vi.mock("../../hooks/useGitHubData", () => ({
   useGitHubData: vi.fn(),

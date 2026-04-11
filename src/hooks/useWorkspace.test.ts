@@ -3,7 +3,8 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import { useWorkspace } from "./useWorkspace";
-import type { Workspace, WorkspaceState } from "../lib/types";
+import type { Workspace } from "../lib/types/workspace";
+import type { WorkspaceState } from "../lib/types/enums";
 
 vi.mock("../lib/tauri", () => ({
   listWorkspaces: vi.fn(),

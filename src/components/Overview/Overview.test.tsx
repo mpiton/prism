@@ -3,7 +3,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { Activity, DashboardData, Issue, PullRequestWithReview } from "../../lib/types";
+import type { Activity, Issue } from "../../lib/types/github";
+import type { DashboardData, PullRequestWithReview } from "../../lib/types/dashboard";
 import { Overview } from "./Overview";
 
 vi.mock("../../lib/open", () => ({

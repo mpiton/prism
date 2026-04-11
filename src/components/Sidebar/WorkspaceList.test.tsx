@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Workspace } from "../../lib/types";
+import type { Workspace } from "../../lib/types/workspace";
 import { WorkspaceList } from "./WorkspaceList";
 
 const activeWs: Workspace = {

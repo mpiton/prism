@@ -1,7 +1,8 @@
 import type { MouseEvent, ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
-import type { Issue, IssueState } from "../../lib/types";
+import type { Issue } from "../../lib/types/github";
+import type { IssueState } from "../../lib/types/enums";
 import { LabelTag } from "../atoms/LabelTag";
 
 interface IssueCardProps {

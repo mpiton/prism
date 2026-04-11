@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { Priority } from "../../lib/types";
+import type { Priority } from "../../lib/types/enums";
 
 interface PriorityBarProps {
   readonly priority: Priority;

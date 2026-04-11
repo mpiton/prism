@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
-import type { Workspace } from "../../lib/types";
+import type { Workspace } from "../../lib/types/workspace";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useSettingsStore } from "../../stores/settings";
 
