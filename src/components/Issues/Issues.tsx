@@ -25,8 +25,7 @@ const ISSUE_TABS: Readonly<Record<Tab, (issue: Issue) => boolean>> = {
   closed: (issue) => issue.state === "closed",
 };
 
-// Exported for testing only — the memoized `Issues` below is the public API.
-export function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactElement {
+function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 

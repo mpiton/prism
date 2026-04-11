@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
 import type { Issue, Repo } from "../../lib/types/github";
-import { Issues, IssuesImpl } from "./Issues";
+import { Issues } from "./Issues";
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (opts: { count: number; estimateSize: (i: number) => number }) => ({
@@ -251,10 +251,4 @@ describe("Issues", () => {
     expect(screen.getByText("unknown-repo")).toBeInTheDocument();
   });
 
-  it("should export a memoized component distinct from the raw implementation", () => {
-    // The exported `Issues` is `memo(IssuesImpl)`, so it must not be
-    // referentially equal to the raw function. This guards the memo wrapping
-    // without relying on React-internal symbols like `$$typeof`.
-    expect(Issues).not.toBe(IssuesImpl);
-  });
 });

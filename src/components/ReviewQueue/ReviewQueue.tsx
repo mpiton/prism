@@ -54,8 +54,7 @@ function getUniqueRepos(reviews: readonly PullRequestWithReview[]): readonly str
   return [...new Set(reviews.map((r) => r.pullRequest.repoId))].sort();
 }
 
-// Exported for testing only — the memoized `ReviewQueue` below is the public API.
-export function ReviewQueueImpl({
+function ReviewQueueImpl({
   reviews,
   isLoading = false,
   onOpen,

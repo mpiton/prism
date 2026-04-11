@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
 import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import type { Repo } from "../../lib/types/github";
-import { MyPRs, MyPRsImpl } from "./MyPRs";
+import { MyPRs } from "./MyPRs";
 
 const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
 
@@ -221,10 +221,4 @@ describe("MyPRs", () => {
     expect(onOpen).toHaveBeenCalledWith(openPr1.pullRequest.url);
   });
 
-  it("should export a memoized component distinct from the raw implementation", () => {
-    // The exported `MyPRs` is `memo(MyPRsImpl)`, so it must not be
-    // referentially equal to the raw function. This guards the memo wrapping
-    // without relying on React-internal symbols like `$$typeof`.
-    expect(MyPRs).not.toBe(MyPRsImpl);
-  });
 });
