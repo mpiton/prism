@@ -75,10 +75,16 @@ pub(crate) fn build_html_url(
 
     // GitHub's HTML URLs use singular `/pull/` and `/commit/` whereas the
     // REST API paths are plural (`/pulls/`, `/commits/`).
+    //
+    // Release notifications are deliberately not mapped: the REST URL uses a
+    // numeric release id (`/releases/{id}`), while the canonical HTML form
+    // uses the tag name (`/releases/tag/{tag_name}`). Resolving id → tag
+    // requires a second API call, so we fall back to the repository HTML URL
+    // rather than emit a non-canonical numeric-id URL.
     let path = match subject_type {
         NotificationSubjectType::PullRequest => stripped.replacen("/pulls/", "/pull/", 1),
         NotificationSubjectType::Commit => stripped.replacen("/commits/", "/commit/", 1),
-        NotificationSubjectType::Issue | NotificationSubjectType::Release => stripped.to_string(),
+        NotificationSubjectType::Issue => stripped.to_string(),
         _ => return repo_html_url.to_string(),
     };
 
@@ -170,10 +176,16 @@ async fn handle_response(response: reqwest::Response) -> Result<Vec<Notification
         return Err(AppError::Auth("invalid or expired token".into()));
     }
 
-    if response.status() == reqwest::StatusCode::FORBIDDEN {
-        // Both headers must be present AND parse for us to treat the 403 as
-        // a rate limit. If either header is missing/garbage, fall through to
-        // a plain `forbidden` error rather than emitting an epoch-0 reset.
+    // GitHub returns BOTH 403 Forbidden and 429 Too Many Requests for primary
+    // and secondary rate limits — both paths must inspect the rate-limit
+    // headers so callers get the retry window regardless of which status
+    // GitHub happened to return.
+    let status = response.status();
+    if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+    {
+        // Both headers must be present AND parse for us to treat the response
+        // as a rate limit. If either header is missing/garbage, fall through
+        // to a plain error rather than emitting an epoch-0 reset.
         let headers = response.headers();
         let remaining = headers
             .get("X-RateLimit-Remaining")
@@ -190,7 +202,7 @@ async fn handle_response(response: reqwest::Response) -> Result<Vec<Notification
                 .map_or_else(|| reset.to_string(), |dt| dt.to_rfc3339());
             return Err(AppError::RateLimit { reset_at });
         }
-        return Err(AppError::GitHub("forbidden".into()));
+        return Err(AppError::GitHub(format!("{status}")));
     }
 
     if !response.status().is_success() {
@@ -295,6 +307,19 @@ mod tests {
             url,
             "https://github.com/octocat/Hello-World/commit/abc123def456"
         );
+    }
+
+    #[test]
+    fn build_html_url_falls_back_to_repo_for_release() {
+        // Release URLs carry a numeric id (`/releases/{id}`) in REST, but the
+        // canonical HTML form uses the tag name. Without a second API call
+        // we can't resolve the tag, so we fall back to the repo HTML URL.
+        let url = build_html_url(
+            Some("https://api.github.com/repos/octocat/Hello-World/releases/12345"),
+            &NotificationSubjectType::Release,
+            "https://github.com/octocat/Hello-World",
+        );
+        assert_eq!(url, "https://github.com/octocat/Hello-World");
     }
 
     #[test]
@@ -515,6 +540,55 @@ mod tests {
         let err = fetch_notifications(&test_client(), "ghp_test", &server.url(), false)
             .await
             .expect_err("should fail with github error");
+
+        assert!(
+            matches!(err, AppError::GitHub(_)),
+            "expected AppError::GitHub, got {err:?}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn fetch_notifications_maps_429_with_rate_limit_headers_to_rate_limit_error() {
+        // GitHub returns 429 Too Many Requests for secondary rate limits.
+        // The handler must recognise it alongside 403 so callers receive
+        // the reset window and can back off appropriately.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/notifications?all=false&per_page=100")
+            .with_status(429)
+            .with_header("X-RateLimit-Remaining", "0")
+            .with_header("X-RateLimit-Reset", "1700000000")
+            .with_body(r#"{"message": "You have exceeded a secondary rate limit"}"#)
+            .create_async()
+            .await;
+
+        let err = fetch_notifications(&test_client(), "ghp_test", &server.url(), false)
+            .await
+            .expect_err("should fail with rate limit error");
+
+        assert!(
+            matches!(err, AppError::RateLimit { .. }),
+            "expected AppError::RateLimit, got {err:?}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn fetch_notifications_maps_429_without_headers_to_github_error() {
+        // Defensive: a 429 without rate-limit headers falls through to a
+        // GitHub error, same as the equivalent 403 case.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/notifications?all=false&per_page=100")
+            .with_status(429)
+            .with_body(r#"{"message": "Too Many Requests"}"#)
+            .create_async()
+            .await;
+
+        let err = fetch_notifications(&test_client(), "ghp_test", &server.url(), false)
+            .await
+            .expect_err("should fail");
 
         assert!(
             matches!(err, AppError::GitHub(_)),
