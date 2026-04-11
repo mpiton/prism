@@ -60,17 +60,26 @@ export function useFilterableList<T, TabKey extends string>({
     [items, normalizedQuery, searchPredicate],
   );
 
-  const tabCounts = useMemo<Readonly<Record<TabKey, number>>>(() => {
+  // Partition filteredItems by tab in a single pass, then derive both
+  // `tabCounts` and `visibleItems` from the buckets. This avoids the previous
+  // double pass where the active tab was filtered once for `tabCounts` and
+  // then again for `visibleItems`.
+  const tabBuckets = useMemo<Readonly<Record<TabKey, readonly T[]>>>(() => {
     const tabKeys = Object.keys(tabs) as TabKey[];
     return Object.fromEntries(
-      tabKeys.map((key) => [key, filteredItems.filter(tabs[key]).length]),
-    ) as Record<TabKey, number>;
+      tabKeys.map((key) => [key, filteredItems.filter(tabs[key])]),
+    ) as unknown as Record<TabKey, readonly T[]>;
   }, [filteredItems, tabs]);
 
-  const visibleItems = useMemo<readonly T[]>(
-    () => filteredItems.filter(tabs[tab]),
-    [filteredItems, tabs, tab],
+  const tabCounts = useMemo<Readonly<Record<TabKey, number>>>(
+    () =>
+      Object.fromEntries(
+        (Object.keys(tabBuckets) as TabKey[]).map((key) => [key, tabBuckets[key].length]),
+      ) as Record<TabKey, number>,
+    [tabBuckets],
   );
+
+  const visibleItems = tabBuckets[tab];
 
   return {
     tab,

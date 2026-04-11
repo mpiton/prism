@@ -99,6 +99,10 @@ describe("useFilterableList", () => {
 
   it("short-circuits and does not invoke the search predicate when the query is empty", () => {
     let calls = 0;
+    // The inline `countingPredicate` is intentionally not memoized: its
+    // reference instability is irrelevant here because the hook short-circuits
+    // on empty queries before ever invoking the predicate, which is exactly
+    // the behavior this test is asserting.
     const countingPredicate = (item: TestItem, query: string): boolean => {
       calls += 1;
       return item.title.toLowerCase().includes(query);
@@ -116,6 +120,27 @@ describe("useFilterableList", () => {
     // Initial render with an empty query should not call the predicate.
     expect(calls).toBe(0);
     expect(result.current.visibleItems).toHaveLength(2);
+  });
+
+  it("ignores defaultTab changes after mount (initial-only semantics)", () => {
+    const { result, rerender } = renderHook(
+      (props: { defaultTab: "open" | "closed" }) =>
+        useFilterableList<TestItem, "open" | "closed">({
+          items: ITEMS,
+          tabs,
+          defaultTab: props.defaultTab,
+          searchPredicate,
+        }),
+      { initialProps: { defaultTab: "open" } },
+    );
+
+    expect(result.current.tab).toBe("open");
+
+    rerender({ defaultTab: "closed" });
+
+    // The internal tab state must NOT follow the new prop — the contract is
+    // that `defaultTab` is read exactly once by `useState`.
+    expect(result.current.tab).toBe("open");
   });
 
   it("combines search and tab filtering", () => {
