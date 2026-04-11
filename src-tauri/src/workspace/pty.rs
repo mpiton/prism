@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,63 +10,106 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
-/// Environment variables that can cause shells to source arbitrary files.
-/// Removed from the PTY environment to prevent code execution from untrusted repositories.
-///
-/// - `BASH_ENV`: bash sources this file in non-interactive mode
-/// - `ENV`: sh/bash sources this file for non-interactive shells
-/// - `ZDOTDIR`: zsh looks for startup files in this directory instead of `$HOME`
+/// Environment variables that can cause shells to source arbitrary files
+/// or alter execution semantics. Removed from the PTY environment to prevent
+/// code execution from untrusted repositories and avoid silent UX breakage.
 const DANGEROUS_ENV_VARS: &[&str] = &[
     "BASH_ENV",       // bash sources this file in non-interactive mode
     "ENV",            // sh/bash sources this file for non-interactive shells
     "ZDOTDIR",        // zsh looks for startup files in this directory
     "PROMPT_COMMAND", // bash executes this before each prompt (interactive)
     "PS0",            // bash 4.4+ expands this before command execution (supports $(...))
+    "SHELLOPTS",      // bash option flags inherited by child shells (e.g. extdebug, noexec)
+    "BASHOPTS",       // bash 4.0+ shopt options inherited by child shells
 ];
+
+/// Normalizes a shell binary name to its canonical lowercase form,
+/// stripping a trailing `.exe` extension when present.
+///
+/// Splits on both `/` and `\` so that Windows-style paths (e.g.
+/// `C:\Program Files\Git\bin\bash.exe`) are handled correctly even on
+/// platforms where `Path` does not recognize backslash as a separator.
+fn normalized_shell_name(shell_path: &str) -> String {
+    let basename = shell_path.rsplit(['/', '\\']).next().unwrap_or("");
+    let lower = basename.to_ascii_lowercase();
+    lower
+        .strip_suffix(".exe")
+        .map(str::to_string)
+        .unwrap_or(lower)
+}
 
 /// Returns shell isolation flags that prevent loading user/system configuration files.
 ///
 /// Different shells use different flags to skip startup files:
-/// - bash: `--noprofile --norc` (skip `~/.bash_profile` and `~/.bashrc`)
+/// - bash / sh (often `bash` in POSIX mode): `--noprofile --norc`
 /// - zsh: `--no-rcs --no-globalrcs` (skip all zshrc files including `/etc/zshrc`)
 /// - fish: `--no-config` (skip `config.fish`)
 /// - Others: no flags (unknown shells get no isolation)
+///
+/// Windows variants like `bash.exe` are handled via [`normalized_shell_name`].
 fn isolation_flags_for_shell(shell_path: &str) -> Vec<&'static str> {
-    let shell_name = Path::new(shell_path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-
-    match shell_name {
-        "bash" => vec!["--noprofile", "--norc"],
+    match normalized_shell_name(shell_path).as_str() {
+        // `sh` is treated as bash because on macOS and many Linux distros
+        // `/bin/sh` is bash invoked in POSIX mode.
+        "bash" | "sh" => vec!["--noprofile", "--norc"],
         "zsh" => vec!["--no-rcs", "--no-globalrcs"],
         "fish" => vec!["--no-config"],
         _ => vec![],
     }
 }
 
-/// Configures the command environment to prevent untrusted code execution.
+/// Computes the full set of environment variable names to strip from the
+/// PTY environment, including both the static `DANGEROUS_ENV_VARS` list and
+/// any `BASH_FUNC_*` exported functions discovered in the parent process env.
 ///
-/// - Removes environment variables that cause shells to source arbitrary files
-/// - Explicitly sets `HOME` to the user's real home directory, ensuring the shell
-///   does not look for configuration files in the worktree directory
-fn configure_safe_environment(cmd: &mut CommandBuilder) {
-    for var in DANGEROUS_ENV_VARS {
-        cmd.env_remove(var);
-    }
+/// Uses [`std::env::vars_os`] so that non-UTF-8 environment entries (which
+/// are valid on Unix) do not cause a panic.
+fn env_vars_to_remove() -> Vec<OsString> {
+    let mut vars: Vec<OsString> = DANGEROUS_ENV_VARS.iter().map(OsString::from).collect();
 
     // Bash encodes exported shell functions as BASH_FUNC_<name>%% env vars.
     // These are loaded by the interpreter before --norc/--noprofile take effect,
     // so they must be stripped explicitly.
-    for (key, _) in std::env::vars() {
-        if key.starts_with("BASH_FUNC_") {
-            cmd.env_remove(&key);
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("BASH_FUNC_") {
+            vars.push(key);
         }
     }
 
-    if let Ok(home) = std::env::var("HOME") {
-        cmd.env("HOME", &home);
+    vars
+}
+
+/// Configures the command environment to prevent untrusted code execution.
+///
+/// - Removes environment variables that cause shells to source arbitrary files
+/// - Strips `BASH_FUNC_*` exported functions inherited from the parent process
+/// - Explicitly sets `HOME` to the user's real home directory (preserving the
+///   inherited value via [`std::env::var_os`] to remain non-UTF-8 safe)
+fn configure_safe_environment(cmd: &mut CommandBuilder) {
+    for var in env_vars_to_remove() {
+        cmd.env_remove(&var);
     }
+
+    if let Some(home) = std::env::var_os("HOME") {
+        cmd.env("HOME", home);
+    }
+}
+
+/// Builds a `CommandBuilder` for spawning an isolated PTY shell.
+///
+/// This is the single source of truth for PTY command construction:
+/// applies isolation flags ([`isolation_flags_for_shell`]), sanitizes
+/// the environment ([`configure_safe_environment`]), and pins the working
+/// directory. Extracted from [`PtyManager::spawn`] so that command
+/// construction can be unit-tested for security regressions.
+fn build_isolated_pty_command(shell: &str, cwd: &Path) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(shell);
+    for flag in isolation_flags_for_shell(shell) {
+        cmd.arg(flag);
+    }
+    configure_safe_environment(&mut cmd);
+    cmd.cwd(cwd);
+    cmd
 }
 
 /// Handle for a single PTY session.
@@ -150,12 +194,7 @@ impl PtyManager {
         } else {
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
         };
-        let mut cmd = CommandBuilder::new(&shell);
-        for flag in isolation_flags_for_shell(&shell) {
-            cmd.arg(flag);
-        }
-        configure_safe_environment(&mut cmd);
-        cmd.cwd(cwd);
+        let cmd = build_isolated_pty_command(&shell, cwd);
 
         let child = pair
             .slave
@@ -490,8 +529,16 @@ mod tests {
     }
 
     #[test]
-    fn test_isolation_flags_unknown_shell() {
+    fn test_isolation_flags_sh_treated_as_bash() {
+        // /bin/sh is bash in POSIX mode on macOS and many Linux distros,
+        // so we apply the same isolation flags.
         let flags = isolation_flags_for_shell("/bin/sh");
+        assert_eq!(flags, vec!["--noprofile", "--norc"]);
+    }
+
+    #[test]
+    fn test_isolation_flags_unknown_shell() {
+        let flags = isolation_flags_for_shell("/usr/bin/csh");
         assert!(flags.is_empty());
     }
 
@@ -508,12 +555,85 @@ mod tests {
     }
 
     #[test]
+    fn test_isolation_flags_windows_bash_exe() {
+        // Git for Windows ships bash.exe — strip the .exe to match.
+        let flags = isolation_flags_for_shell("C:\\Program Files\\Git\\bin\\bash.exe");
+        assert_eq!(flags, vec!["--noprofile", "--norc"]);
+    }
+
+    #[test]
+    fn test_isolation_flags_windows_zsh_exe() {
+        let flags = isolation_flags_for_shell("zsh.exe");
+        assert_eq!(flags, vec!["--no-rcs", "--no-globalrcs"]);
+    }
+
+    #[test]
+    fn test_isolation_flags_uppercase_shell_name() {
+        // Windows file systems are case-insensitive; normalize to lowercase.
+        let flags = isolation_flags_for_shell("BASH.EXE");
+        assert_eq!(flags, vec!["--noprofile", "--norc"]);
+    }
+
+    #[test]
     fn test_dangerous_env_vars_contains_known_threats() {
         assert!(DANGEROUS_ENV_VARS.contains(&"BASH_ENV"));
         assert!(DANGEROUS_ENV_VARS.contains(&"ENV"));
         assert!(DANGEROUS_ENV_VARS.contains(&"ZDOTDIR"));
         assert!(DANGEROUS_ENV_VARS.contains(&"PROMPT_COMMAND"));
         assert!(DANGEROUS_ENV_VARS.contains(&"PS0"));
+        assert!(DANGEROUS_ENV_VARS.contains(&"SHELLOPTS"));
+        assert!(DANGEROUS_ENV_VARS.contains(&"BASHOPTS"));
+    }
+
+    #[test]
+    fn test_env_vars_to_remove_includes_all_dangerous_vars() {
+        let removed = env_vars_to_remove();
+        let names: Vec<String> = removed
+            .iter()
+            .map(|v| v.to_string_lossy().into_owned())
+            .collect();
+        for &expected in DANGEROUS_ENV_VARS {
+            assert!(
+                names.contains(&expected.to_string()),
+                "env_vars_to_remove() should include {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_isolated_pty_command_strips_dangerous_vars() {
+        // Regression guard: if spawn() ever stops calling configure_safe_environment,
+        // or if a new dangerous var is added without sanitization, this fails.
+        let cmd = build_isolated_pty_command("/bin/bash", Path::new("/tmp"));
+        for &var in DANGEROUS_ENV_VARS {
+            assert!(
+                cmd.get_env(var).is_none(),
+                "{var} must be absent from PTY environment after isolation"
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_isolated_pty_command_sets_cwd() {
+        let cmd = build_isolated_pty_command("/bin/bash", Path::new("/tmp"));
+        let cwd = cmd
+            .get_cwd()
+            .map(|c| c.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        assert_eq!(cwd, "/tmp");
+    }
+
+    #[test]
+    fn test_build_isolated_pty_command_preserves_home_when_set() {
+        // The test runner inherits HOME from the developer/CI environment,
+        // so we expect it to be set in the PTY env after build.
+        if std::env::var_os("HOME").is_some() {
+            let cmd = build_isolated_pty_command("/bin/bash", Path::new("/tmp"));
+            assert!(
+                cmd.get_env("HOME").is_some(),
+                "HOME should be preserved in PTY environment when set in parent"
+            );
+        }
     }
 
     #[tokio::test]
