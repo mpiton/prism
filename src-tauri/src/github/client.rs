@@ -20,6 +20,47 @@ pub struct RateLimit {
     pub reset: u64,
 }
 
+/// Parses GitHub rate-limit headers into a [`RateLimit`].
+///
+/// Returns `None` when either `X-RateLimit-Remaining` or `X-RateLimit-Reset`
+/// is missing or cannot be parsed. Shared between the GraphQL (`client.rs`)
+/// and REST (`notifications.rs`) code paths so status coverage and header
+/// semantics stay in sync.
+pub(crate) fn parse_rate_limit(headers: &reqwest::header::HeaderMap) -> Option<RateLimit> {
+    let remaining = headers
+        .get("X-RateLimit-Remaining")?
+        .to_str()
+        .ok()?
+        .parse()
+        .ok()?;
+    let reset = headers
+        .get("X-RateLimit-Reset")?
+        .to_str()
+        .ok()?
+        .parse()
+        .ok()?;
+    Some(RateLimit { remaining, reset })
+}
+
+/// Maps rate-limit headers to [`AppError::RateLimit`] when the quota is
+/// exhausted (`remaining == 0` AND a parseable `reset` timestamp).
+///
+/// Returns `None` when either header is missing, garbage, or when the
+/// remaining quota is non-zero — callers should then treat the response
+/// as a plain error rather than emitting an epoch-0 reset. Shared between
+/// `client.rs` and `notifications.rs`.
+pub(crate) fn rate_limit_error_from(headers: &reqwest::header::HeaderMap) -> Option<AppError> {
+    let rl = parse_rate_limit(headers)?;
+    if rl.remaining != 0 {
+        return None;
+    }
+    let reset_at = i64::try_from(rl.reset)
+        .ok()
+        .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+        .map_or_else(|| rl.reset.to_string(), |dt| dt.to_rfc3339());
+    Some(AppError::RateLimit { reset_at })
+}
+
 /// GitHub API client with GraphQL + REST support, rate limiting, and retries.
 pub struct GitHubClient {
     client: reqwest::Client,
@@ -122,30 +163,25 @@ impl GitHubClient {
         &self,
         response: reqwest::Response,
     ) -> Result<Q::ResponseData, AppError> {
-        let rate_limit = Self::parse_rate_limit(response.headers());
-
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             return Err(AppError::Auth("invalid or expired token".into()));
         }
 
-        if response.status() == reqwest::StatusCode::FORBIDDEN {
-            if let Some(rl) = &rate_limit
-                && rl.remaining == 0
-            {
-                let reset_at = i64::try_from(rl.reset)
-                    .ok()
-                    .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
-                    .map_or_else(|| rl.reset.to_string(), |dt| dt.to_rfc3339());
-                return Err(AppError::RateLimit { reset_at });
+        // Treat both 403 Forbidden and 429 Too Many Requests as potential
+        // rate-limit responses — GitHub uses either for primary/secondary
+        // limits. Shared helper keeps this in sync with the REST path.
+        let status = response.status();
+        if status == reqwest::StatusCode::FORBIDDEN
+            || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        {
+            if let Some(err) = rate_limit_error_from(response.headers()) {
+                return Err(err);
             }
             return Err(AppError::GitHub("forbidden".into()));
         }
 
-        if !response.status().is_success() {
-            return Err(AppError::GitHub(format!(
-                "unexpected status: {}",
-                response.status()
-            )));
+        if !status.is_success() {
+            return Err(AppError::GitHub(format!("unexpected status: {status}")));
         }
 
         let body: graphql_client::Response<Q::ResponseData> = response
@@ -162,23 +198,6 @@ impl GitHubClient {
 
         body.data
             .ok_or_else(|| AppError::GraphQL("no data in response".into()))
-    }
-
-    /// Parses rate limit headers from GitHub API response headers.
-    fn parse_rate_limit(headers: &reqwest::header::HeaderMap) -> Option<RateLimit> {
-        let remaining = headers
-            .get("X-RateLimit-Remaining")?
-            .to_str()
-            .ok()?
-            .parse()
-            .ok()?;
-        let reset = headers
-            .get("X-RateLimit-Reset")?
-            .to_str()
-            .ok()?
-            .parse()
-            .ok()?;
-        Some(RateLimit { remaining, reset })
     }
 }
 
@@ -346,7 +365,7 @@ mod tests {
         headers.insert("X-RateLimit-Remaining", HeaderValue::from_static("42"));
         headers.insert("X-RateLimit-Reset", HeaderValue::from_static("1700000000"));
 
-        let rl = GitHubClient::parse_rate_limit(&headers).expect("should parse rate limit headers");
+        let rl = parse_rate_limit(&headers).expect("should parse rate limit headers");
         assert_eq!(rl.remaining, 42);
         assert_eq!(rl.reset, 1_700_000_000);
     }
@@ -354,11 +373,49 @@ mod tests {
     #[test]
     fn test_rate_limit_header_parsing_missing() {
         let headers = reqwest::header::HeaderMap::new();
-        let rate_limit = GitHubClient::parse_rate_limit(&headers);
+        let rate_limit = parse_rate_limit(&headers);
 
         assert!(
             rate_limit.is_none(),
             "should return None when headers are missing"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_error_from_returns_none_when_quota_remaining() {
+        use reqwest::header::{HeaderMap, HeaderValue};
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-RateLimit-Remaining", HeaderValue::from_static("100"));
+        headers.insert("X-RateLimit-Reset", HeaderValue::from_static("1700000000"));
+
+        assert!(
+            rate_limit_error_from(&headers).is_none(),
+            "quota remaining should not produce a rate-limit error"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_error_from_returns_rate_limit_when_exhausted() {
+        use reqwest::header::{HeaderMap, HeaderValue};
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-RateLimit-Remaining", HeaderValue::from_static("0"));
+        headers.insert("X-RateLimit-Reset", HeaderValue::from_static("1700000000"));
+
+        let err = rate_limit_error_from(&headers).expect("should produce rate-limit error");
+        assert!(
+            matches!(err, AppError::RateLimit { .. }),
+            "expected RateLimit variant, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_error_from_returns_none_when_headers_missing() {
+        let headers = reqwest::header::HeaderMap::new();
+        assert!(
+            rate_limit_error_from(&headers).is_none(),
+            "missing headers should not produce a rate-limit error"
         );
     }
 

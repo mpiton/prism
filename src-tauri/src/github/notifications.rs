@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::error::AppError;
+use crate::github::client::rate_limit_error_from;
 use crate::types::{Notification, NotificationSubjectType};
 
 const MAX_RETRIES: u32 = 3;
@@ -114,9 +115,11 @@ fn map_notification(raw: RawNotification) -> Notification {
 
 /// Fetch notifications from the GitHub REST API.
 ///
-/// Retries on connection and timeout errors only (max 3 attempts with
-/// exponential backoff). Other transient failures (DNS, TLS handshake) are
-/// surfaced immediately — this matches the behaviour of `execute_graphql`.
+/// Retries on connection and timeout errors only (up to `MAX_RETRIES`
+/// additional attempts after the initial request, with exponential backoff,
+/// for a total of `MAX_RETRIES + 1` attempts). Other transient failures
+/// (DNS, TLS handshake) are surfaced immediately — this matches the
+/// behaviour of `execute_graphql`.
 ///
 /// Returns up to 100 notifications (one REST page). Older notifications are
 /// silently truncated; subsequent pages are intentionally not followed to
@@ -178,29 +181,14 @@ async fn handle_response(response: reqwest::Response) -> Result<Vec<Notification
 
     // GitHub returns BOTH 403 Forbidden and 429 Too Many Requests for primary
     // and secondary rate limits — both paths must inspect the rate-limit
-    // headers so callers get the retry window regardless of which status
-    // GitHub happened to return.
+    // headers. The shared `rate_limit_error_from` helper is reused by the
+    // GraphQL client so status coverage, header rules, and reset formatting
+    // stay in sync.
     let status = response.status();
     if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS
     {
-        // Both headers must be present AND parse for us to treat the response
-        // as a rate limit. If either header is missing/garbage, fall through
-        // to a plain error rather than emitting an epoch-0 reset.
-        let headers = response.headers();
-        let remaining = headers
-            .get("X-RateLimit-Remaining")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u32>().ok());
-        let reset = headers
-            .get("X-RateLimit-Reset")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok());
-        if let (Some(0), Some(reset)) = (remaining, reset) {
-            let reset_at = i64::try_from(reset)
-                .ok()
-                .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
-                .map_or_else(|| reset.to_string(), |dt| dt.to_rfc3339());
-            return Err(AppError::RateLimit { reset_at });
+        if let Some(err) = rate_limit_error_from(response.headers()) {
+            return Err(err);
         }
         return Err(AppError::GitHub(format!("{status}")));
     }
