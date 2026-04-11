@@ -1,5 +1,6 @@
 import { CircleCheck, CircleX, Eye, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, type ReactElement } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { useNotifications } from "../../hooks/useNotifications";
 import type { Notification } from "../../hooks/useNotifications";
 import { useDashboardStore } from "../../stores/dashboard";
@@ -70,12 +71,9 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
       type="button"
       aria-label={`${meta.label}${summary ? ` ${summary}` : ""} — click to navigate`}
       onClick={handleClick}
-      className="flex w-72 items-center gap-3 rounded-lg border border-border bg-bg-secondary p-3 shadow-lg transition-opacity hover:opacity-80"
+      className={`${FOCUS_RING} flex w-72 items-center gap-3 rounded-lg border border-border bg-bg-secondary p-3 shadow-lg transition-opacity hover:opacity-80`}
     >
-      <span
-        className="flex h-5 w-5 items-center justify-center text-fg"
-        aria-hidden="true"
-      >
+      <span className="flex h-5 w-5 items-center justify-center text-fg" aria-hidden="true">
         <Icon
           data-testid={`toast-icon-${notification.type}`}
           className="h-5 w-5"
@@ -84,9 +82,7 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
       </span>
       <div className="flex flex-col items-start">
         <span className="text-sm font-medium text-fg">{meta.label}</span>
-        {summary !== undefined && (
-          <span className="text-xs text-fg-muted">{summary}</span>
-        )}
+        {summary !== undefined && <span className="text-xs text-fg-muted">{summary}</span>}
       </div>
     </button>
   );
@@ -103,12 +99,7 @@ export function Toast(): ReactElement {
       className="fixed bottom-4 right-4 z-50 flex flex-col gap-2"
     >
       {notifications.map((n) => (
-        <ToastItem
-          key={n.id}
-          notification={n}
-          onDismiss={clearNotification}
-          onNavigate={setView}
-        />
+        <ToastItem key={n.id} notification={n} onDismiss={clearNotification} onNavigate={setView} />
       ))}
     </div>
   );

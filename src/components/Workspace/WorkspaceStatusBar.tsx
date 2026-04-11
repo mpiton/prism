@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { CiStatus } from "../../lib/types";
 import { ptyWrite } from "../../lib/tauri";
 import { CI } from "../atoms/CI";
@@ -81,7 +82,7 @@ export function WorkspaceStatusBar({
           data-testid="btn-git-push"
           type="button"
           aria-label="Git push"
-          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text"
+          className={`${FOCUS_RING} rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text`}
           onClick={() => handlePtyCommand("git push")}
         >
           push
@@ -90,7 +91,7 @@ export function WorkspaceStatusBar({
           data-testid="btn-git-pull"
           type="button"
           aria-label="Git pull"
-          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text"
+          className={`${FOCUS_RING} rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text`}
           onClick={() => handlePtyCommand("git pull")}
         >
           pull
@@ -101,7 +102,7 @@ export function WorkspaceStatusBar({
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Open pull request on GitHub"
-          className="rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text"
+          className={`${FOCUS_RING} rounded px-2 py-2 text-muted hover:bg-surface-hover hover:text-text`}
         >
           github
         </a>

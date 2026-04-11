@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactElement, useMemo, useState } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
+import { ACTION_BUTTON_CLASS, FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
 import type { Activity, ActivityType } from "../../lib/types";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
@@ -24,7 +26,14 @@ const FILTER_MATCH: Record<Exclude<FilterType, "all" | "mention">, readonly Acti
 
 const MENTION_PATTERN = /(^|\s)@\w+/;
 
-const FILTER_LABELS = ["all", "comment", "review", "ci", "mention", "other"] as const satisfies readonly FilterType[];
+const FILTER_LABELS = [
+  "all",
+  "comment",
+  "review",
+  "ci",
+  "mention",
+  "other",
+] as const satisfies readonly FilterType[];
 
 const FILTER_LABEL: Record<FilterType, string> = {
   all: "all",
@@ -34,12 +43,6 @@ const FILTER_LABEL: Record<FilterType, string> = {
   mention: "mention",
   other: "other",
 };
-
-const FILTER_BUTTON_CLASS =
-  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
-
-const ACTION_BUTTON_CLASS =
-  "inline-flex min-h-11 items-center rounded px-3 text-xs transition-colors";
 
 function matchesFilter(activity: Activity, filter: FilterType): boolean {
   if (filter === "all") return true;
@@ -110,7 +113,7 @@ export function ActivityFeed({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Filter activity..."
             aria-label="Filter activity"
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted"
+            className={`${FOCUS_RING} w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted`}
           />
 
           <div className="flex min-w-0 flex-wrap items-center gap-1">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { Repo } from "../../lib/types";
 import { useDebounce } from "../../hooks/useDebounce";
 
@@ -48,7 +49,7 @@ export function RepoList({
           placeholder="Filter repos..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-transparent border-b border-border text-xs text-foreground placeholder:text-muted px-2 py-1 outline-none"
+          className={`${FOCUS_RING} w-full bg-transparent border-b border-border text-xs text-foreground placeholder:text-muted px-2 py-1`}
         />
         {(onSelectAll !== undefined || onDeselectAll !== undefined) && (
           <div className="flex shrink-0 gap-1 pl-1">
@@ -56,7 +57,7 @@ export function RepoList({
               <button
                 type="button"
                 onClick={onSelectAll}
-                className="text-[10px] text-dim hover:text-foreground"
+                className={`${FOCUS_RING} rounded text-[10px] text-dim hover:text-foreground`}
               >
                 Select all
               </button>
@@ -65,7 +66,7 @@ export function RepoList({
               <button
                 type="button"
                 onClick={onDeselectAll}
-                className="text-[10px] text-dim hover:text-foreground"
+                className={`${FOCUS_RING} rounded text-[10px] text-dim hover:text-foreground`}
               >
                 Deselect all
               </button>
@@ -88,7 +89,7 @@ export function RepoList({
                 checked={repo.enabled}
                 onChange={() => onToggleRepo(repo.id, !repo.enabled)}
                 aria-label={`Enable ${repo.fullName} repository`}
-                className="accent-accent"
+                className={`${FOCUS_RING} accent-accent`}
               />
               <span>{repo.fullName}</span>
             </label>
@@ -98,7 +99,7 @@ export function RepoList({
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="px-2 py-1 text-left text-xs text-dim hover:text-foreground"
+              className={`${FOCUS_RING} rounded px-2 py-1 text-left text-xs text-dim hover:text-foreground`}
             >
               Show {hiddenCount} more
             </button>

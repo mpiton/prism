@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactElement } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
 import type { Issue, IssueState } from "../../lib/types";
 import { LabelTag } from "../atoms/LabelTag";
@@ -26,7 +27,7 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
       href={issue.url}
       onClick={handleClick}
       aria-label={`Issue #${issue.number}: ${issue.title} (${issue.state})`}
-      className="group/card flex min-w-0 cursor-pointer flex-col gap-1 rounded border border-border px-3 py-2 no-underline hover:bg-surface-hover"
+      className={`${FOCUS_RING} group/card flex min-w-0 cursor-pointer flex-col gap-1 rounded border border-border px-3 py-2 no-underline hover:bg-surface-hover`}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span
@@ -50,7 +51,12 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
       </div>
 
       <div className="flex min-w-0 items-center gap-2 pl-[18px]">
-        <span className="min-w-0 max-w-[40%] truncate rounded bg-fg/10 px-1.5 py-0.5 text-xs text-fg/60" title={repoName}>{repoName}</span>
+        <span
+          className="min-w-0 max-w-[40%] truncate rounded bg-fg/10 px-1.5 py-0.5 text-xs text-fg/60"
+          title={repoName}
+        >
+          {repoName}
+        </span>
         {issue.labels.length > 0 && (
           <span className="flex min-w-0 items-center gap-1 overflow-hidden">
             {issue.labels.map((label) => (

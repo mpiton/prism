@@ -1,4 +1,5 @@
 import { type ReactElement, useState } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
 import type { PullRequestWithReview } from "../../lib/types";
 import { CI } from "../atoms/CI";
@@ -18,11 +19,7 @@ interface ReviewCardProps {
   }) => void;
 }
 
-export function ReviewCard({
-  data,
-  onOpen,
-  onWorkspaceAction,
-}: ReviewCardProps): ReactElement {
+export function ReviewCard({ data, onOpen, onWorkspaceAction }: ReviewCardProps): ReactElement {
   const { pullRequest: pr, workspace } = data;
   const [loading, setLoading] = useState(false);
 
@@ -51,7 +48,7 @@ export function ReviewCard({
         href={pr.url}
         onClick={handleClick}
         aria-label={`PR #${pr.number}: ${pr.title} by ${pr.author}`}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
+        className={`${FOCUS_RING} flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded no-underline`}
       >
         <PriorityBar priority={pr.priority} />
 
@@ -74,14 +71,16 @@ export function ReviewCard({
         </div>
       </a>
 
-      {onWorkspaceAction && pr.state === "open" && ((workspace && workspace.state !== "archived") || pr.headRefName) && (
-        <WsBadge
-          state={workspace?.state === "archived" ? undefined : workspace?.state}
-          loading={loading}
-          onClick={handleWorkspace}
-          ariaLabel={`${workspace?.state === "active" ? "Resume" : workspace?.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
-        />
-      )}
+      {onWorkspaceAction &&
+        pr.state === "open" &&
+        ((workspace && workspace.state !== "archived") || pr.headRefName) && (
+          <WsBadge
+            state={workspace?.state === "archived" ? undefined : workspace?.state}
+            loading={loading}
+            onClick={handleWorkspace}
+            ariaLabel={`${workspace?.state === "active" ? "Resume" : workspace?.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
+          />
+        )}
     </div>
   );
 }

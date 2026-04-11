@@ -1,9 +1,5 @@
-import type {
-  FocusEventHandler,
-  KeyboardEventHandler,
-  ReactElement,
-  Ref,
-} from "react";
+import type { FocusEventHandler, KeyboardEventHandler, ReactElement, Ref } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { DashboardView } from "../../stores/dashboard";
 
 interface NavItemProps {
@@ -39,7 +35,7 @@ export function NavItem({
       aria-current={isActive ? "page" : undefined}
       aria-label={count !== undefined && count > 0 ? `${label} (${count})` : undefined}
       tabIndex={tabIndex}
-      className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm ${
+      className={`${FOCUS_RING} flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm ${
         isActive
           ? "bg-surface text-white hover:bg-surface-hover"
           : "text-dim hover:bg-surface-hover hover:text-foreground"

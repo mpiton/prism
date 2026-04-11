@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { FOCUS_RING } from "../../lib/a11y";
 import { authSetToken, authGetStatus, authLogout } from "../../lib/tauri";
 
 function extractErrorMessage(error: unknown): string {
@@ -76,7 +77,7 @@ export function AuthSetup() {
         <button
           type="button"
           onClick={() => statusQuery.refetch()}
-          className="rounded-md border border-border bg-bg px-4 py-2 text-sm text-fg transition-colors hover:bg-surface"
+          className={`${FOCUS_RING} rounded-md border border-border bg-bg px-4 py-2 text-sm text-fg transition-colors hover:bg-surface`}
         >
           Retry
         </button>
@@ -93,7 +94,7 @@ export function AuthSetup() {
           type="button"
           onClick={() => logoutMutation.mutate()}
           disabled={logoutMutation.isPending}
-          className="rounded-md border border-border bg-bg px-4 py-2 text-sm text-fg transition-colors hover:bg-surface disabled:opacity-50"
+          className={`${FOCUS_RING} rounded-md border border-border bg-bg px-4 py-2 text-sm text-fg transition-colors hover:bg-surface disabled:opacity-50`}
         >
           Disconnect
         </button>
@@ -118,8 +119,12 @@ export function AuthSetup() {
         <p className="text-xs text-muted">
           <button
             type="button"
-            onClick={() => { openUrl("https://github.com/settings/tokens/new?scopes=repo,read:org&description=PRism").catch(() => {}); }}
-            className="text-accent underline hover:opacity-80"
+            onClick={() => {
+              openUrl(
+                "https://github.com/settings/tokens/new?scopes=repo,read:org&description=PRism",
+              ).catch(() => {});
+            }}
+            className={`${FOCUS_RING} rounded text-accent underline hover:opacity-80`}
           >
             Create a token
           </button>
@@ -137,7 +142,7 @@ export function AuthSetup() {
         onChange={(e) => setToken(e.target.value)}
         placeholder="ghp_..."
         autoComplete="off"
-        className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted"
+        className={`${FOCUS_RING} rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted`}
       />
 
       {displayError && (
@@ -149,7 +154,7 @@ export function AuthSetup() {
       <button
         type="submit"
         disabled={!token.trim() || setTokenMutation.isPending}
-        className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-bg transition-colors hover:opacity-90 disabled:opacity-50"
+        className={`${FOCUS_RING} rounded-md bg-accent px-4 py-2 text-sm font-medium text-bg transition-colors hover:opacity-90 disabled:opacity-50`}
       >
         {setTokenMutation.isPending ? "Connecting…" : "Connect"}
       </button>
