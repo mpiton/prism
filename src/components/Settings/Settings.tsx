@@ -4,6 +4,7 @@ import { getConfig } from "../../lib/tauri";
 import { GitHubSettings } from "./GitHubSettings";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 import { RepositorySettings } from "./RepositorySettings";
+import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { Stats } from "./Stats";
 import { DebugInfo } from "./DebugInfo";
 
@@ -46,6 +47,8 @@ export function Settings(): ReactElement {
       <GitHubSettings config={config} onError={setSaveError} />
       <WorkspaceSettings config={config} onError={setSaveError} />
       <RepositorySettings onError={setSaveError} />
+
+      <KeyboardShortcuts />
 
       <Stats />
 

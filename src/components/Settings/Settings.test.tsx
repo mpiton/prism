@@ -133,6 +133,7 @@ describe("Settings", () => {
     expect(await screen.findByTestId("settings-github")).toBeInTheDocument();
     expect(screen.getByTestId("settings-workspaces")).toBeInTheDocument();
     expect(screen.getByTestId("settings-repos")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-keyboard-shortcuts")).toBeInTheDocument();
   });
 
   it("should show loading state while config is fetching", () => {
