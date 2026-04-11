@@ -21,8 +21,8 @@ export function WsBadge({ state, loading, onClick, ariaLabel }: WsBadgeProps): R
 
   const label = loading
     ? "cloning…"
-    : state
-      ? LABEL_MAP[state as Exclude<WorkspaceState, "archived">]
+    : state === "active" || state === "suspended"
+      ? LABEL_MAP[state]
       : "open";
 
   return (

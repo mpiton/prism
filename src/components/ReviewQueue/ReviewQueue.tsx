@@ -1,5 +1,6 @@
 import { type ReactElement, useEffect, useMemo } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
+import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
 import type { Priority, PullRequestWithReview } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { useDashboardStore } from "../../stores/dashboard";
@@ -35,8 +36,6 @@ type PriorityFilter = "all" | Priority;
 const FOCUS_PRIORITIES: readonly Priority[] = ["critical", "high"];
 
 const PRIORITY_FILTERS: readonly PriorityFilter[] = ["all", "critical", "high", "medium", "low"];
-
-const FILTER_BUTTON_CLASS = `${FOCUS_RING} inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors`;
 
 const INLINE_CONTROL_CLASS = `${FOCUS_RING} min-h-11 rounded px-3 text-xs transition-colors`;
 

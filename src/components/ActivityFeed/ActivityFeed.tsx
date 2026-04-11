@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactElement, useMemo, useState } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
+import { ACTION_BUTTON_CLASS, FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
 import type { Activity, ActivityType } from "../../lib/types";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
@@ -42,10 +43,6 @@ const FILTER_LABEL: Record<FilterType, string> = {
   mention: "mention",
   other: "other",
 };
-
-const FILTER_BUTTON_CLASS = `${FOCUS_RING} inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors`;
-
-const ACTION_BUTTON_CLASS = `${FOCUS_RING} inline-flex min-h-11 items-center rounded px-3 text-xs transition-colors`;
 
 function matchesFilter(activity: Activity, filter: FilterType): boolean {
   if (filter === "all") return true;

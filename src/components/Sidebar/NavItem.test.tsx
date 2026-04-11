@@ -64,7 +64,7 @@ describe("NavItem", () => {
   it("should apply the focus-visible ring for keyboard accessibility (WCAG 2.4.7)", () => {
     render(<NavItem label="Overview" view="overview" isActive={false} onClick={vi.fn()} />);
     const button = screen.getByRole("button", { name: /overview/i });
-    for (const token of FOCUS_RING.split(" ")) {
+    for (const token of FOCUS_RING.trim().split(/\s+/)) {
       expect(button).toHaveClass(token);
     }
   });

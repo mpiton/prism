@@ -18,8 +18,8 @@ describe("FOCUS_RING", () => {
     expect(FOCUS_RING).toContain("focus-visible:ring-offset-2");
   });
 
-  it("should offset against the page background (bg token) so the ring reads on dark surfaces", () => {
-    expect(FOCUS_RING).toContain("focus-visible:ring-offset-bg");
+  it("should offset with a transparent color so the element's own background shows through on any surface", () => {
+    expect(FOCUS_RING).toContain("focus-visible:ring-offset-transparent");
   });
 
   it("should not rely on the plain :focus selector which would trigger on mouse clicks", () => {

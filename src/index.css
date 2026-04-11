@@ -49,11 +49,17 @@ body {
 /* Interactive elements should also carry the `FOCUS_RING` Tailwind class from
    src/lib/a11y.ts for a polished ring. This fallback keeps keyboard focus
    visible on any element that slipped through (third-party widgets, future
-   code). We avoid box-shadow here so it does not conflict with the Tailwind
-   `ring-*` utilities (which render via box-shadow). */
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+   code).
+
+   Wrapped in `@layer base` so Tailwind v4's `utilities` layer (where
+   `outline-none` lives as part of `FOCUS_RING`) can override it — unlayered
+   rules beat every named layer regardless of specificity, which would
+   otherwise force a double focus indicator on instrumented elements. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
 
 /* ── Scrollbar dark theme ─────────────────────── */

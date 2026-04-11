@@ -97,7 +97,7 @@ describe("ActivityFeed", () => {
   it("should apply the focus-visible ring to the search input (WCAG 2.4.7)", () => {
     render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
     const search = screen.getByRole("searchbox", { name: /filter activity/i });
-    for (const token of FOCUS_RING.split(" ")) {
+    for (const token of FOCUS_RING.trim().split(/\s+/)) {
       expect(search).toHaveClass(token);
     }
   });

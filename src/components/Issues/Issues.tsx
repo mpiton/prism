@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
+import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
 import type { Issue } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
@@ -17,8 +18,6 @@ interface IssuesProps {
 }
 
 type Tab = "open" | "closed";
-
-const FILTER_BUTTON_CLASS = `${FOCUS_RING} inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors`;
 
 function isOpen(issue: Issue): boolean {
   return issue.state === "open";

@@ -83,7 +83,7 @@ describe("MyPRs", () => {
   it("should apply the focus-visible ring to the search input (WCAG 2.4.7)", () => {
     render(<MyPRs prs={allPrs} onOpen={onOpen} />);
     const search = screen.getByRole("searchbox", { name: /filter prs/i });
-    for (const token of FOCUS_RING.split(" ")) {
+    for (const token of FOCUS_RING.trim().split(/\s+/)) {
       expect(search).toHaveClass(token);
     }
   });
