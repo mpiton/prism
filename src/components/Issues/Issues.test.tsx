@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { Issue, Repo } from "../../lib/types";
 import { Issues } from "./Issues";
 
@@ -75,6 +76,14 @@ beforeEach(() => {
 });
 
 describe("Issues", () => {
+  it("should apply the focus-visible ring to the search input (WCAG 2.4.7)", () => {
+    render(<Issues issues={allIssues} onOpen={onOpen} />);
+    const search = screen.getByRole("searchbox", { name: /filter issues/i });
+    for (const token of FOCUS_RING.split(" ")) {
+      expect(search).toHaveClass(token);
+    }
+  });
+
   it("should show open issues by default", () => {
     render(<Issues issues={allIssues} onOpen={onOpen} />);
 
@@ -204,8 +213,18 @@ describe("Issues", () => {
   });
 
   it("should always display fullName for all repos", () => {
-    const issue1 = makeIssue({ number: 1, title: "Issue in org-a", state: "open", repoId: "repo-a" });
-    const issue2 = makeIssue({ number: 2, title: "Issue in org-b", state: "open", repoId: "repo-b" });
+    const issue1 = makeIssue({
+      number: 1,
+      title: "Issue in org-a",
+      state: "open",
+      repoId: "repo-a",
+    });
+    const issue2 = makeIssue({
+      number: 2,
+      title: "Issue in org-b",
+      state: "open",
+      repoId: "repo-b",
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo({ id: "repo-a", org: "org-a", name: "shared", fullName: "org-a/shared" }),
@@ -220,7 +239,12 @@ describe("Issues", () => {
   });
 
   it("should fallback to repoId when repo not found in map", () => {
-    const orphanIssue = makeIssue({ number: 99, title: "Orphan issue", state: "open", repoId: "unknown-repo" });
+    const orphanIssue = makeIssue({
+      number: 99,
+      title: "Orphan issue",
+      state: "open",
+      repoId: "unknown-repo",
+    });
 
     render(<Issues issues={[orphanIssue]} onOpen={onOpen} />);
 

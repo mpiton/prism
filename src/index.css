@@ -45,15 +45,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Focus ring global (WCAG AA) ─────────────── */
-:root {
-  --focus-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
-}
-
+/* ── Focus ring global (WCAG 2.4.7 safety net) ── */
+/* Interactive elements should also carry the `FOCUS_RING` Tailwind class from
+   src/lib/a11y.ts for a polished ring. This fallback keeps keyboard focus
+   visible on any element that slipped through (third-party widgets, future
+   code). We avoid box-shadow here so it does not conflict with the Tailwind
+   `ring-*` utilities (which render via box-shadow). */
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  box-shadow: var(--focus-shadow);
 }
 
 /* ── Scrollbar dark theme ─────────────────────── */

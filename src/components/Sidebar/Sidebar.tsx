@@ -5,6 +5,7 @@ import { useDashboardStore } from "../../stores/dashboard";
 import type { DashboardView } from "../../stores/dashboard";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useGitHubData } from "../../hooks/useGitHubData";
+import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos, setRepoEnabled, authGetStatus } from "../../lib/tauri";
 import { NavItem } from "./NavItem";
 import { WorkspaceList } from "./WorkspaceList";
@@ -13,7 +14,12 @@ import { RepoList } from "./RepoList";
 interface NavEntry {
   readonly label: string;
   readonly view: DashboardView;
-  readonly countKey?: "pendingReviews" | "openPrs" | "openIssues" | "totalWorkspaces" | "unreadActivity";
+  readonly countKey?:
+    | "pendingReviews"
+    | "openPrs"
+    | "openIssues"
+    | "totalWorkspaces"
+    | "unreadActivity";
 }
 
 const NAV_ITEMS: readonly NavEntry[] = [
@@ -76,9 +82,7 @@ export function Sidebar(): ReactElement {
   const navGroupRef = useRef<HTMLDivElement | null>(null);
   const navItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const workspaces = (dashboard?.workspaces ?? []).filter(
-    (ws) => ws.state !== "archived",
-  );
+  const workspaces = (dashboard?.workspaces ?? []).filter((ws) => ws.state !== "archived");
   const repos = reposQuery.data ?? [];
   const enabledRepos = repos.filter((r) => r.enabled);
   const username = authQuery.data?.username ?? null;
@@ -92,9 +96,7 @@ export function Sidebar(): ReactElement {
 
   async function handleSelectAll() {
     const toEnable = repos.filter((r) => !r.enabled);
-    const results = await Promise.allSettled(
-      toEnable.map((r) => setRepoEnabled(r.id, true)),
-    );
+    const results = await Promise.allSettled(toEnable.map((r) => setRepoEnabled(r.id, true)));
     await queryClient.invalidateQueries({ queryKey: ["repos"] });
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length > 0) {
@@ -104,9 +106,7 @@ export function Sidebar(): ReactElement {
 
   async function handleDeselectAll() {
     const toDisable = repos.filter((r) => r.enabled);
-    const results = await Promise.allSettled(
-      toDisable.map((r) => setRepoEnabled(r.id, false)),
-    );
+    const results = await Promise.allSettled(toDisable.map((r) => setRepoEnabled(r.id, false)));
     await queryClient.invalidateQueries({ queryKey: ["repos"] });
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length > 0) {
@@ -146,7 +146,11 @@ export function Sidebar(): ReactElement {
   }
 
   return (
-    <nav data-testid="sidebar" aria-label="Main navigation" className="flex h-full flex-col gap-4 p-3">
+    <nav
+      data-testid="sidebar"
+      aria-label="Main navigation"
+      className="flex h-full flex-col gap-4 p-3"
+    >
       {/* Logo */}
       <div className="px-2 py-1">
         <h1 className="text-sm font-bold text-white">PRism</h1>
@@ -154,7 +158,12 @@ export function Sidebar(): ReactElement {
       </div>
 
       {/* Navigation */}
-      <div ref={navGroupRef} className="flex flex-col gap-0.5" role="group" aria-label="Primary views">
+      <div
+        ref={navGroupRef}
+        className="flex flex-col gap-0.5"
+        role="group"
+        aria-label="Primary views"
+      >
         {NAV_ITEMS.map((item, index) => (
           <NavItem
             key={item.view}
@@ -175,14 +184,18 @@ export function Sidebar(): ReactElement {
 
       {/* Workspaces section */}
       {workspaces.length > 0 && (
-        <div role="region" aria-labelledby="sidebar-workspaces-heading" className="flex flex-col gap-1">
-          <h3 id="sidebar-workspaces-heading" className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim">
+        <div
+          role="region"
+          aria-labelledby="sidebar-workspaces-heading"
+          className="flex flex-col gap-1"
+        >
+          <h3
+            id="sidebar-workspaces-heading"
+            className="px-2 text-[10px] font-semibold uppercase tracking-wider text-dim"
+          >
             Workspaces
           </h3>
-          <WorkspaceList
-            workspaces={workspaces}
-            onWorkspaceClick={handleWorkspaceClick}
-          />
+          <WorkspaceList workspaces={workspaces} onWorkspaceClick={handleWorkspaceClick} />
         </div>
       )}
 
@@ -198,7 +211,7 @@ export function Sidebar(): ReactElement {
             aria-expanded={isReposExpanded}
             aria-label={`Repos ${enabledRepos.length}`}
             onClick={() => setIsReposExpanded((prev) => !prev)}
-            className="flex w-full items-center justify-between px-2 text-[10px] font-semibold uppercase tracking-wider text-dim hover:text-foreground"
+            className={`${FOCUS_RING} flex w-full items-center justify-between rounded px-2 text-[10px] font-semibold uppercase tracking-wider text-dim hover:text-foreground`}
           >
             <span id="sidebar-repos-heading" className="inline-flex items-baseline">
               <span>Repos</span>
@@ -225,7 +238,7 @@ export function Sidebar(): ReactElement {
           type="button"
           aria-pressed={focusMode}
           onClick={toggleFocusMode}
-          className={`w-full rounded px-2 py-2 text-xs font-medium ${
+          className={`${FOCUS_RING} w-full rounded px-2 py-2 text-xs font-medium ${
             focusMode
               ? "bg-accent text-bg font-semibold hover:bg-accent/80"
               : "text-dim hover:text-foreground"
@@ -237,9 +250,7 @@ export function Sidebar(): ReactElement {
 
       {/* Footer */}
       <div className="mt-auto border-t border-border px-2 pt-2">
-        {username && (
-          <p className="truncate text-xs text-dim">{username}</p>
-        )}
+        {username && <p className="truncate text-xs text-dim">{username}</p>}
         <p className="text-[10px] text-dim/60">⌘K</p>
       </div>
     </nav>

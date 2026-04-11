@@ -1,4 +1,5 @@
 import { Component, Fragment, type ErrorInfo, type ReactNode } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 
 interface ErrorBoundaryProps {
   readonly children: ReactNode;
@@ -35,7 +36,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <p className="text-lg font-medium">Something went wrong</p>
           <button
             type="button"
-            className="rounded border border-border px-4 py-2 text-sm hover:bg-bg-hover"
+            className={`${FOCUS_RING} rounded border border-border px-4 py-2 text-sm hover:bg-bg-hover`}
             onClick={() =>
               this.setState((prev) => ({
                 error: null,

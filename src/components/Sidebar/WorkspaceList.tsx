@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { Workspace, WorkspaceState } from "../../lib/types";
 
 interface WorkspaceListProps {
@@ -12,10 +13,7 @@ const DOT_COLOR: Record<WorkspaceState, string> = {
   archived: "bg-dim",
 };
 
-export function WorkspaceList({
-  workspaces,
-  onWorkspaceClick,
-}: WorkspaceListProps): ReactElement {
+export function WorkspaceList({ workspaces, onWorkspaceClick }: WorkspaceListProps): ReactElement {
   return (
     <div className="flex flex-col gap-0.5">
       {workspaces.map((ws) => (
@@ -24,7 +22,7 @@ export function WorkspaceList({
           type="button"
           onClick={() => onWorkspaceClick(ws.id)}
           aria-label={`PR #${ws.pullRequestNumber} (${ws.state})`}
-          className="flex items-center gap-2 rounded px-2 py-2 text-left text-xs text-dim hover:bg-surface-hover hover:text-foreground"
+          className={`${FOCUS_RING} flex items-center gap-2 rounded px-2 py-2 text-left text-xs text-dim hover:bg-surface-hover hover:text-foreground`}
         >
           <span
             data-state={ws.state}

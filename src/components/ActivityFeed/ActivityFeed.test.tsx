@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { Activity, Repo } from "../../lib/types";
 import { ActivityFeed } from "./ActivityFeed";
 
@@ -45,14 +46,45 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
   };
 }
 
-const commentActivity = makeActivity({ id: "act-c", activityType: "comment_added", message: "A comment" });
-const mentionActivity = makeActivity({ id: "act-m", activityType: "comment_added", message: "Hey @alice check this out" });
-const reviewActivity = makeActivity({ id: "act-r", activityType: "review_submitted", message: "Approved" });
-const ciActivity = makeActivity({ id: "act-ci", activityType: "ci_completed", message: "CI passed" });
-const prOpenedActivity = makeActivity({ id: "act-pr", activityType: "pr_opened", message: "Opened PR" });
-const issueClosed = makeActivity({ id: "act-ic", activityType: "issue_closed", message: "Issue closed" });
+const commentActivity = makeActivity({
+  id: "act-c",
+  activityType: "comment_added",
+  message: "A comment",
+});
+const mentionActivity = makeActivity({
+  id: "act-m",
+  activityType: "comment_added",
+  message: "Hey @alice check this out",
+});
+const reviewActivity = makeActivity({
+  id: "act-r",
+  activityType: "review_submitted",
+  message: "Approved",
+});
+const ciActivity = makeActivity({
+  id: "act-ci",
+  activityType: "ci_completed",
+  message: "CI passed",
+});
+const prOpenedActivity = makeActivity({
+  id: "act-pr",
+  activityType: "pr_opened",
+  message: "Opened PR",
+});
+const issueClosed = makeActivity({
+  id: "act-ic",
+  activityType: "issue_closed",
+  message: "Issue closed",
+});
 
-const allActivities = [commentActivity, mentionActivity, reviewActivity, ciActivity, prOpenedActivity, issueClosed];
+const allActivities = [
+  commentActivity,
+  mentionActivity,
+  reviewActivity,
+  ciActivity,
+  prOpenedActivity,
+  issueClosed,
+];
 
 const onMarkAllRead = vi.fn();
 
@@ -62,6 +94,14 @@ beforeEach(() => {
 });
 
 describe("ActivityFeed", () => {
+  it("should apply the focus-visible ring to the search input (WCAG 2.4.7)", () => {
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
+    const search = screen.getByRole("searchbox", { name: /filter activity/i });
+    for (const token of FOCUS_RING.split(" ")) {
+      expect(search).toHaveClass(token);
+    }
+  });
+
   it("should render all activities when no filter is selected", () => {
     render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
 

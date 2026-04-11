@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { WorkspaceState } from "../../lib/types";
 
 interface WsBadgeProps {
@@ -18,7 +19,11 @@ export function WsBadge({ state, loading, onClick, ariaLabel }: WsBadgeProps): R
     return null;
   }
 
-  const label = loading ? "cloning…" : state ? LABEL_MAP[state as Exclude<WorkspaceState, "archived">] : "open";
+  const label = loading
+    ? "cloning…"
+    : state
+      ? LABEL_MAP[state as Exclude<WorkspaceState, "archived">]
+      : "open";
 
   return (
     <button
@@ -26,7 +31,7 @@ export function WsBadge({ state, loading, onClick, ariaLabel }: WsBadgeProps): R
       onClick={loading ? undefined : onClick}
       disabled={loading}
       aria-label={ariaLabel}
-      className={`rounded border border-accent/30 px-2 py-2 text-xs text-accent ${loading ? "animate-pulse opacity-60" : "hover:bg-accent/10"}`}
+      className={`${FOCUS_RING} rounded border border-accent/30 px-2 py-2 text-xs text-accent ${loading ? "animate-pulse opacity-60" : "hover:bg-accent/10"}`}
     >
       {label}
     </button>

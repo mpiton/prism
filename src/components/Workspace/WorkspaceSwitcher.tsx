@@ -1,4 +1,5 @@
 import { useRef, useCallback, useMemo } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useSettingsStore } from "../../stores/settings";
 import type { Workspace, WorkspaceState } from "../../lib/types";
@@ -20,15 +21,10 @@ function sanitizeMax(value: number | undefined | null): number {
   return Number.isFinite(value) && value! > 0 ? value! : DEFAULT_MAX_ACTIVE;
 }
 
-export function WorkspaceSwitcher({
-  workspaces,
-  onBackToDashboard,
-}: WorkspaceSwitcherProps) {
+export function WorkspaceSwitcher({ workspaces, onBackToDashboard }: WorkspaceSwitcherProps) {
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
-  const maxActiveWorkspaces = sanitizeMax(
-    useSettingsStore((s) => s.config?.maxActiveWorkspaces),
-  );
+  const maxActiveWorkspaces = sanitizeMax(useSettingsStore((s) => s.config?.maxActiveWorkspaces));
 
   const visibleWorkspaces = useMemo(
     () => workspaces.filter((w) => w.state !== "archived"),
@@ -38,7 +34,7 @@ export function WorkspaceSwitcher({
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const focusedId = visibleWorkspaces.some((w) => w.id === activeWorkspaceId)
     ? activeWorkspaceId
-    : visibleWorkspaces[0]?.id ?? null;
+    : (visibleWorkspaces[0]?.id ?? null);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent, index: number) => {
@@ -81,7 +77,7 @@ export function WorkspaceSwitcher({
       <button
         type="button"
         onClick={onBackToDashboard}
-        className="mr-2 rounded px-2 py-2 text-xs text-dim hover:bg-surface-hover hover:text-text"
+        className={`${FOCUS_RING} mr-2 rounded px-2 py-2 text-xs text-dim hover:bg-surface-hover hover:text-text`}
       >
         Dashboard
       </button>
@@ -92,7 +88,9 @@ export function WorkspaceSwitcher({
           return (
             <button
               key={ws.id}
-              ref={(el) => { tabRefs.current[i] = el; }}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
               type="button"
               role="tab"
               aria-selected={isActive}
@@ -101,7 +99,7 @@ export function WorkspaceSwitcher({
               data-active={isActive ? "true" : "false"}
               onClick={() => setActiveWorkspace(ws.id)}
               onKeyDown={(e) => handleKeyDown(e, i)}
-              className={`flex items-center gap-1.5 rounded px-2.5 py-2 text-xs transition-colors ${
+              className={`${FOCUS_RING} flex items-center gap-1.5 rounded px-2.5 py-2 text-xs transition-colors ${
                 isActive
                   ? "bg-surface-hover text-accent hover:bg-accent/10"
                   : "text-dim hover:bg-surface-hover hover:text-text"

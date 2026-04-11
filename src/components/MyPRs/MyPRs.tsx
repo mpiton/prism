@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import type { PullRequestWithReview } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
@@ -25,8 +26,7 @@ interface MyPRsProps {
 
 type Tab = "open" | "merged";
 
-const FILTER_BUTTON_CLASS =
-  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
+const FILTER_BUTTON_CLASS = `${FOCUS_RING} inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors`;
 
 function isOpen(pr: PullRequestWithReview): boolean {
   const { state } = pr.pullRequest;
@@ -58,12 +58,9 @@ export function MyPRs({
     if (normalizedQuery.length === 0) return true;
     const repoName = repoMap.get(pr.pullRequest.repoId) ?? pr.pullRequest.repoId;
 
-    return [
-      pr.pullRequest.title,
-      pr.pullRequest.author,
-      repoName,
-      ...pr.pullRequest.labels,
-    ].some((value) => value.toLowerCase().includes(normalizedQuery));
+    return [pr.pullRequest.title, pr.pullRequest.author, repoName, ...pr.pullRequest.labels].some(
+      (value) => value.toLowerCase().includes(normalizedQuery),
+    );
   };
 
   const matchingPrs = prs.filter(matchesSearch);
@@ -75,10 +72,7 @@ export function MyPRs({
     listRef.current?.scrollTo({ top: 0, behavior: "instant" });
   }, [tab, normalizedQuery]);
 
-  const navItems = useMemo(
-    () => visible.map((pr) => ({ url: pr.pullRequest.url })),
-    [visible],
-  );
+  const navItems = useMemo(() => visible.map((pr) => ({ url: pr.pullRequest.url })), [visible]);
   useRegisterNavigableItems(navItems);
 
   return (
@@ -117,7 +111,7 @@ export function MyPRs({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Filter PRs..."
             aria-label="Filter PRs"
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted"
+            className={`${FOCUS_RING} w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted`}
           />
 
           <div className="flex gap-1" role="group" aria-label="Filter by state">
@@ -150,10 +144,7 @@ export function MyPRs({
           {visible.length === 0 ? (
             <EmptyState icon="↗" message="No pull requests to display" />
           ) : (
-            <div
-              ref={listRef}
-              className="max-h-[600px] overflow-y-auto"
-            >
+            <div ref={listRef} className="max-h-[600px] overflow-y-auto">
               <div className="flex flex-col gap-1">
                 {visible.map((pr) => (
                   <MyPrCard

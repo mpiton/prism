@@ -1,6 +1,7 @@
 import { type ReactElement, useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
+import { FOCUS_RING } from "../../lib/a11y";
 import { markAllActivityRead, openWorkspace, resumeWorkspace } from "../../lib/tauri";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useDashboardStore } from "../../stores/dashboard";
@@ -214,7 +215,7 @@ export function Overview(): ReactElement {
               aria-expanded={isActivityExpanded}
               aria-controls={isActivityExpanded ? "overview-activity-content" : undefined}
               onClick={() => setIsActivityExpanded((current) => !current)}
-              className="rounded-full border border-border px-3 py-1 text-xs text-dim transition-colors hover:border-foreground hover:text-foreground"
+              className={`${FOCUS_RING} rounded-full border border-border px-3 py-1 text-xs text-dim transition-colors hover:border-foreground hover:text-foreground`}
             >
               {isActivityExpanded ? "Collapse" : "Expand"}
             </button>

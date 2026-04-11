@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { FOCUS_RING } from "../../lib/a11y";
 import { getConfig, setConfig, listRepos, setRepoEnabled } from "../../lib/tauri";
 import type { PartialAppConfig, Repo } from "../../lib/types";
 import { AuthSetup } from "../AuthSetup/AuthSetup";
@@ -69,7 +70,7 @@ function NumberField({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={handleBlur}
-        className="bg-surface border-border w-24 rounded border px-2 py-1 font-mono text-sm text-white"
+        className={`${FOCUS_RING} bg-surface border-border w-24 rounded border px-2 py-1 font-mono text-sm text-white`}
       />
     </label>
   );
@@ -92,7 +93,7 @@ function RepoRow({ repo, disabled, onToggle }: RepoRowProps): ReactElement {
         checked={repo.enabled}
         disabled={disabled}
         onChange={() => onToggle(repo.id, !repo.enabled)}
-        className="accent-accent h-4 w-4"
+        className={`${FOCUS_RING} accent-accent h-4 w-4`}
       />
     </label>
   );
@@ -155,8 +156,7 @@ function getRepoBatchUpdateErrorMessage(err: unknown): string {
 }
 
 const sectionClass = "flex flex-col gap-3 border-b border-border pb-4";
-const controlButtonClass =
-  "rounded border border-border px-2 py-1 text-xs font-medium text-dim transition-colors hover:border-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
+const controlButtonClass = `${FOCUS_RING} rounded border border-border px-2 py-1 text-xs font-medium text-dim transition-colors hover:border-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50`;
 
 export function Settings(): ReactElement {
   const queryClient = useQueryClient();
@@ -291,7 +291,7 @@ export function Settings(): ReactElement {
           placeholder="Filter repositories..."
           value={repoSearch}
           onChange={(e) => setRepoSearch(e.target.value)}
-          className="bg-surface border-border rounded border px-2 py-1 text-sm text-white placeholder:text-muted outline-none"
+          className={`${FOCUS_RING} bg-surface border-border rounded border px-2 py-1 text-sm text-white placeholder:text-muted`}
         />
         <div className="flex flex-wrap items-center gap-2">
           <button

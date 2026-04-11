@@ -1,4 +1,5 @@
 import { type ReactElement, useEffect, useMemo } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { Priority, PullRequestWithReview } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { useDashboardStore } from "../../stores/dashboard";
@@ -33,34 +34,23 @@ type PriorityFilter = "all" | Priority;
 
 const FOCUS_PRIORITIES: readonly Priority[] = ["critical", "high"];
 
-const PRIORITY_FILTERS: readonly PriorityFilter[] = [
-  "all",
-  "critical",
-  "high",
-  "medium",
-  "low",
-];
+const PRIORITY_FILTERS: readonly PriorityFilter[] = ["all", "critical", "high", "medium", "low"];
 
-const FILTER_BUTTON_CLASS =
-  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
+const FILTER_BUTTON_CLASS = `${FOCUS_RING} inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors`;
 
-const INLINE_CONTROL_CLASS =
-  "min-h-11 rounded px-3 text-xs transition-colors";
+const INLINE_CONTROL_CLASS = `${FOCUS_RING} min-h-11 rounded px-3 text-xs transition-colors`;
 
 function sortByPriority(
   reviews: readonly PullRequestWithReview[],
 ): readonly PullRequestWithReview[] {
   return [...reviews].sort(
     (a, b) =>
-      PRIORITY_ORDER[b.pullRequest.priority] -
-        PRIORITY_ORDER[a.pullRequest.priority] ||
+      PRIORITY_ORDER[b.pullRequest.priority] - PRIORITY_ORDER[a.pullRequest.priority] ||
       b.pullRequest.updatedAt.localeCompare(a.pullRequest.updatedAt),
   );
 }
 
-function getUniqueRepos(
-  reviews: readonly PullRequestWithReview[],
-): readonly string[] {
+function getUniqueRepos(reviews: readonly PullRequestWithReview[]): readonly string[] {
   return [...new Set(reviews.map((r) => r.pullRequest.repoId))].sort();
 }
 
@@ -94,10 +84,8 @@ export function ReviewQueue({
 
   const sorted = useMemo(() => {
     const filtered = reviews.filter((r) => {
-      if (focusMode && !FOCUS_PRIORITIES.includes(r.pullRequest.priority))
-        return false;
-      if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter)
-        return false;
+      if (focusMode && !FOCUS_PRIORITIES.includes(r.pullRequest.priority)) return false;
+      if (priorityFilter !== "all" && r.pullRequest.priority !== priorityFilter) return false;
       if (repoFilter && r.pullRequest.repoId !== repoFilter) return false;
       return true;
     });
@@ -139,10 +127,7 @@ export function ReviewQueue({
             ))}
           </div>
 
-          <div
-            data-testid="review-queue-loading"
-            className="flex flex-col gap-1"
-          >
+          <div data-testid="review-queue-loading" className="flex flex-col gap-1">
             {Array.from({ length: 3 }, (_, index) => (
               <CardSkeleton
                 key={`review-skeleton-${index}`}
@@ -162,9 +147,7 @@ export function ReviewQueue({
                   key={f}
                   type="button"
                   aria-pressed={priorityFilter === f}
-                  onClick={() =>
-                    setFilter({ priority: f === "all" ? undefined : f })
-                  }
+                  onClick={() => setFilter({ priority: f === "all" ? undefined : f })}
                   className={`${FILTER_BUTTON_CLASS} ${
                     priorityFilter === f
                       ? "bg-accent text-bg font-semibold hover:bg-accent/80"
@@ -180,9 +163,7 @@ export function ReviewQueue({
               <select
                 aria-label="Filter by repo"
                 value={repoFilter}
-                onChange={(e) =>
-                  setFilter({ repo: e.target.value || undefined })
-                }
+                onChange={(e) => setFilter({ repo: e.target.value || undefined })}
                 className={`cursor-pointer border border-border bg-surface text-foreground hover:border-foreground ${INLINE_CONTROL_CLASS}`}
               >
                 <option value="">All repos</option>

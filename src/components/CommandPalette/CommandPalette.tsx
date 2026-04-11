@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactElement } from "re
 import { Command } from "cmdk";
 import { useQuery } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
+import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import { useDashboardStore } from "../../stores/dashboard";
 import { openUrl } from "../../lib/open";
@@ -64,7 +65,9 @@ function PaletteItemRow({ item }: { readonly item: PaletteItem }): ReactElement 
   return (
     <>
       <span className="shrink-0 text-fg/50">#{item.number}</span>
-      <span className="truncate" title={item.title}>{item.title}</span>
+      <span className="truncate" title={item.title}>
+        {item.title}
+      </span>
       <span className="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs text-fg/60">
         {item.repoName}
       </span>
@@ -93,10 +96,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     }
 
     return new Map(
-      repos.map((repo) => [
-        repo.id,
-        nameCounts.get(repo.name) === 1 ? repo.name : repo.fullName,
-      ]),
+      repos.map((repo) => [repo.id, nameCounts.get(repo.name) === 1 ? repo.name : repo.fullName]),
     );
   }, [repos]);
 
@@ -114,10 +114,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     return { prItems: allPrItems, issueItems: allIssueItems };
   }, [dashboard, repoMap]);
 
-  const allItems = useMemo(
-    () => [...prItems, ...issueItems],
-    [prItems, issueItems],
-  );
+  const allItems = useMemo(() => [...prItems, ...issueItems], [prItems, issueItems]);
 
   const findSelectedItem = useCallback(
     () => allItems.find((item) => item.id.toLowerCase() === selectedValue) ?? null,
@@ -154,7 +151,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       <div className="w-full max-w-lg rounded-lg border border-border bg-bg shadow-xl">
         <Command.Input
           placeholder="Search PRs and issues…"
-          className="w-full border-b border-border bg-transparent px-4 py-3 text-sm text-fg placeholder:text-fg/50"
+          className={`${FOCUS_RING} w-full border-b border-border bg-transparent px-4 py-3 text-sm text-fg placeholder:text-fg/50`}
         />
         <Command.List className="max-h-80 overflow-y-auto p-2">
           <Command.Empty className="px-4 py-6 text-center text-sm text-fg/50">

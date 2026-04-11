@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { FOCUS_RING } from "../../lib/a11y";
 import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types";
 import { resumeWorkspace } from "../../lib/tauri";
 import { useWorkspacesStore } from "../../stores/workspaces";
@@ -7,9 +8,7 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { WorkspaceStatusBar } from "./WorkspaceStatusBar";
 import { WorkspaceListPage } from "./WorkspaceListPage";
 
-const Terminal = lazy(() =>
-  import("./Terminal").then((module) => ({ default: module.Terminal })),
-);
+const Terminal = lazy(() => import("./Terminal").then((module) => ({ default: module.Terminal })));
 
 function TerminalLoadingFallback(): ReactElement {
   return (
@@ -80,14 +79,8 @@ export function WorkspaceView({
   );
 
   return (
-    <section
-      data-testid="workspace-view"
-      className="flex h-full flex-col"
-    >
-      <WorkspaceSwitcher
-        workspaces={workspaces}
-        onBackToDashboard={onBackToDashboard}
-      />
+    <section data-testid="workspace-view" className="flex h-full flex-col">
+      <WorkspaceSwitcher workspaces={workspaces} onBackToDashboard={onBackToDashboard} />
 
       {active && isSuspended ? (
         <div
@@ -98,7 +91,7 @@ export function WorkspaceView({
           <button
             data-testid="btn-wake-workspace"
             type="button"
-            className="rounded bg-neutral-700 px-4 py-2 text-sm text-white hover:bg-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`${FOCUS_RING} rounded bg-neutral-700 px-4 py-2 text-sm text-white hover:bg-neutral-600 disabled:cursor-not-allowed disabled:opacity-50`}
             disabled={waking}
             onClick={handleWakeWorkspace}
           >

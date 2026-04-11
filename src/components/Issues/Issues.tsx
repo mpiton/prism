@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import type { Issue } from "../../lib/types";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
@@ -17,8 +18,7 @@ interface IssuesProps {
 
 type Tab = "open" | "closed";
 
-const FILTER_BUTTON_CLASS =
-  "inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors";
+const FILTER_BUTTON_CLASS = `${FOCUS_RING} inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 text-xs leading-none transition-colors`;
 
 function isOpen(issue: Issue): boolean {
   return issue.state === "open";
@@ -28,11 +28,7 @@ function isClosed(issue: Issue): boolean {
   return issue.state === "closed";
 }
 
-export function Issues({
-  issues,
-  isLoading = false,
-  onOpen,
-}: IssuesProps): ReactElement {
+export function Issues({ issues, isLoading = false, onOpen }: IssuesProps): ReactElement {
   const [tab, setTab] = useState<Tab>("open");
   const [searchQuery, setSearchQuery] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
@@ -73,10 +69,7 @@ export function Issues({
     useFlushSync: false,
   });
 
-  const navItems = useMemo(
-    () => visible.map((issue) => ({ url: issue.url })),
-    [visible],
-  );
+  const navItems = useMemo(() => visible.map((issue) => ({ url: issue.url })), [visible]);
   useRegisterNavigableItems(navItems);
 
   return (
@@ -112,7 +105,7 @@ export function Issues({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Filter issues..."
             aria-label="Filter issues"
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted"
+            className={`${FOCUS_RING} w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted`}
           />
 
           <div className="flex gap-1" role="group" aria-label="Filter by state">
@@ -145,17 +138,17 @@ export function Issues({
           {visible.length === 0 ? (
             <EmptyState icon="◎" message="No issues to display" />
           ) : (
-            <div
-              ref={parentRef}
-              className="max-h-[600px] overflow-y-auto"
-            >
+            <div ref={parentRef} className="max-h-[600px] overflow-y-auto">
               <div
                 className="relative w-full"
                 style={{ height: `${virtualizer.getTotalSize()}px` }}
               >
                 {virtualizer.getVirtualItems().map((virtualItem) => {
                   const issue = visible[virtualItem.index];
-                  if (!issue) return <div key={virtualItem.key} style={{ height: `${virtualItem.size}px` }} />;
+                  if (!issue)
+                    return (
+                      <div key={virtualItem.key} style={{ height: `${virtualItem.size}px` }} />
+                    );
                   return (
                     <div
                       key={virtualItem.key}

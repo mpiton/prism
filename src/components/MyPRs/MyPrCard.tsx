@@ -1,4 +1,5 @@
 import { type ReactElement, useState } from "react";
+import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
 import type { CiStatus, PullRequestWithReview } from "../../lib/types";
 import { CI } from "../atoms/CI";
@@ -40,19 +41,20 @@ interface ReviewDot {
   readonly color: string;
 }
 
-function buildReviewDots(reviewSummary: PullRequestWithReview["reviewSummary"]): readonly ReviewDot[] {
+function buildReviewDots(
+  reviewSummary: PullRequestWithReview["reviewSummary"],
+): readonly ReviewDot[] {
   const dots: ReviewDot[] = [];
-  for (let i = 0; i < reviewSummary.approved; i++) dots.push({ key: `approved-${i}`, color: "bg-green" });
-  for (let i = 0; i < reviewSummary.changesRequested; i++) dots.push({ key: `changes-${i}`, color: "bg-red" });
-  for (let i = 0; i < reviewSummary.pending; i++) dots.push({ key: `pending-${i}`, color: "bg-dim" });
+  for (let i = 0; i < reviewSummary.approved; i++)
+    dots.push({ key: `approved-${i}`, color: "bg-green" });
+  for (let i = 0; i < reviewSummary.changesRequested; i++)
+    dots.push({ key: `changes-${i}`, color: "bg-red" });
+  for (let i = 0; i < reviewSummary.pending; i++)
+    dots.push({ key: `pending-${i}`, color: "bg-dim" });
   return dots;
 }
 
-export function MyPrCard({
-  data,
-  onOpen,
-  onWorkspaceAction,
-}: MyPrCardProps): ReactElement {
+export function MyPrCard({ data, onOpen, onWorkspaceAction }: MyPrCardProps): ReactElement {
   const { pullRequest: pr, workspace } = data;
   const merged = pr.state === "merged";
   const [loading, setLoading] = useState(false);
@@ -86,7 +88,7 @@ export function MyPrCard({
         href={pr.url}
         onClick={handleClick}
         aria-label={`PR #${pr.number}: ${pr.title}`}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 no-underline"
+        className={`${FOCUS_RING} flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded no-underline`}
       >
         <span
           data-testid="ci-dot"
@@ -132,14 +134,16 @@ export function MyPrCard({
         </div>
       </a>
 
-      {onWorkspaceAction && (pr.state === "open" || pr.state === "draft") && ((workspace && workspace.state !== "archived") || pr.headRefName) && (
-        <WsBadge
-          state={workspace?.state === "archived" ? undefined : workspace?.state}
-          loading={loading}
-          onClick={handleWorkspace}
-          ariaLabel={`${workspace?.state === "active" ? "Resume" : workspace?.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
-        />
-      )}
+      {onWorkspaceAction &&
+        (pr.state === "open" || pr.state === "draft") &&
+        ((workspace && workspace.state !== "archived") || pr.headRefName) && (
+          <WsBadge
+            state={workspace?.state === "archived" ? undefined : workspace?.state}
+            loading={loading}
+            onClick={handleWorkspace}
+            ariaLabel={`${workspace?.state === "active" ? "Resume" : workspace?.state === "suspended" ? "Wake" : "Open"} workspace for PR #${pr.number}`}
+          />
+        )}
     </div>
   );
 }
