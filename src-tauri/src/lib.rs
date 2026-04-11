@@ -337,6 +337,226 @@ mod tests {
         );
     }
 
+    /// Tokens that must NEVER appear in any CSP (production or development).
+    /// The sweep is token-based (whitespace-split), so `http:` matches only a
+    /// bare scheme-wide allowance — specific hosts like `http://ipc.localhost`
+    /// are not flagged because they are distinct tokens, and they are pinned
+    /// separately by the exact-allowlist assertions.
+    const CSP_FORBIDDEN_TOKENS: &[&str] = &[
+        "'unsafe-eval'",
+        "'unsafe-hashes'",
+        "'wasm-unsafe-eval'",
+        "http:",
+        "https:",
+        "*",
+    ];
+
+    /// Directives that the CSP object MUST contain — no more, no less. Adding
+    /// a new directive to `tauri.conf.json` without updating this list (and
+    /// adding an assertion for it in `assert_csp_environment`) is a test
+    /// failure. This guards against silent drift where someone adds e.g.
+    /// `worker-src *` and no test catches it.
+    const CSP_EXPECTED_DIRECTIVES: &[&str] = &[
+        "default-src",
+        "script-src",
+        "style-src",
+        "img-src",
+        "font-src",
+        "connect-src",
+        "object-src",
+        "base-uri",
+        "form-action",
+        "frame-ancestors",
+    ];
+
+    /// Parses a CSP directive value (string) into a deduplicated set of tokens,
+    /// splitting on whitespace. Used so tests compare *exact* allowlists rather
+    /// than falling back to substring checks that let stray entries slip through.
+    fn csp_tokens(value: &str) -> std::collections::BTreeSet<&str> {
+        value.split_whitespace().collect()
+    }
+
+    /// Returns the string value of a CSP directive, panicking with a message
+    /// that distinguishes a missing key from a non-string value.
+    fn csp_directive<'a>(csp: &'a serde_json::Value, directive: &str, label: &str) -> &'a str {
+        let value = &csp[directive];
+        assert!(
+            !value.is_null(),
+            "{label} CSP is missing required directive `{directive}`"
+        );
+        value.as_str().unwrap_or_else(|| {
+            panic!("{label} CSP directive `{directive}` must be a string, got {value}")
+        })
+    }
+
+    /// Runs the full set of CSP assertions for one environment (production or dev).
+    /// Kept as a helper so the `#[test]` stays under the clippy line budget.
+    fn assert_csp_environment(csp: &serde_json::Value, label: &str, is_prod: bool) {
+        use std::collections::BTreeSet;
+
+        let csp_obj = csp.as_object().unwrap_or_else(|| {
+            panic!("{label} CSP must be a non-null object — XSS can escalate to RCE in Tauri apps")
+        });
+
+        // Directive key set must match exactly. Prevents silent addition of
+        // unchecked directives (e.g. `worker-src *`).
+        let actual_keys: BTreeSet<&str> = csp_obj.keys().map(String::as_str).collect();
+        let expected_keys: BTreeSet<&str> = CSP_EXPECTED_DIRECTIVES.iter().copied().collect();
+        assert_eq!(
+            actual_keys, expected_keys,
+            "{label} CSP directive key set must match the expected set exactly"
+        );
+
+        // script-src: exactly 'self' in both environments. Tauri 2.x injects its
+        // own script hashes at build time; no relaxation needed.
+        assert_eq!(
+            csp_tokens(csp_directive(csp, "script-src", label)),
+            BTreeSet::from(["'self'"]),
+            "{label} CSP script-src must be exactly 'self'"
+        );
+
+        // style-src: exactly `'self' 'unsafe-inline'` in both environments.
+        // Justification for 'unsafe-inline': xterm.js creates <style> elements
+        // at runtime via document.createElement('style') (see xterm.mjs). Those
+        // tags are blocked by a strict style-src without 'unsafe-inline'. The
+        // terminal is a core PRism feature, so this relaxation is intentional
+        // and locked down here to prevent silent drift.
+        assert_eq!(
+            csp_tokens(csp_directive(csp, "style-src", label)),
+            BTreeSet::from(["'self'", "'unsafe-inline'"]),
+            "{label} CSP style-src must be exactly \"'self' 'unsafe-inline'\" \
+             (required by xterm.js dynamic <style> elements)"
+        );
+
+        // default-src: exactly 'self' so forgotten directives still default to
+        // self-only.
+        assert_eq!(
+            csp_tokens(csp_directive(csp, "default-src", label)),
+            BTreeSet::from(["'self'"]),
+            "{label} CSP default-src must be exactly 'self'"
+        );
+
+        // font-src: exactly 'self' — fonts are bundled via @fontsource.
+        assert_eq!(
+            csp_tokens(csp_directive(csp, "font-src", label)),
+            BTreeSet::from(["'self'"]),
+            "{label} CSP font-src must be exactly 'self'"
+        );
+
+        // object-src: blocks plugin-based code execution (Flash, etc.).
+        assert_eq!(
+            csp_directive(csp, "object-src", label),
+            "'none'",
+            "{label} CSP object-src must be 'none'"
+        );
+
+        // frame-ancestors / form-action / base-uri: clickjacking, form-hijacking,
+        // and base-URL-injection defenses.
+        for (directive, reason) in [
+            ("frame-ancestors", "prevents clickjacking"),
+            ("form-action", "prevents form submission to external URLs"),
+            ("base-uri", "prevents base URL injection"),
+        ] {
+            assert_eq!(
+                csp_directive(csp, directive, label),
+                "'none'",
+                "{label} CSP {directive} must be 'none' — {reason}"
+            );
+        }
+
+        // img-src: no data: (blocks data-URL exfiltration) and no wildcards.
+        // In production we also enforce an exact allowlist.
+        let img_tokens = csp_tokens(csp_directive(csp, "img-src", label));
+        assert!(
+            !img_tokens.contains("data:"),
+            "{label} CSP img-src must not contain data: — blocks data-URL exfiltration"
+        );
+        assert!(
+            !img_tokens.contains("*"),
+            "{label} CSP img-src must not contain wildcards"
+        );
+        if is_prod {
+            // Justification for each allowlist entry:
+            //   'self'                             — bundled app assets
+            //   asset: / http://asset.localhost    — Tauri built-in asset protocol
+            //   blob:                              — runtime-generated image
+            //                                        previews (e.g. pasted
+            //                                        screenshots, drag-and-drop)
+            //   https://avatars.githubusercontent.com — GitHub user avatars
+            assert_eq!(
+                img_tokens,
+                BTreeSet::from([
+                    "'self'",
+                    "asset:",
+                    "http://asset.localhost",
+                    "blob:",
+                    "https://avatars.githubusercontent.com",
+                ]),
+                "production CSP img-src must match the exact allowlist"
+            );
+        }
+
+        // connect-src: exact allowlist per environment (no substring matching).
+        // Fails loud if a new endpoint sneaks in — forcing a conscious review.
+        let connect_tokens = csp_tokens(csp_directive(csp, "connect-src", label));
+        assert!(
+            !connect_tokens.contains("*"),
+            "{label} CSP connect-src must not contain wildcards"
+        );
+        let expected_connect: BTreeSet<&str> = if is_prod {
+            ["ipc:", "http://ipc.localhost"].into_iter().collect()
+        } else {
+            [
+                "ipc:",
+                "http://ipc.localhost",
+                "ws://localhost:1420",
+                "ws://localhost:1421",
+                "http://localhost:1420",
+            ]
+            .into_iter()
+            .collect()
+        };
+        assert_eq!(
+            connect_tokens, expected_connect,
+            "{label} CSP connect-src must match the exact allowlist"
+        );
+
+        // Global forbidden-token sweep — runs on BOTH production and dev CSPs.
+        // This is the single biggest guard against accidental regressions (e.g.
+        // someone adds 'unsafe-eval' to devCsp to fix a dev issue and that
+        // relaxation then silently leaks into prod in a future copy-paste).
+        // The sweep is token-based (whitespace-split), so specific hosts like
+        // `http://ipc.localhost` are never confused with bare `http:` scheme
+        // allowances — the two are distinct tokens. No scheme-token exception
+        // is needed; don't add one back (doing so introduces a load-order
+        // invariant where the exact-allowlist checks above must run first).
+        assert_no_forbidden_tokens(csp, label);
+    }
+
+    /// Walks every directive in the given CSP object and asserts that none of
+    /// `CSP_FORBIDDEN_TOKENS` appear. Relies on token-based equality: the set
+    /// of `{ "http://ipc.localhost" }` does NOT contain the token `"http:"`,
+    /// so specific-host entries pass through cleanly while bare scheme-wide
+    /// allowances are rejected.
+    fn assert_no_forbidden_tokens(csp: &serde_json::Value, label: &str) {
+        let csp_obj = csp
+            .as_object()
+            .unwrap_or_else(|| panic!("{label} CSP must be an object by this point"));
+        for (directive, value) in csp_obj {
+            let value_str = value
+                .as_str()
+                .unwrap_or_else(|| panic!("{label} CSP {directive} must be a string"));
+            let tokens = csp_tokens(value_str);
+            for forbidden in CSP_FORBIDDEN_TOKENS {
+                assert!(
+                    !tokens.contains(forbidden),
+                    "{label} CSP {directive} must not contain {forbidden} \
+                     — this is a hard-forbidden token"
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_csp_config_rejects_unsafe_directives() {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -346,90 +566,9 @@ mod tests {
         let config: serde_json::Value =
             serde_json::from_str(&content).expect("tauri.conf.json should be valid JSON");
 
-        // Verify both production and development CSP blocks
         for (key, label) in [("csp", "production"), ("devCsp", "development")] {
             let csp = &config["app"]["security"][key];
-            assert!(
-                csp.is_object(),
-                "{label} CSP must be a non-null object — XSS can escalate to RCE in Tauri apps"
-            );
-
-            let script_src = csp["script-src"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label} CSP script-src must be a string"));
-            assert_eq!(
-                script_src, "'self'",
-                "{label} CSP script-src must be exactly 'self'"
-            );
-
-            let img_src = csp["img-src"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label} CSP img-src must be a string"));
-            assert!(
-                !img_src.split_whitespace().any(|t| t == "data:"),
-                "{label} CSP img-src must not contain data:"
-            );
-
-            let object_src = csp["object-src"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label} CSP object-src must be a string"));
-            assert_eq!(
-                object_src, "'none'",
-                "{label} CSP object-src must be 'none' — blocks plugin-based code execution"
-            );
-
-            let connect_src = csp["connect-src"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label} CSP connect-src must be a string"));
-            assert!(
-                connect_src.contains("ipc:"),
-                "{label} CSP connect-src must include ipc: for Tauri IPC"
-            );
-            assert!(
-                !connect_src.contains('*'),
-                "{label} CSP connect-src must not contain wildcards"
-            );
-            if key == "csp" {
-                assert_eq!(
-                    connect_src, "ipc: http://ipc.localhost",
-                    "production CSP connect-src must not include dev/HMR endpoints"
-                );
-            } else {
-                for required in [
-                    "ws://localhost:1420",
-                    "ws://localhost:1421",
-                    "http://localhost:1420",
-                ] {
-                    assert!(
-                        connect_src.split_whitespace().any(|t| t == required),
-                        "development CSP connect-src must include {required}"
-                    );
-                }
-            }
-
-            let frame_ancestors = csp["frame-ancestors"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label} CSP frame-ancestors must be a string"));
-            assert_eq!(
-                frame_ancestors, "'none'",
-                "{label} CSP frame-ancestors must be 'none' — prevents clickjacking"
-            );
-
-            let form_action = csp["form-action"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label} CSP form-action must be a string"));
-            assert_eq!(
-                form_action, "'none'",
-                "{label} CSP form-action must be 'none' — prevents form submission to external URLs"
-            );
-
-            let base_uri = csp["base-uri"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label} CSP base-uri must be a string"));
-            assert_eq!(
-                base_uri, "'none'",
-                "{label} CSP base-uri must be 'none' — prevents base URL injection"
-            );
+            assert_csp_environment(csp, label, key == "csp");
         }
     }
 }
