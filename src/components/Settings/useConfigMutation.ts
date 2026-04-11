@@ -17,9 +17,16 @@ export function useConfigMutation({ onError, onResetDraft }: UseConfigMutationOp
       queryClient.setQueryData(["config"], updated);
     },
     onError: (err: unknown) => {
-      console.error("[Settings] config update failed:", err);
+      console.error("[useConfigMutation] config update failed:", err);
       onError("Failed to save setting. Please retry.");
       onResetDraft();
+    },
+    // Safety net for out-of-order concurrent saves: if two sections mutate at
+    // once, the slower response could overwrite the cache with an older
+    // snapshot via `setQueryData`. Invalidating on settle pulls the canonical
+    // state from the backend as the source of truth.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["config"] });
     },
   });
 }

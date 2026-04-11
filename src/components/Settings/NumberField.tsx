@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 
 interface NumberFieldProps {
@@ -10,6 +10,13 @@ interface NumberFieldProps {
 
 export function NumberField({ label, value, min = 1, onCommit }: NumberFieldProps): ReactElement {
   const [draft, setDraft] = useState(String(value));
+
+  // Sync draft when the committed value changes externally (e.g. backend
+  // normalisation after a successful save). Remount via `key` still handles
+  // the error-reset path where `value` is unchanged.
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
 
   function handleBlur(): void {
     const parsed = Number(draft);

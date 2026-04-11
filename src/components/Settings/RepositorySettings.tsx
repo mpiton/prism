@@ -165,13 +165,16 @@ export function RepositorySettings({
           {enabledReposCount} of {allRepos.length} repositories enabled
         </p>
       </div>
-      <input
-        type="search"
-        placeholder="Filter repositories..."
-        value={repoSearch}
-        onChange={(e) => setRepoSearch(e.target.value)}
-        className={`${FOCUS_RING} bg-surface border-border rounded border px-2 py-1 text-sm text-white placeholder:text-muted`}
-      />
+      <label className="flex flex-col gap-1">
+        <span className="sr-only">Filter repositories</span>
+        <input
+          type="search"
+          placeholder="Filter repositories..."
+          value={repoSearch}
+          onChange={(e) => setRepoSearch(e.target.value)}
+          className={`${FOCUS_RING} bg-surface border-border rounded border px-2 py-1 text-sm text-white placeholder:text-muted`}
+        />
+      </label>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
