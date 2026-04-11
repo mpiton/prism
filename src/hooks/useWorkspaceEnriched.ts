@@ -4,7 +4,9 @@ import { listWorkspacesEnriched, onEvent } from "../lib/tauri";
 import { TAURI_EVENTS } from "../lib/types/tauri";
 import type { WorkspaceListEntry, WorkspaceStatusInfo } from "../lib/types/workspace";
 
-const STALE_TIME = 30_000;
+// 5 minutes: workspace freshness is driven by the workspace:state_changed
+// Tauri event, so time-based polling can be relaxed.
+const STALE_TIME = 300_000;
 
 export function useWorkspaceEnriched(enabled = true) {
   const queryClient = useQueryClient();
@@ -61,10 +63,7 @@ export function useWorkspaceEnriched(enabled = true) {
     return map;
   }, [query.data]);
 
-  const entries: readonly WorkspaceListEntry[] = useMemo(
-    () => query.data ?? [],
-    [query.data],
-  );
+  const entries: readonly WorkspaceListEntry[] = useMemo(() => query.data ?? [], [query.data]);
 
   return { statusInfo, entries, isLoading: query.isLoading };
 }

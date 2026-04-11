@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  getGithubDashboard,
-  getGithubStats,
-  forceGithubSync,
-  onEvent,
-} from "../lib/tauri";
+import { getGithubDashboard, getGithubStats, forceGithubSync, onEvent } from "../lib/tauri";
 import { TAURI_EVENTS } from "../lib/types/tauri";
 
-const STALE_TIME = 30_000;
+// 5 minutes: desktop app relies on Tauri event-based invalidation
+// (github:updated) for real-time freshness, so time-based polling can be relaxed.
+const STALE_TIME = 300_000;
 
 function invalidateGitHub(queryClient: ReturnType<typeof useQueryClient>) {
   return Promise.all([
@@ -57,52 +54,60 @@ export function useGitHubData(refetchInterval?: number) {
     onEvent(TAURI_EVENTS["github:updated"], async () => {
       setSyncError(null);
       await invalidateGitHub(queryClient);
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-      } else {
-        unlisteners.push(fn);
-      }
-    }).catch((err: unknown) => {
-      console.error("[useGitHubData] failed to register github:updated listener:", err);
-    });
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlisteners.push(fn);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error("[useGitHubData] failed to register github:updated listener:", err);
+      });
 
     onEvent<string>(TAURI_EVENTS["auth:expired"], () => {
       setAuthExpired(true);
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-      } else {
-        unlisteners.push(fn);
-      }
-    }).catch((err: unknown) => {
-      console.error("[useGitHubData] failed to register auth:expired listener:", err);
-    });
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlisteners.push(fn);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error("[useGitHubData] failed to register auth:expired listener:", err);
+      });
 
     onEvent<string>(TAURI_EVENTS["auth:restored"], async () => {
       setAuthExpired(false);
       await invalidateGitHub(queryClient);
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-      } else {
-        unlisteners.push(fn);
-      }
-    }).catch((err: unknown) => {
-      console.error("[useGitHubData] failed to register auth:restored listener:", err);
-    });
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlisteners.push(fn);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error("[useGitHubData] failed to register auth:restored listener:", err);
+      });
 
     onEvent<string>(TAURI_EVENTS["github:sync_error"], (errorMsg) => {
       setSyncError(typeof errorMsg === "string" ? errorMsg : "Sync failed");
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-      } else {
-        unlisteners.push(fn);
-      }
-    }).catch((err: unknown) => {
-      console.error("[useGitHubData] failed to register github:sync_error listener:", err);
-    });
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlisteners.push(fn);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error("[useGitHubData] failed to register github:sync_error listener:", err);
+      });
 
     return () => {
       cancelled = true;
