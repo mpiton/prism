@@ -261,6 +261,7 @@ pub fn run() {
             commands::github_get_stats,
             commands::stats_personal,
             commands::github_force_sync,
+            commands::github_list_notifications,
             commands::repos_list,
             commands::repos_set_enabled,
             commands::repos_set_local_path,

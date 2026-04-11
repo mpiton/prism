@@ -5,7 +5,7 @@ import type { AppConfig, PartialAppConfig } from "./types/config";
 import type { AuthStatus } from "./types/auth";
 import type { DashboardData, DashboardStats, PersonalStats } from "./types/dashboard";
 import type { MemoryStats } from "./types/debug";
-import type { Repo } from "./types/github";
+import type { GithubNotification, Repo } from "./types/github";
 import type {
   OpenWorkspaceRequest,
   OpenWorkspaceResponse,
@@ -46,6 +46,10 @@ export async function getPersonalStats(): Promise<PersonalStats> {
 
 export async function forceGithubSync(): Promise<void> {
   return invoke<void>(TAURI_COMMANDS.github_force_sync);
+}
+
+export async function listNotifications(): Promise<GithubNotification[]> {
+  return invoke<GithubNotification[]>(TAURI_COMMANDS.github_list_notifications);
 }
 
 // ── Repos ────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ export type TauriCommandName =
   | "github_get_dashboard"
   | "github_get_stats"
   | "github_force_sync"
+  | "github_list_notifications"
   | "repos_list"
   | "repos_set_enabled"
   | "repos_set_local_path"
@@ -32,6 +33,7 @@ export const TAURI_COMMANDS = {
   github_get_dashboard: "github_get_dashboard",
   github_get_stats: "github_get_stats",
   github_force_sync: "github_force_sync",
+  github_list_notifications: "github_list_notifications",
   repos_list: "repos_list",
   repos_set_enabled: "repos_set_enabled",
   repos_set_local_path: "repos_set_local_path",

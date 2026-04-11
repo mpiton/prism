@@ -11,6 +11,7 @@ function invalidateGitHub(queryClient: ReturnType<typeof useQueryClient>) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: ["github", "dashboard"] }),
     queryClient.invalidateQueries({ queryKey: ["github", "stats"] }),
+    queryClient.invalidateQueries({ queryKey: ["github", "notifications"] }),
     queryClient.invalidateQueries({ queryKey: ["repos"] }),
   ]);
 }

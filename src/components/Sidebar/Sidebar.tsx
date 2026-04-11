@@ -28,6 +28,7 @@ const NAV_ITEMS: readonly NavEntry[] = [
   { label: "My PRs", view: "mine", countKey: "openPrs" },
   { label: "Issues", view: "issues", countKey: "openIssues" },
   { label: "Activity", view: "feed", countKey: "unreadActivity" },
+  { label: "Notifications", view: "notifications" },
   { label: "Workspaces", view: "workspaces", countKey: "totalWorkspaces" },
   { label: "Settings", view: "settings" },
 ];

@@ -5,8 +5,11 @@ use std::time::Duration;
 use graphql_client::GraphQLQuery;
 
 use crate::error::AppError;
+use crate::github::notifications;
+use crate::types::Notification;
 
 const GITHUB_GRAPHQL_URL: &str = "https://api.github.com/graphql";
+const GITHUB_REST_BASE_URL: &str = "https://api.github.com";
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 100;
 
@@ -17,23 +20,33 @@ pub struct RateLimit {
     pub reset: u64,
 }
 
-/// GitHub GraphQL API client with rate limiting and retry support.
+/// GitHub API client with GraphQL + REST support, rate limiting, and retries.
 pub struct GitHubClient {
     client: reqwest::Client,
     token: String,
     graphql_url: String,
+    rest_base_url: String,
 }
 
 impl GitHubClient {
-    /// Creates a new client targeting the GitHub GraphQL API.
+    /// Creates a new client targeting the production GitHub API.
     pub fn new(token: impl Into<String>) -> Result<Self, AppError> {
-        Self::with_url(token, GITHUB_GRAPHQL_URL)
+        Self::with_urls(token, GITHUB_GRAPHQL_URL, GITHUB_REST_BASE_URL)
     }
 
     /// Creates a client with a custom GraphQL endpoint (for testing).
     pub(crate) fn with_url(
         token: impl Into<String>,
         graphql_url: impl Into<String>,
+    ) -> Result<Self, AppError> {
+        Self::with_urls(token, graphql_url, GITHUB_REST_BASE_URL)
+    }
+
+    /// Creates a client with custom GraphQL and REST endpoints (for testing).
+    pub(crate) fn with_urls(
+        token: impl Into<String>,
+        graphql_url: impl Into<String>,
+        rest_base_url: impl Into<String>,
     ) -> Result<Self, AppError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -45,7 +58,16 @@ impl GitHubClient {
             client,
             token: token.into(),
             graphql_url: graphql_url.into(),
+            rest_base_url: rest_base_url.into(),
         })
+    }
+
+    /// Fetches notifications from the authenticated user's inbox.
+    ///
+    /// When `all` is `false`, only unread notifications are returned.
+    pub async fn list_notifications(&self, all: bool) -> Result<Vec<Notification>, AppError> {
+        notifications::fetch_notifications(&self.client, &self.token, &self.rest_base_url, all)
+            .await
     }
 
     /// Executes a GraphQL query and returns the typed response data.
@@ -292,6 +314,7 @@ mod tests {
                 .expect("failed to build test client"),
             token: "ghp_test_token".into(),
             graphql_url: "http://127.0.0.1:1/graphql".into(),
+            rest_base_url: "http://127.0.0.1:1".into(),
         };
 
         let start = std::time::Instant::now();

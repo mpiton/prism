@@ -372,6 +372,23 @@ pub async fn github_force_sync(
     Ok(())
 }
 
+/// Lists GitHub notifications for the authenticated user (query).
+///
+/// Issue-197: Stateless read-through — calls the GitHub REST `/notifications`
+/// endpoint on each invocation without persisting to `SQLite`. Returns only
+/// unread notifications by default to keep the payload small.
+#[tauri::command]
+pub async fn github_list_notifications(
+    cached: tauri::State<'_, GithubUsername>,
+) -> Result<Vec<crate::types::Notification>, String> {
+    let (_username, token) = resolve_credentials(&cached).await?;
+    let client = GitHubClient::new(&token).map_err(|e| e.to_string())?;
+    client
+        .list_notifications(false)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Returns the full application configuration (query).
 #[tauri::command]
 pub async fn config_get(pool: tauri::State<'_, SqlitePool>) -> Result<AppConfig, String> {
