@@ -250,4 +250,5 @@ describe("Issues", () => {
 
     expect(screen.getByText("unknown-repo")).toBeInTheDocument();
   });
+
 });

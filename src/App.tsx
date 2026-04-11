@@ -27,6 +27,15 @@ import { useWorkspaceEnriched } from "./hooks/useWorkspaceEnriched";
 import { useWorkspacesStore } from "./stores/workspaces";
 import { openUrl } from "./lib/open";
 import type { DashboardView } from "./stores/dashboard";
+import type { PullRequestWithReview } from "./lib/types/dashboard";
+import type { Issue } from "./lib/types/github";
+
+// Module-level empty fallbacks preserve referential stability across renders
+// when `dashboard` is undefined. Inline `?? []` would defeat React.memo on the
+// consuming view components by producing a fresh array each render.
+const EMPTY_REVIEWS: readonly PullRequestWithReview[] = [];
+const EMPTY_MY_PRS: readonly PullRequestWithReview[] = [];
+const EMPTY_ISSUES: readonly Issue[] = [];
 
 const WorkspaceView = lazy(() =>
   import("./components/Workspace").then((m) => ({ default: m.WorkspaceView })),
@@ -155,11 +164,23 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
     case "overview":
       return <Overview />;
     case "reviews":
-      return <ReviewQueue reviews={dashboard?.reviewRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />;
+      return (
+        <ReviewQueue
+          reviews={dashboard?.reviewRequests ?? EMPTY_REVIEWS}
+          onOpen={openUrl}
+          onWorkspaceAction={handleWorkspaceAction}
+        />
+      );
     case "mine":
-      return <MyPRs prs={dashboard?.myPullRequests ?? []} onOpen={openUrl} onWorkspaceAction={handleWorkspaceAction} />;
+      return (
+        <MyPRs
+          prs={dashboard?.myPullRequests ?? EMPTY_MY_PRS}
+          onOpen={openUrl}
+          onWorkspaceAction={handleWorkspaceAction}
+        />
+      );
     case "issues":
-      return <Issues issues={dashboard?.assignedIssues ?? []} onOpen={openUrl} />;
+      return <Issues issues={dashboard?.assignedIssues ?? EMPTY_ISSUES} onOpen={openUrl} />;
     case "feed":
       return (
         <ActivityFeed

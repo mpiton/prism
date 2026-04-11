@@ -220,4 +220,5 @@ describe("MyPRs", () => {
 
     expect(onOpen).toHaveBeenCalledWith(openPr1.pullRequest.url);
   });
+
 });

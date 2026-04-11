@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useMemo } from "react";
+import { memo, type ReactElement, useEffect, useMemo } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
 import type { Priority } from "../../lib/types/enums";
@@ -54,7 +54,7 @@ function getUniqueRepos(reviews: readonly PullRequestWithReview[]): readonly str
   return [...new Set(reviews.map((r) => r.pullRequest.repoId))].sort();
 }
 
-export function ReviewQueue({
+function ReviewQueueImpl({
   reviews,
   isLoading = false,
   onOpen,
@@ -195,3 +195,5 @@ export function ReviewQueue({
     </section>
   );
 }
+
+export const ReviewQueue = memo(ReviewQueueImpl);
