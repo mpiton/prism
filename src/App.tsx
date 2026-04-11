@@ -11,7 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authGetStatus, markAllActivityRead, openWorkspace, resumeWorkspace } from "./lib/tauri";
 import { useGitHubData } from "./hooks/useGitHubData";
-import { AuthSetup } from "./components/AuthSetup/AuthSetup";
+import { AuthSetup } from "./components/AuthSetup";
 import { StatsBar } from "./components/StatsBar";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
