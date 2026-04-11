@@ -1,9 +1,10 @@
 import { lazy, Suspense, useCallback, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types/workspace";
+import type { Workspace } from "../../lib/types/workspace";
 import { resumeWorkspace } from "../../lib/tauri";
 import { useWorkspacesStore } from "../../stores/workspaces";
+import { useWorkspaceEnriched } from "../../hooks/useWorkspaceEnriched";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { WorkspaceStatusBar } from "./WorkspaceStatusBar";
 import { WorkspaceListPage } from "./WorkspaceListPage";
@@ -25,18 +26,15 @@ function TerminalLoadingFallback(): ReactElement {
 
 interface WorkspaceViewProps {
   readonly workspaces: readonly Workspace[];
-  readonly statusInfo: Readonly<Record<string, WorkspaceStatusInfo>>;
-  readonly entries: readonly WorkspaceListEntry[];
   readonly onBackToDashboard: () => void;
 }
 
 export function WorkspaceView({
   workspaces,
-  statusInfo,
-  entries,
   onBackToDashboard,
 }: WorkspaceViewProps): ReactElement {
   const queryClient = useQueryClient();
+  const { statusInfo, entries } = useWorkspaceEnriched();
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspacesStore((s) => s.setActiveWorkspace);
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
