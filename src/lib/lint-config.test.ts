@@ -13,6 +13,8 @@ import oxlintConfig from "../../.oxlintrc.json";
  */
 describe(".oxlintrc.json", () => {
   it("should enforce typescript/no-explicit-any as error", () => {
-    expect(oxlintConfig.rules["typescript/no-explicit-any"]).toBe("error");
+    const rule = oxlintConfig.rules["typescript/no-explicit-any"];
+    const severity = Array.isArray(rule) ? rule[0] : rule;
+    expect(severity).toBe("error");
   });
 });
