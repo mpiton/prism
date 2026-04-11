@@ -150,7 +150,13 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
           {visible.length === 0 ? (
             <EmptyState
               icon="✓"
-              message={tab === "unread" ? "No unread notifications" : "No notifications to display"}
+              message={
+                normalizedQuery
+                  ? "No notifications match your search"
+                  : tab === "unread"
+                    ? "No unread notifications"
+                    : "No notifications to display"
+              }
             />
           ) : (
             <div ref={listRef} className="max-h-[600px] overflow-y-auto">

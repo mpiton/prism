@@ -155,6 +155,18 @@ describe("Notifications", () => {
     expect(screen.getByText(/no unread notifications/i)).toBeInTheDocument();
   });
 
+  it("shows a search-specific empty state when a query filters everything out", async () => {
+    const user = userEvent.setup();
+    mockQuerySuccess([unreadNotif]);
+    render(<Notifications onOpen={onOpen} />);
+
+    const input = screen.getByPlaceholderText(/filter notifications/i);
+    await user.type(input, "zzzzzz-nothing-matches");
+
+    expect(screen.getByText(/no notifications match your search/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no unread notifications/i)).not.toBeInTheDocument();
+  });
+
   it("renders an error banner when fetching fails", () => {
     mockQueryError("network down");
     render(<Notifications onOpen={onOpen} />);

@@ -73,8 +73,11 @@ pub(crate) fn build_html_url(
         return repo_html_url.to_string();
     };
 
+    // GitHub's HTML URLs use singular `/pull/` and `/commit/` whereas the
+    // REST API paths are plural (`/pulls/`, `/commits/`).
     let path = match subject_type {
         NotificationSubjectType::PullRequest => stripped.replacen("/pulls/", "/pull/", 1),
+        NotificationSubjectType::Commit => stripped.replacen("/commits/", "/commit/", 1),
         NotificationSubjectType::Issue | NotificationSubjectType::Release => stripped.to_string(),
         _ => return repo_html_url.to_string(),
     };
@@ -278,6 +281,20 @@ mod tests {
             "https://github.com/octocat/Hello-World",
         );
         assert_eq!(url, "https://github.com/octocat/Hello-World/issues/7");
+    }
+
+    #[test]
+    fn build_html_url_converts_commit_api_url() {
+        // REST `/commits/{sha}` → HTML `/commit/{sha}` (singular on the web).
+        let url = build_html_url(
+            Some("https://api.github.com/repos/octocat/Hello-World/commits/abc123def456"),
+            &NotificationSubjectType::Commit,
+            "https://github.com/octocat/Hello-World",
+        );
+        assert_eq!(
+            url,
+            "https://github.com/octocat/Hello-World/commit/abc123def456"
+        );
     }
 
     #[test]
