@@ -331,6 +331,36 @@ mod tests {
     }
 
     #[test]
+    fn build_html_url_fallback_uses_provided_repo_url_verbatim() {
+        // Regression test: the fallback path must return the exact
+        // `repo_html_url` value the caller passed in, not a hardcoded
+        // `github.com` URL. This keeps GitHub Enterprise Server deployments
+        // working — their notification subjects carry non-`github.com`
+        // hostnames that must survive the fallback path intact.
+        let enterprise_repo = "https://github.enterprise.example/org/private-repo";
+
+        // Release → forced fallback (id → tag cannot be resolved).
+        let release_url = build_html_url(
+            Some("https://api.github.com/repos/org/private-repo/releases/99"),
+            &NotificationSubjectType::Release,
+            enterprise_repo,
+        );
+        assert_eq!(release_url, enterprise_repo);
+
+        // Missing subject URL → fallback.
+        let missing_url = build_html_url(None, &NotificationSubjectType::Issue, enterprise_repo);
+        assert_eq!(missing_url, enterprise_repo);
+
+        // Unmapped type (CheckSuite) → fallback.
+        let unmapped_url = build_html_url(
+            Some("https://api.github.com/repos/org/private-repo/check-suites/1"),
+            &NotificationSubjectType::CheckSuite,
+            enterprise_repo,
+        );
+        assert_eq!(unmapped_url, enterprise_repo);
+    }
+
+    #[test]
     fn build_html_url_falls_back_when_prefix_unknown() {
         let url = build_html_url(
             Some("https://custom.example.com/something"),

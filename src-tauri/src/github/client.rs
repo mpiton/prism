@@ -177,7 +177,8 @@ impl GitHubClient {
             if let Some(err) = rate_limit_error_from(response.headers()) {
                 return Err(err);
             }
-            return Err(AppError::GitHub("forbidden".into()));
+            // Preserve the real status so callers can tell 403 from 429.
+            return Err(AppError::GitHub(format!("{status}")));
         }
 
         if !status.is_success() {
@@ -438,9 +439,48 @@ mod tests {
             matches!(err, AppError::GitHub(_)),
             "expected AppError::GitHub, got {err:?}"
         );
+        // The fallback message now preserves the real HTTP status so callers
+        // can distinguish 403 Forbidden from 429 Too Many Requests.
+        let msg = err.to_string();
         assert!(
-            err.to_string().contains("forbidden"),
-            "expected 'forbidden' in '{err}'"
+            msg.contains("403"),
+            "expected '403' in error message, got '{msg}'"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_execute_graphql_429_without_rate_limit_headers_preserves_status() {
+        // Regression test for the coderabbit finding: a 429 falling through
+        // to the fallback branch must NOT be reported as "forbidden" — it
+        // should preserve the real HTTP status in the error message.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/graphql")
+            .with_status(429)
+            .with_body(r#"{"message": "Too Many Requests"}"#)
+            .create_async()
+            .await;
+
+        let client =
+            GitHubClient::with_url("ghp_test_token", format!("{}/graphql", server.url())).unwrap();
+        let err = client
+            .execute_graphql::<TestQuery>(test_variables())
+            .await
+            .expect_err("should fail with github error");
+
+        assert!(
+            matches!(err, AppError::GitHub(_)),
+            "expected AppError::GitHub, got {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("429"),
+            "expected '429' in error message, got '{msg}'"
+        );
+        assert!(
+            !msg.contains("forbidden"),
+            "error must not claim 'forbidden' for a 429, got '{msg}'"
         );
         mock.assert_async().await;
     }
