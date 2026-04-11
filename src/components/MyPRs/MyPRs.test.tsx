@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
 import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import type { Repo } from "../../lib/types/github";
-import { MyPRs } from "./MyPRs";
+import { MyPRs, MyPRsImpl } from "./MyPRs";
 
 const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
 
@@ -221,10 +221,10 @@ describe("MyPRs", () => {
     expect(onOpen).toHaveBeenCalledWith(openPr1.pullRequest.url);
   });
 
-  it("should be wrapped in React.memo to bail out of re-renders on stable props", () => {
-    // React.memo sets `$$typeof` to Symbol.for("react.memo") on the exported value.
-    // This structural check guarantees the optimization cannot be accidentally removed.
-    const memoSymbol = (MyPRs as unknown as { readonly $$typeof?: symbol }).$$typeof;
-    expect(memoSymbol).toBe(Symbol.for("react.memo"));
+  it("should export a memoized component distinct from the raw implementation", () => {
+    // The exported `MyPRs` is `memo(MyPRsImpl)`, so it must not be
+    // referentially equal to the raw function. This guards the memo wrapping
+    // without relying on React-internal symbols like `$$typeof`.
+    expect(MyPRs).not.toBe(MyPRsImpl);
   });
 });

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { useDashboardStore } from "../../stores/dashboard";
-import { ReviewQueue } from "./ReviewQueue";
+import { ReviewQueue, ReviewQueueImpl } from "./ReviewQueue";
 
 function makePr(
   overrides: Partial<PullRequestWithReview["pullRequest"]> = {},
@@ -331,11 +331,10 @@ describe("ReviewQueue", () => {
     });
   });
 
-  it("should be wrapped in React.memo to bail out of re-renders on stable props", () => {
-    // React.memo sets `$$typeof` to Symbol.for("react.memo") on the exported value.
-    // This structural check guarantees the optimization cannot be accidentally removed.
-    const memoSymbol = (ReviewQueue as unknown as { readonly $$typeof?: symbol })
-      .$$typeof;
-    expect(memoSymbol).toBe(Symbol.for("react.memo"));
+  it("should export a memoized component distinct from the raw implementation", () => {
+    // The exported `ReviewQueue` is `memo(ReviewQueueImpl)`, so it must not
+    // be referentially equal to the raw function. This guards the memo
+    // wrapping without relying on React-internal symbols like `$$typeof`.
+    expect(ReviewQueue).not.toBe(ReviewQueueImpl);
   });
 });

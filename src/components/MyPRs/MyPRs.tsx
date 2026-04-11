@@ -36,7 +36,8 @@ const PR_TABS: Readonly<Record<Tab, (pr: PullRequestWithReview) => boolean>> = {
   merged: (pr) => pr.pullRequest.state === "merged",
 };
 
-function MyPRsImpl({
+// Exported for testing only — the memoized `MyPRs` below is the public API.
+export function MyPRsImpl({
   prs,
   isLoading = false,
   onOpen,
