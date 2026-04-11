@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { TAURI_COMMANDS } from "./types/tauri";
-import type { TauriEventName } from "./types/tauri";
+import { TAURI_COMMANDS, type TauriEventName } from "./types/tauri";
 import type { AppConfig, PartialAppConfig } from "./types/config";
 import type { AuthStatus } from "./types/auth";
 import type { DashboardData, DashboardStats, PersonalStats } from "./types/dashboard";
