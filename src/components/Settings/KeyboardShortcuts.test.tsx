@@ -139,6 +139,27 @@ describe("KeyboardShortcuts", () => {
     expect(kbds.length).toBe(22);
   });
 
+  it("should render alternative bindings with '/' and chord bindings with '+'", () => {
+    setUserAgent(WINDOWS_UA);
+    const { container } = render(<KeyboardShortcuts />);
+
+    // Alternative bindings (↑/↓, Home/End) must render "/" separators so
+    // users don't read them as simultaneous key combos.
+    const slashSeparators = Array.from(container.querySelectorAll("span")).filter(
+      (el) => el.getAttribute("aria-hidden") === "true" && el.textContent === "/",
+    );
+    // 3 alternative rows: "Navigate sidebar up/down", "Jump to first / last",
+    // "Navigate results" (Command Palette) → 3 separators total.
+    expect(slashSeparators.length).toBe(3);
+
+    // Chord bindings (Mod+K, Mod+1/2/3, Mod+Enter) must still render "+".
+    const plusSeparators = Array.from(container.querySelectorAll("span")).filter(
+      (el) => el.getAttribute("aria-hidden") === "true" && el.textContent === "+",
+    );
+    // 5 chord rows: Mod+K, Mod+1, Mod+2, Mod+3, Mod+Enter → 5 separators.
+    expect(plusSeparators.length).toBe(5);
+  });
+
   it("should render shortcuts inside a definition list structure", () => {
     setUserAgent(WINDOWS_UA);
     const { container } = render(<KeyboardShortcuts />);

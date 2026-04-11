@@ -3,6 +3,12 @@ import type { ReactElement } from "react";
 interface ShortcutRow {
   readonly action: string;
   readonly keys: readonly string[];
+  /**
+   * Visual separator between consecutive keys. Defaults to "+" (chord —
+   * press both simultaneously). Use "/" to indicate alternatives (press
+   * either one), e.g. arrow keys or Home/End pairs.
+   */
+  readonly separator?: "+" | "/";
 }
 
 interface ShortcutGroup {
@@ -35,8 +41,12 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     shortcuts: [
       { action: "Navigate list down", keys: ["j"] },
       { action: "Navigate list up", keys: ["k"] },
-      { action: "Navigate sidebar up/down", keys: ["↑", "↓"] },
-      { action: "Jump to first / last sidebar item", keys: ["Home", "End"] },
+      { action: "Navigate sidebar up/down", keys: ["↑", "↓"], separator: "/" },
+      {
+        action: "Jump to first / last sidebar item",
+        keys: ["Home", "End"],
+        separator: "/",
+      },
       { action: "Open selected item", keys: ["Enter"] },
       { action: "Open workspace for item", keys: ["w"] },
     ],
@@ -44,7 +54,7 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: "Command Palette",
     shortcuts: [
-      { action: "Navigate results", keys: ["↑", "↓"] },
+      { action: "Navigate results", keys: ["↑", "↓"], separator: "/" },
       { action: "Open result in browser", keys: ["Mod", "Enter"] },
       { action: "Close palette", keys: ["Esc"] },
     ],
@@ -91,7 +101,7 @@ export function KeyboardShortcuts(): ReactElement {
                     <span key={`${shortcut.action}-${key}`} className="flex items-center gap-1">
                       {index > 0 ? (
                         <span className="text-dim" aria-hidden="true">
-                          +
+                          {shortcut.separator ?? "+"}
                         </span>
                       ) : null}
                       <kbd className={kbdClass}>{displayKey(key, mac)}</kbd>
