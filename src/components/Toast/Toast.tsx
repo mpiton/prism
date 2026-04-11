@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, Eye, type LucideIcon } from "lucide-react";
+import { CircleCheck, CircleX, Eye, type LucideIcon } from "../../lib/icons";
 import { useCallback, useEffect, useRef, type ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { useNotifications } from "../../hooks/useNotifications";
