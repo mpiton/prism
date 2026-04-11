@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo, useRef } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
 import type { PullRequestWithReview } from "../../lib/types";
+import { useFilterableList } from "../../hooks/useFilterableList";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
@@ -27,14 +28,13 @@ interface MyPRsProps {
 
 type Tab = "open" | "merged";
 
-function isOpen(pr: PullRequestWithReview): boolean {
-  const { state } = pr.pullRequest;
-  return state === "open" || state === "draft";
-}
-
-function isMerged(pr: PullRequestWithReview): boolean {
-  return pr.pullRequest.state === "merged";
-}
+const PR_TABS: Readonly<Record<Tab, (pr: PullRequestWithReview) => boolean>> = {
+  open: (pr) => {
+    const { state } = pr.pullRequest;
+    return state === "open" || state === "draft";
+  },
+  merged: (pr) => pr.pullRequest.state === "merged",
+};
 
 export function MyPRs({
   prs,
@@ -42,10 +42,7 @@ export function MyPRs({
   onOpen,
   onWorkspaceAction,
 }: MyPRsProps): ReactElement {
-  const [tab, setTab] = useState<Tab>("open");
-  const [searchQuery, setSearchQuery] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
   const repoMap = useMemo<Map<string, string>>(() => {
@@ -53,19 +50,30 @@ export function MyPRs({
     return new Map(repos.map((repo) => [repo.id, repo.fullName]));
   }, [repos]);
 
-  const matchesSearch = (pr: PullRequestWithReview): boolean => {
-    if (normalizedQuery.length === 0) return true;
-    const repoName = repoMap.get(pr.pullRequest.repoId) ?? pr.pullRequest.repoId;
+  const searchPredicate = useCallback(
+    (pr: PullRequestWithReview, query: string): boolean => {
+      const repoName = repoMap.get(pr.pullRequest.repoId) ?? pr.pullRequest.repoId;
+      return [pr.pullRequest.title, pr.pullRequest.author, repoName, ...pr.pullRequest.labels].some(
+        (value) => value.toLowerCase().includes(query),
+      );
+    },
+    [repoMap],
+  );
 
-    return [pr.pullRequest.title, pr.pullRequest.author, repoName, ...pr.pullRequest.labels].some(
-      (value) => value.toLowerCase().includes(normalizedQuery),
-    );
-  };
-
-  const matchingPrs = prs.filter(matchesSearch);
-  const openPrs = matchingPrs.filter(isOpen);
-  const mergedPrs = matchingPrs.filter(isMerged);
-  const visible = tab === "open" ? openPrs : mergedPrs;
+  const {
+    tab,
+    setTab,
+    searchQuery,
+    setSearchQuery,
+    normalizedQuery,
+    visibleItems: visible,
+    tabCounts,
+  } = useFilterableList<PullRequestWithReview, Tab>({
+    items: prs,
+    tabs: PR_TABS,
+    defaultTab: "open",
+    searchPredicate,
+  });
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0, behavior: "instant" });
@@ -80,9 +88,14 @@ export function MyPRs({
       aria-busy={isLoading ? "true" : undefined}
       className="flex flex-col gap-2"
     >
+      {/*
+        Count sums the two tab buckets rather than using `filteredItems.length`
+        because `PrState` includes "closed" — a state that is intentionally not
+        surfaced in any tab and should not appear in the header total.
+      */}
       <SectionHead
         title="My PRs"
-        count={isLoading ? undefined : openPrs.length + mergedPrs.length}
+        count={isLoading ? undefined : tabCounts.open + tabCounts.merged}
       />
 
       {isLoading ? (
@@ -124,7 +137,7 @@ export function MyPRs({
                   : "text-dim hover:bg-surface-hover hover:text-foreground"
               }`}
             >
-              Open {openPrs.length}
+              Open {tabCounts.open}
             </button>
             <button
               type="button"
@@ -136,7 +149,7 @@ export function MyPRs({
                   : "text-dim hover:bg-surface-hover hover:text-foreground"
               }`}
             >
-              Merged {mergedPrs.length}
+              Merged {tabCounts.merged}
             </button>
           </div>
 
