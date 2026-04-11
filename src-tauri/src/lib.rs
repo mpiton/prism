@@ -464,8 +464,20 @@ mod tests {
             );
         }
 
-        // img-src: no data: (blocks data-URL exfiltration) and no wildcards.
-        // In production we also enforce an exact allowlist.
+        // img-src: exact allowlist enforced in BOTH prod and dev. Having the
+        // same policy in both environments prevents silent drift where a dev
+        // relaxation (e.g. `https://api.example.com`) never gets removed
+        // before it leaks to prod. The `data:` and `*` absence checks are
+        // kept as explicit assertions so failures point at the actual
+        // violation rather than just a generic allowlist mismatch.
+        //
+        // Justification for each allowlist entry:
+        //   'self'                             — bundled app assets
+        //   asset: / http://asset.localhost    — Tauri built-in asset protocol
+        //   blob:                              — runtime-generated image
+        //                                        previews (e.g. pasted
+        //                                        screenshots, drag-and-drop)
+        //   https://avatars.githubusercontent.com — GitHub user avatars
         let img_tokens = csp_tokens(csp_directive(csp, "img-src", label));
         assert!(
             !img_tokens.contains("data:"),
@@ -475,26 +487,17 @@ mod tests {
             !img_tokens.contains("*"),
             "{label} CSP img-src must not contain wildcards"
         );
-        if is_prod {
-            // Justification for each allowlist entry:
-            //   'self'                             — bundled app assets
-            //   asset: / http://asset.localhost    — Tauri built-in asset protocol
-            //   blob:                              — runtime-generated image
-            //                                        previews (e.g. pasted
-            //                                        screenshots, drag-and-drop)
-            //   https://avatars.githubusercontent.com — GitHub user avatars
-            assert_eq!(
-                img_tokens,
-                BTreeSet::from([
-                    "'self'",
-                    "asset:",
-                    "http://asset.localhost",
-                    "blob:",
-                    "https://avatars.githubusercontent.com",
-                ]),
-                "production CSP img-src must match the exact allowlist"
-            );
-        }
+        assert_eq!(
+            img_tokens,
+            BTreeSet::from([
+                "'self'",
+                "asset:",
+                "http://asset.localhost",
+                "blob:",
+                "https://avatars.githubusercontent.com",
+            ]),
+            "{label} CSP img-src must match the exact allowlist"
+        );
 
         // connect-src: exact allowlist per environment (no substring matching).
         // Fails loud if a new endpoint sneaks in — forcing a conscious review.
