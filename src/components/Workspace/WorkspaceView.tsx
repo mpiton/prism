@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types";
+import type { Workspace, WorkspaceListEntry, WorkspaceStatusInfo } from "../../lib/types/workspace";
 import { resumeWorkspace } from "../../lib/tauri";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";

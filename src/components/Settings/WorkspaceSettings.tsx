@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from "react";
-import type { AppConfig } from "../../lib/types";
+import type { AppConfig } from "../../lib/types/config";
 import { NumberField } from "./NumberField";
 import { useConfigMutation } from "./useConfigMutation";
 import { sectionClass } from "./styles";

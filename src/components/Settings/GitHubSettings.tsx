@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from "react";
-import type { AppConfig } from "../../lib/types";
+import type { AppConfig } from "../../lib/types/config";
 import { AuthSetup } from "../AuthSetup/AuthSetup";
 import { NumberField } from "./NumberField";
 import { useConfigMutation } from "./useConfigMutation";

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { setConfig } from "../../lib/tauri";
-import type { PartialAppConfig } from "../../lib/types";
+import type { PartialAppConfig } from "../../lib/types/config";
 
 interface UseConfigMutationOptions {
   readonly onError: (message: string | null) => void;

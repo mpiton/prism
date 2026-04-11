@@ -6,7 +6,7 @@ import {
   forceGithubSync,
   onEvent,
 } from "../lib/tauri";
-import { TAURI_EVENTS } from "../lib/types";
+import { TAURI_EVENTS } from "../lib/types/tauri";
 
 const STALE_TIME = 30_000;
 

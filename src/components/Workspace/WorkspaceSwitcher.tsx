@@ -2,7 +2,8 @@ import { useRef, useCallback, useMemo } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useSettingsStore } from "../../stores/settings";
-import type { Workspace, WorkspaceState } from "../../lib/types";
+import type { Workspace } from "../../lib/types/workspace";
+import type { WorkspaceState } from "../../lib/types/enums";
 
 interface WorkspaceSwitcherProps {
   readonly workspaces: readonly Workspace[];

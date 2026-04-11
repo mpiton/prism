@@ -24,7 +24,8 @@ vi.mock("../../stores/dashboard", () => ({
 
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { listRepos } from "../../lib/tauri";
-import type { DashboardData, PullRequestWithReview, Issue } from "../../lib/types";
+import type { DashboardData, PullRequestWithReview } from "../../lib/types/dashboard";
+import type { Issue } from "../../lib/types/github";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },

@@ -8,7 +8,7 @@ vi.mock("../../lib/tauri", () => ({
 }));
 
 import { ptyWrite } from "../../lib/tauri";
-import type { CiStatus } from "../../lib/types";
+import type { CiStatus } from "../../lib/types/enums";
 
 const defaultProps = {
   workspaceId: "ws-1",

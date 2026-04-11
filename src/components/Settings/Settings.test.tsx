@@ -3,7 +3,10 @@ import { render, screen, within, waitFor, act, fireEvent } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import type { AppConfig, AuthStatus, PersonalStats, Repo } from "../../lib/types";
+import type { AppConfig } from "../../lib/types/config";
+import type { AuthStatus } from "../../lib/types/auth";
+import type { PersonalStats } from "../../lib/types/dashboard";
+import type { Repo } from "../../lib/types/github";
 
 vi.mock("../../lib/tauri", () => ({
   getConfig: vi.fn(),

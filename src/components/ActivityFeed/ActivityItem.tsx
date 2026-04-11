@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { timeAgo } from "../../lib/timeAgo";
-import type { Activity, ActivityType } from "../../lib/types";
+import type { Activity } from "../../lib/types/github";
+import type { ActivityType } from "../../lib/types/enums";
 
 interface ActivityItemProps {
   readonly activity: Activity;

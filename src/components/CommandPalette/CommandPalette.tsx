@@ -7,7 +7,8 @@ import { listRepos } from "../../lib/tauri";
 import { useDashboardStore } from "../../stores/dashboard";
 import { openUrl } from "../../lib/open";
 import type { DashboardView } from "../../stores/dashboard";
-import type { PullRequestWithReview, Issue } from "../../lib/types";
+import type { PullRequestWithReview } from "../../lib/types/dashboard";
+import type { Issue } from "../../lib/types/github";
 
 interface CommandPaletteProps {
   readonly open: boolean;

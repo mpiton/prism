@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { ptyWrite, ptyResize, onEvent } from "../../lib/tauri";
-import type { PtyOutput } from "../../lib/types";
+import type { PtyOutput } from "../../lib/types/workspace";
 
 const PRISM_THEME = {
   background: "#0a0a09",

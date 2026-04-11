@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { CiStatus } from "../../lib/types";
+import type { CiStatus } from "../../lib/types/enums";
 
 interface CIProps {
   readonly status: CiStatus;

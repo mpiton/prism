@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { Activity } from "../../lib/types";
+import type { Activity } from "../../lib/types/github";
 import { ActivityItem } from "./ActivityItem";
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Issue } from "../../lib/types";
+import type { Issue } from "../../lib/types/github";
 import { IssueCard } from "./IssueCard";
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {

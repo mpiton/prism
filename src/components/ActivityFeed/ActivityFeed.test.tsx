@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { Activity, Repo } from "../../lib/types";
+import type { Activity, Repo } from "../../lib/types/github";
 import { ActivityFeed } from "./ActivityFeed";
 
 const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));

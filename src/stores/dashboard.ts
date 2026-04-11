@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Priority, CiStatus } from "../lib/types";
+import type { Priority, CiStatus } from "../lib/types/enums";
 
 export type DashboardView =
   | "overview"

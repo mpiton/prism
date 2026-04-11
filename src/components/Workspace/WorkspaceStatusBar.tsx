@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
-import type { CiStatus } from "../../lib/types";
+import type { CiStatus } from "../../lib/types/enums";
 import { ptyWrite } from "../../lib/tauri";
 import { CI } from "../atoms/CI";
 

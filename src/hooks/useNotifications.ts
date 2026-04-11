@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { onEvent } from "../lib/tauri";
-import { TAURI_EVENTS } from "../lib/types";
+import { TAURI_EVENTS } from "../lib/types/tauri";
 
 type NotificationType = "review_request" | "ci_failure" | "pr_approved";
 

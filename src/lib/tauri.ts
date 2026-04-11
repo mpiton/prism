@@ -1,24 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { TAURI_COMMANDS } from "./types";
+import { TAURI_COMMANDS, type TauriEventName } from "./types/tauri";
+import type { AppConfig, PartialAppConfig } from "./types/config";
+import type { AuthStatus } from "./types/auth";
+import type { DashboardData, DashboardStats, PersonalStats } from "./types/dashboard";
+import type { MemoryStats } from "./types/debug";
+import type { Repo } from "./types/github";
 import type {
-  AppConfig,
-  AuthStatus,
-  DashboardData,
-  DashboardStats,
-  MemoryStats,
   OpenWorkspaceRequest,
   OpenWorkspaceResponse,
-  PartialAppConfig,
-  PersonalStats,
   PtyInput,
   PtyResize,
-  Repo,
-  TauriEventName,
   Workspace,
   WorkspaceListEntry,
   WorkspaceNote,
-} from "./types";
+} from "./types/workspace";
 
 // ── Auth ─────────────────────────────────────────────────────────
 

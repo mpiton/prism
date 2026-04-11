@@ -1,7 +1,8 @@
 import { type ReactElement, useEffect, useMemo } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
-import type { Priority, PullRequestWithReview } from "../../lib/types";
+import type { Priority } from "../../lib/types/enums";
+import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { useDashboardStore } from "../../stores/dashboard";
 import { CardSkeleton, Skeleton } from "../atoms/Skeleton";

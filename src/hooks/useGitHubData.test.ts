@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import { useGitHubData } from "./useGitHubData";
-import type { DashboardData, DashboardStats } from "../lib/types";
+import type { DashboardData, DashboardStats } from "../lib/types/dashboard";
 
 vi.mock("../lib/tauri", () => ({
   getGithubDashboard: vi.fn(),

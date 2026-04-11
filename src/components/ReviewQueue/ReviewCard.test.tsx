@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { PullRequestWithReview } from "../../lib/types";
+import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { ReviewCard } from "./ReviewCard";
 
 const mockData: PullRequestWithReview = {
