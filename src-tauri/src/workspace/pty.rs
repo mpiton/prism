@@ -41,17 +41,23 @@ fn normalized_shell_name(shell_path: &str) -> String {
 /// Returns shell isolation flags that prevent loading user/system configuration files.
 ///
 /// Different shells use different flags to skip startup files:
-/// - bash / sh (often `bash` in POSIX mode): `--noprofile --norc`
+/// - bash: `--noprofile --norc` (skip `~/.bash_profile` and `~/.bashrc`)
 /// - zsh: `--no-rcs --no-globalrcs` (skip all zshrc files including `/etc/zshrc`)
 /// - fish: `--no-config` (skip `config.fish`)
-/// - Others: no flags (unknown shells get no isolation)
+/// - Others (including bare `sh`): no flags
+///
+/// `sh` deliberately receives no flags. On Debian/Ubuntu and derivatives,
+/// `/bin/sh` is `dash`, which rejects bash-specific flags (`dash: 0: Illegal
+/// option --`) and would prevent the PTY from spawning. On macOS and RHEL
+/// `sh` is bash in POSIX mode, but `dash` is already safer by default
+/// (it does not source user rc files in non-login mode), so the residual
+/// risk on `sh = bash` systems is mitigated by the `HOME` pinning and
+/// dangerous-env-var stripping that runs unconditionally.
 ///
 /// Windows variants like `bash.exe` are handled via [`normalized_shell_name`].
 fn isolation_flags_for_shell(shell_path: &str) -> Vec<&'static str> {
     match normalized_shell_name(shell_path).as_str() {
-        // `sh` is treated as bash because on macOS and many Linux distros
-        // `/bin/sh` is bash invoked in POSIX mode.
-        "bash" | "sh" => vec!["--noprofile", "--norc"],
+        "bash" => vec!["--noprofile", "--norc"],
         "zsh" => vec!["--no-rcs", "--no-globalrcs"],
         "fish" => vec!["--no-config"],
         _ => vec![],
@@ -529,11 +535,19 @@ mod tests {
     }
 
     #[test]
-    fn test_isolation_flags_sh_treated_as_bash() {
-        // /bin/sh is bash in POSIX mode on macOS and many Linux distros,
-        // so we apply the same isolation flags.
+    fn test_isolation_flags_sh_returns_empty() {
+        // /bin/sh is dash on Debian/Ubuntu, which rejects bash flags with
+        // "Illegal option --". Returning empty flags keeps PTY spawn working
+        // on dash systems and is acceptable on bash-as-sh systems because
+        // HOME pinning and env sanitization still apply unconditionally.
         let flags = isolation_flags_for_shell("/bin/sh");
-        assert_eq!(flags, vec!["--noprofile", "--norc"]);
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn test_isolation_flags_dash_returns_empty() {
+        let flags = isolation_flags_for_shell("/bin/dash");
+        assert!(flags.is_empty());
     }
 
     #[test]
