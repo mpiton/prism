@@ -19,6 +19,7 @@ import { ReviewQueue } from "./components/ReviewQueue";
 import { MyPRs } from "./components/MyPRs";
 import { Issues } from "./components/Issues";
 import { ActivityFeed } from "./components/ActivityFeed";
+import { Notifications } from "./components/Notifications";
 import { Toast } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import { useKeyboard } from "./hooks/useKeyboard";
@@ -188,6 +189,8 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
           onMarkAllRead={() => markAllRead.mutate()}
         />
       );
+    case "notifications":
+      return <Notifications onOpen={openUrl} />;
     case "workspaces":
       return (
         <WorkspaceView

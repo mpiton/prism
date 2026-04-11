@@ -7,6 +7,7 @@ export type DashboardView =
   | "mine"
   | "issues"
   | "feed"
+  | "notifications"
   | "workspaces"
   | "settings";
 

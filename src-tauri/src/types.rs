@@ -293,6 +293,43 @@ pub struct PersonalStats {
     pub total_workspace_count: u32,
 }
 
+// ── Notifications (issue #197) ───────────────────────────────────
+
+/// GitHub notification subject type, mirrored from the REST Notifications API.
+///
+/// Unknown values returned by the API map to [`NotificationSubjectType::Other`]
+/// so that new upstream kinds don't break the fetcher.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NotificationSubjectType {
+    PullRequest,
+    Issue,
+    Release,
+    Discussion,
+    CheckSuite,
+    Commit,
+    Other,
+}
+
+/// A GitHub notification entry displayed in the Notifications view.
+///
+/// Populated from the REST `/notifications` endpoint and exposed to the
+/// frontend with camelCase field names.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Notification {
+    pub id: String,
+    pub repo: String,
+    pub title: String,
+    pub notification_type: NotificationSubjectType,
+    pub reason: String,
+    pub unread: bool,
+    pub updated_at: String,
+    /// Best-effort HTML URL for browser navigation.
+    /// Falls back to the repository HTML URL when the subject has no direct URL.
+    pub url: String,
+}
+
 // ── IPC payloads (T-011) ──────────────────────────────────────
 
 /// Request payload for the `workspace_open` IPC command.

@@ -76,3 +76,28 @@ export interface Activity {
   readonly isRead: boolean;
   readonly createdAt: string;
 }
+
+// ── Notifications (issue #197) ───────────────────────────────────
+
+export type NotificationSubjectType =
+  | "pullRequest"
+  | "issue"
+  | "release"
+  | "discussion"
+  | "checkSuite"
+  | "commit"
+  | "other";
+
+/// Named `GithubNotification` to avoid collision with the `Notification`
+/// type defined in `hooks/useNotifications.ts`, which models the in-app
+/// system tray notifications (a different concern).
+export interface GithubNotification {
+  readonly id: string;
+  readonly repo: string;
+  readonly title: string;
+  readonly notificationType: NotificationSubjectType;
+  readonly reason: string;
+  readonly unread: boolean;
+  readonly updatedAt: string;
+  readonly url: string;
+}
