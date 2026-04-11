@@ -1,10 +1,11 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo, useRef } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
 import type { Issue } from "../../lib/types";
+import { useFilterableList } from "../../hooks/useFilterableList";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
@@ -19,24 +20,13 @@ interface IssuesProps {
 
 type Tab = "open" | "closed";
 
-function isOpen(issue: Issue): boolean {
-  return issue.state === "open";
-}
-
-function isClosed(issue: Issue): boolean {
-  return issue.state === "closed";
-}
+const ISSUE_TABS: Readonly<Record<Tab, (issue: Issue) => boolean>> = {
+  open: (issue) => issue.state === "open",
+  closed: (issue) => issue.state === "closed",
+};
 
 export function Issues({ issues, isLoading = false, onOpen }: IssuesProps): ReactElement {
-  const [tab, setTab] = useState<Tab>("open");
-  const [searchQuery, setSearchQuery] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-
-  useEffect(() => {
-    parentRef.current?.scrollTo({ top: 0, behavior: "instant" });
-  }, [tab, normalizedQuery]);
-
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
   const repoMap = useMemo<Map<string, string>>(() => {
@@ -44,19 +34,35 @@ export function Issues({ issues, isLoading = false, onOpen }: IssuesProps): Reac
     return new Map(repos.map((repo) => [repo.id, repo.fullName]));
   }, [repos]);
 
-  const matchesSearch = (issue: Issue): boolean => {
-    if (normalizedQuery.length === 0) return true;
+  const searchPredicate = useCallback(
+    (issue: Issue, query: string): boolean => {
+      const repoName = repoMap.get(issue.repoId) ?? issue.repoId;
+      return [issue.title, issue.author, repoName, ...issue.labels].some((value) =>
+        value.toLowerCase().includes(query),
+      );
+    },
+    [repoMap],
+  );
 
-    const repoName = repoMap.get(issue.repoId) ?? issue.repoId;
-    return [issue.title, issue.author, repoName, ...issue.labels].some((value) =>
-      value.toLowerCase().includes(normalizedQuery),
-    );
-  };
+  const {
+    tab,
+    setTab,
+    searchQuery,
+    setSearchQuery,
+    normalizedQuery,
+    filteredItems: matchingIssues,
+    visibleItems: visible,
+    tabCounts,
+  } = useFilterableList<Issue, Tab>({
+    items: issues,
+    tabs: ISSUE_TABS,
+    defaultTab: "open",
+    searchPredicate,
+  });
 
-  const matchingIssues = issues.filter(matchesSearch);
-  const openIssues = matchingIssues.filter(isOpen);
-  const closedIssues = matchingIssues.filter(isClosed);
-  const visible = tab === "open" ? openIssues : closedIssues;
+  useEffect(() => {
+    parentRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [tab, normalizedQuery]);
 
   const virtualizer = useVirtualizer({
     count: visible.length,
@@ -118,7 +124,7 @@ export function Issues({ issues, isLoading = false, onOpen }: IssuesProps): Reac
                   : "text-dim hover:bg-surface-hover hover:text-foreground"
               }`}
             >
-              Open {openIssues.length}
+              Open {tabCounts.open}
             </button>
             <button
               type="button"
@@ -130,7 +136,7 @@ export function Issues({ issues, isLoading = false, onOpen }: IssuesProps): Reac
                   : "text-dim hover:bg-surface-hover hover:text-foreground"
               }`}
             >
-              Closed {closedIssues.length}
+              Closed {tabCounts.closed}
             </button>
           </div>
 
