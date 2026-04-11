@@ -271,7 +271,7 @@ describe("Settings", () => {
     renderWithProviders(<Settings />);
 
     const reposSection = await screen.findByTestId("settings-repos");
-    const toggle = within(reposSection).getByRole("checkbox");
+    const toggle = await within(reposSection).findByRole("checkbox");
     await user.click(toggle);
 
     expect(mockedSetRepoEnabled).toHaveBeenCalledWith("repo-1", false);
@@ -335,7 +335,8 @@ describe("Settings", () => {
     await user.tab();
 
     await screen.findByRole("alert");
-    await waitFor(() => expect(input).toHaveValue(300));
+    // NumberField remounts on reset (keyed by resetKey), so re-query the input
+    await waitFor(() => expect(screen.getByLabelText(/poll interval/i)).toHaveValue(300));
   });
 
   it("should render stats section", async () => {
