@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ReactElement, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, type ReactElement, useCallback, useEffect, useMemo, useRef } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
@@ -36,7 +36,7 @@ const PR_TABS: Readonly<Record<Tab, (pr: PullRequestWithReview) => boolean>> = {
   merged: (pr) => pr.pullRequest.state === "merged",
 };
 
-export function MyPRs({
+function MyPRsImpl({
   prs,
   isLoading = false,
   onOpen,
@@ -174,3 +174,5 @@ export function MyPRs({
     </section>
   );
 }
+
+export const MyPRs = memo(MyPRsImpl);

@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactElement, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, type ReactElement, useCallback, useEffect, useMemo, useRef } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { listRepos } from "../../lib/tauri";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
@@ -25,7 +25,7 @@ const ISSUE_TABS: Readonly<Record<Tab, (issue: Issue) => boolean>> = {
   closed: (issue) => issue.state === "closed",
 };
 
-export function Issues({ issues, isLoading = false, onOpen }: IssuesProps): ReactElement {
+function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
@@ -179,3 +179,5 @@ export function Issues({ issues, isLoading = false, onOpen }: IssuesProps): Reac
     </section>
   );
 }
+
+export const Issues = memo(IssuesImpl);

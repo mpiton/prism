@@ -250,4 +250,11 @@ describe("Issues", () => {
 
     expect(screen.getByText("unknown-repo")).toBeInTheDocument();
   });
+
+  it("should be wrapped in React.memo to bail out of re-renders on stable props", () => {
+    // React.memo sets `$$typeof` to Symbol.for("react.memo") on the exported value.
+    // This structural check guarantees the optimization cannot be accidentally removed.
+    const memoSymbol = (Issues as unknown as { readonly $$typeof?: symbol }).$$typeof;
+    expect(memoSymbol).toBe(Symbol.for("react.memo"));
+  });
 });
