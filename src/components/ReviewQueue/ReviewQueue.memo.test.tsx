@@ -6,6 +6,11 @@ import { useDashboardStore } from "../../stores/dashboard";
 // Hoisted spy so the `vi.mock` factory (which is hoisted) can reference it.
 const { reviewCardSpy } = vi.hoisted(() => ({ reviewCardSpy: vi.fn() }));
 
+// Memoization tests should isolate child renders from dashboard registration side effects.
+vi.mock("../../hooks/useRegisterNavigableItems", () => ({
+  useRegisterNavigableItems: vi.fn(),
+}));
+
 // Replace ReviewCard with a light stub that counts render calls.
 vi.mock("./ReviewCard", () => ({
   ReviewCard: (props: Record<string, unknown>) => {
