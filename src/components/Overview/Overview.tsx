@@ -96,12 +96,13 @@ export function Overview(): ReactElement {
 
   const reviews = reviewRequests.slice(0, MAX_REVIEWS);
   const prs = myPullRequests.slice(0, MAX_PRS);
-  const issues = assignedIssues.filter((i) => i.state === "open").slice(0, MAX_ISSUES);
+  const openIssues = assignedIssues.filter((i) => i.state === "open");
+  const issues = openIssues.slice(0, MAX_ISSUES);
+  const openIssueCount = openIssues.length;
   const activities = recentActivity.slice(0, MAX_ACTIVITIES);
   const openPrCount = myPullRequests.filter(
     (pr) => pr.pullRequest.state === "open" || pr.pullRequest.state === "draft",
   ).length;
-  const openIssueCount = assignedIssues.filter((issue) => issue.state === "open").length;
   const unreadActivityCount = recentActivity.filter((activity) => !activity.isRead).length;
 
   return (
@@ -186,7 +187,7 @@ export function Overview(): ReactElement {
               </span>
             </div>
 
-            <Issues issues={issues} isLoading={showLoadingState} onOpen={openUrl} />
+            <Issues issues={issues} isLoading={showLoadingState} onOpen={openUrl} hideTabs />
 
             {!showLoadingState && openIssueCount > MAX_ISSUES ? (
               <button

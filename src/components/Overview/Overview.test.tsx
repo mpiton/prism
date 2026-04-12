@@ -259,6 +259,24 @@ describe("Overview", () => {
     expect(screen.queryByTestId("overview-issues-view-all")).not.toBeInTheDocument();
   });
 
+  it("should hide 'View all' when many closed but few open issues", () => {
+    const openIssues = Array.from({ length: 3 }, (_, i) => makeIssue(i + 1));
+    const closedIssues = Array.from({ length: 6 }, (_, i) => ({
+      ...makeIssue(i + 10),
+      state: "closed" as const,
+    }));
+    setupMock(makeDashboard({ assignedIssues: [...openIssues, ...closedIssues] }));
+
+    renderWithProviders(<Overview />);
+
+    // Only 3 open issues shown, no closed issues visible
+    expect(screen.getByText("Issue #1")).toBeInTheDocument();
+    expect(screen.getByText("Issue #3")).toBeInTheDocument();
+    expect(screen.queryByText("Issue #10")).not.toBeInTheDocument();
+    // "View all" hidden because openIssueCount (3) <= MAX_ISSUES (5)
+    expect(screen.queryByTestId("overview-issues-view-all")).not.toBeInTheDocument();
+  });
+
   it("should limit activity to 5 items", () => {
     const activities = Array.from({ length: 8 }, (_, i) => makeActivity(i + 1));
     setupMock(makeDashboard({ recentActivity: activities }));
