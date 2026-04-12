@@ -62,6 +62,9 @@ function deduplicateItems(items: readonly PaletteItem[]): readonly PaletteItem[]
   });
 }
 
+const ITEM_CLASS =
+  "flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg aria-selected:bg-fg/10";
+
 function PaletteItemRow({ item }: { readonly item: PaletteItem }): ReactElement {
   return (
     <>
@@ -167,7 +170,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   value={item.id}
                   keywords={[String(item.number), item.title, item.repoName]}
                   onSelect={() => handleSelect(item)}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg aria-selected:bg-fg/10"
+                  className={ITEM_CLASS}
                 >
                   <PaletteItemRow item={item} />
                 </Command.Item>
@@ -183,13 +186,49 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   value={item.id}
                   keywords={[String(item.number), item.title, item.repoName]}
                   onSelect={() => handleSelect(item)}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg aria-selected:bg-fg/10"
+                  className={ITEM_CLASS}
                 >
                   <PaletteItemRow item={item} />
                 </Command.Item>
               ))}
             </Command.Group>
           )}
+
+          <Command.Group heading="Actions">
+            <Command.Item
+              value="action-settings"
+              keywords={["settings", "preferences", "config"]}
+              onSelect={() => {
+                useDashboardStore.getState().setView("settings");
+                onOpenChange(false);
+              }}
+              className={ITEM_CLASS}
+            >
+              Settings
+            </Command.Item>
+            <Command.Item
+              value="action-docs"
+              keywords={["documentation", "docs", "help", "guide"]}
+              onSelect={() => {
+                openUrl("https://github.com/mpiton/prism");
+                onOpenChange(false);
+              }}
+              className={ITEM_CLASS}
+            >
+              Open Documentation
+            </Command.Item>
+            <Command.Item
+              value="action-updates"
+              keywords={["update", "updates", "version", "release"]}
+              onSelect={() => {
+                openUrl("https://github.com/mpiton/prism/releases");
+                onOpenChange(false);
+              }}
+              className={ITEM_CLASS}
+            >
+              Check for Updates
+            </Command.Item>
+          </Command.Group>
         </Command.List>
       </div>
     </Command.Dialog>

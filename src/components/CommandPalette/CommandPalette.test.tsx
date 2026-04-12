@@ -301,8 +301,7 @@ describe("CommandPalette", () => {
     const onOpenChange = vi.fn();
     renderPalette({ open: true, onOpenChange });
 
-    // Navigate to item via keyboard (arrow down selects first item)
-    await user.keyboard("{ArrowDown}");
+    // cmdk auto-selects the first item (the PR) on open
     await user.keyboard("{Meta>}{Enter}{/Meta}");
 
     expect(mockedOpenUrl).toHaveBeenCalledWith(
@@ -330,7 +329,7 @@ describe("CommandPalette", () => {
     const onOpenChange = vi.fn();
     renderPalette({ open: true, onOpenChange });
 
-    await user.keyboard("{ArrowDown}");
+    // cmdk auto-selects the first item (the PR) on open
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(mockedOpenUrl).toHaveBeenCalledWith(
@@ -462,5 +461,60 @@ describe("CommandPalette", () => {
 
     const titleSpan = screen.getByText("Fix login bug");
     expect(titleSpan).toHaveAttribute("title", "Fix login bug");
+  });
+
+  it("should display Actions group heading", () => {
+    renderPalette({ open: true, onOpenChange: () => {} });
+    expect(screen.getByText("Actions")).toBeInTheDocument();
+  });
+
+  it("should navigate to settings when selecting Settings action", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText("Settings");
+    await user.click(item);
+
+    expect(mockSetView).toHaveBeenCalledWith("settings");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should open documentation URL when selecting Open Documentation action", async () => {
+    const { openUrl: mockedOpenUrl } = await import("../../lib/open");
+    vi.mocked(mockedOpenUrl).mockClear();
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText("Open Documentation");
+    await user.click(item);
+
+    expect(mockedOpenUrl).toHaveBeenCalledWith("https://github.com/mpiton/prism");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should open releases URL when selecting Check for Updates action", async () => {
+    const { openUrl: mockedOpenUrl } = await import("../../lib/open");
+    vi.mocked(mockedOpenUrl).mockClear();
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText("Check for Updates");
+    await user.click(item);
+
+    expect(mockedOpenUrl).toHaveBeenCalledWith("https://github.com/mpiton/prism/releases");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should find actions via search", async () => {
+    const user = userEvent.setup();
+    renderPalette({ open: true, onOpenChange: () => {} });
+
+    const input = screen.getByPlaceholderText(/search/i);
+    await user.type(input, "settings");
+
+    expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 });
