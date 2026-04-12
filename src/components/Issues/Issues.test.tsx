@@ -234,8 +234,8 @@ describe("Issues", () => {
 
     render(<Issues issues={[issue1, issue2]} onOpen={onOpen} />);
 
-    expect(screen.getByText("org-a/shared")).toBeInTheDocument();
-    expect(screen.getByText("org-b/shared")).toBeInTheDocument();
+    expect(screen.getAllByText("org-a/shared").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("org-b/shared").length).toBeGreaterThan(0);
   });
 
   it("should fallback to repoId when repo not found in map", () => {
@@ -249,6 +249,127 @@ describe("Issues", () => {
     render(<Issues issues={[orphanIssue]} onOpen={onOpen} />);
 
     expect(screen.getByText("unknown-repo")).toBeInTheDocument();
+  });
+
+  it("should show repo dropdown when multiple repos exist", () => {
+    const issue1 = makeIssue({ number: 1, title: "Issue in repo 1", state: "open", repoId: "repo-1" });
+    const issue2 = makeIssue({ number: 2, title: "Issue in repo 2", state: "open", repoId: "repo-2" });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
+    });
+
+    render(<Issues issues={[issue1, issue2]} onOpen={onOpen} />);
+
+    const select = screen.getByRole("combobox", { name: /filter by repo/i });
+    expect(select).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "All repos" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "acme/console" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "org/repo" })).toBeInTheDocument();
+  });
+
+  it("should hide repo dropdown when single repo", () => {
+    render(<Issues issues={[openIssue1, openIssue2]} onOpen={onOpen} />);
+
+    expect(screen.queryByRole("combobox", { name: /filter by repo/i })).toBeNull();
+  });
+
+  it("should filter issues by selected repo", async () => {
+    const issue1 = makeIssue({ number: 1, title: "Repo 1 issue", state: "open", repoId: "repo-1" });
+    const issue2 = makeIssue({ number: 2, title: "Repo 2 issue", state: "open", repoId: "repo-2" });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
+    });
+
+    render(<Issues issues={[issue1, issue2]} onOpen={onOpen} />);
+
+    const select = screen.getByRole("combobox", { name: /filter by repo/i });
+    await userEvent.selectOptions(select, "repo-2");
+
+    expect(screen.getByText("Repo 2 issue")).toBeInTheDocument();
+    expect(screen.queryByText("Repo 1 issue")).not.toBeInTheDocument();
+  });
+
+  it("should show label filter buttons when labels exist", () => {
+    const labeledIssue = makeIssue({ number: 5, title: "Bug issue", state: "open", labels: ["bug", "help wanted"] });
+
+    render(<Issues issues={[labeledIssue]} onOpen={onOpen} />);
+
+    const group = screen.getByRole("group", { name: /filter by label/i });
+    expect(group).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "bug" })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "help wanted" })).toBeInTheDocument();
+  });
+
+  it("should hide label filters when no labels", () => {
+    render(<Issues issues={[openIssue1]} onOpen={onOpen} />);
+
+    expect(screen.queryByRole("group", { name: /filter by label/i })).toBeNull();
+  });
+
+  it("should filter issues by selected label", async () => {
+    const user = userEvent.setup();
+    const bugIssue = makeIssue({ number: 1, title: "Bug issue", state: "open", labels: ["bug"] });
+    const featureIssue = makeIssue({ number: 2, title: "Feature issue", state: "open", labels: ["feature"] });
+
+    render(<Issues issues={[bugIssue, featureIssue]} onOpen={onOpen} />);
+
+    await user.click(screen.getByRole("button", { name: "bug" }));
+
+    expect(screen.getByText("Bug issue")).toBeInTheDocument();
+    expect(screen.queryByText("Feature issue")).not.toBeInTheDocument();
+  });
+
+  it("should deselect label filter on second click", async () => {
+    const user = userEvent.setup();
+    const bugIssue = makeIssue({ number: 1, title: "Bug issue", state: "open", labels: ["bug"] });
+    const featureIssue = makeIssue({ number: 2, title: "Feature issue", state: "open", labels: ["feature"] });
+
+    render(<Issues issues={[bugIssue, featureIssue]} onOpen={onOpen} />);
+
+    const bugButton = screen.getByRole("button", { name: "bug" });
+    await user.click(bugButton);
+    await user.click(bugButton);
+
+    expect(screen.getByText("Bug issue")).toBeInTheDocument();
+    expect(screen.getByText("Feature issue")).toBeInTheDocument();
+  });
+
+  it("should combine repo + label + search + tab filters", async () => {
+    const user = userEvent.setup();
+    const issue1 = makeIssue({ number: 1, title: "Repo1 bug open", state: "open", repoId: "repo-1", labels: ["bug"] });
+    const issue2 = makeIssue({ number: 2, title: "Repo2 bug open", state: "open", repoId: "repo-2", labels: ["bug"] });
+    const issue3 = makeIssue({ number: 3, title: "Repo1 feature open", state: "open", repoId: "repo-1", labels: ["feature"] });
+    const issue4 = makeIssue({ number: 4, title: "Repo1 bug closed", state: "closed", repoId: "repo-1", labels: ["bug"] });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
+    });
+
+    render(<Issues issues={[issue1, issue2, issue3, issue4]} onOpen={onOpen} />);
+
+    // Filter by repo-1
+    const select = screen.getByRole("combobox", { name: /filter by repo/i });
+    await userEvent.selectOptions(select, "repo-1");
+
+    // Filter by label "bug"
+    await user.click(screen.getByRole("button", { name: "bug" }));
+
+    // Search for "open"
+    await user.type(screen.getByPlaceholderText("Filter issues..."), "open");
+
+    // Only issue1 matches: repo-1, bug label, "open" in title, open tab
+    expect(screen.getByText("Repo1 bug open")).toBeInTheDocument();
+    expect(screen.queryByText("Repo2 bug open")).not.toBeInTheDocument();
+    expect(screen.queryByText("Repo1 feature open")).not.toBeInTheDocument();
+    expect(screen.queryByText("Repo1 bug closed")).not.toBeInTheDocument();
   });
 
 });

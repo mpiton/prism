@@ -20,3 +20,10 @@ export const FILTER_BUTTON_CLASS =
  */
 export const ACTION_BUTTON_CLASS =
   `${FOCUS_RING} inline-flex min-h-11 items-center rounded px-3 text-xs transition-colors`;
+
+/**
+ * Inline control (e.g. native `<select>`) used alongside filter buttons in list
+ * headers (ReviewQueue, MyPRs, Issues).
+ */
+export const INLINE_CONTROL_CLASS =
+  `${FOCUS_RING} min-h-11 rounded px-3 text-xs transition-colors`;
