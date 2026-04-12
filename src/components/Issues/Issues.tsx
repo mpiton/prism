@@ -27,11 +27,14 @@ const ISSUE_TABS: Readonly<Record<Tab, (issue: Issue) => boolean>> = {
   closed: (issue) => issue.state === "closed",
 };
 
+export const LABEL_VISIBLE_LIMIT = 8;
+
 function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideHeader = false }: IssuesProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
   const [repoFilter, setRepoFilter] = useState("");
   const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const [showAllLabels, setShowAllLabels] = useState(false);
 
   const repoMap = useMemo<Map<string, string>>(() => {
     if (!repos) return new Map();
@@ -71,6 +74,16 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
     return [...seen].sort();
   }, [repoFiltered]);
 
+  const visibleLabels = useMemo(() => {
+    if (showAllLabels) return uniqueLabels;
+    const sliced = uniqueLabels.slice(0, LABEL_VISIBLE_LIMIT);
+    if (labelFilter !== null && !sliced.includes(labelFilter) && uniqueLabels.includes(labelFilter)) {
+      return [...sliced.slice(0, -1), labelFilter];
+    }
+    return sliced;
+  }, [uniqueLabels, showAllLabels, labelFilter]);
+  const hiddenLabelsCount = uniqueLabels.length - visibleLabels.length;
+
   // Reset stale filters when available options shrink
   useEffect(() => {
     if (repoFilter !== "" && !uniqueRepos.some((r) => r.id === repoFilter)) {
@@ -83,6 +96,10 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
       setLabelFilter(null);
     }
   }, [uniqueLabels, labelFilter]);
+
+  useEffect(() => {
+    setShowAllLabels(false);
+  }, [repoFilter]);
 
   const isLabelFilterValid =
     labelFilter === null || uniqueLabels.includes(labelFilter);
@@ -219,7 +236,7 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
 
               {uniqueLabels.length > 0 && (
                 <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by label">
-                  {uniqueLabels.map((label) => (
+                  {visibleLabels.map((label) => (
                     <button
                       key={label}
                       type="button"
@@ -234,6 +251,17 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
                       {label}
                     </button>
                   ))}
+                  {(showAllLabels || hiddenLabelsCount > 0) && (
+                    <button
+                      type="button"
+                      aria-expanded={showAllLabels}
+                      data-testid="label-filter-toggle"
+                      onClick={() => setShowAllLabels(!showAllLabels)}
+                      className={`${FILTER_BUTTON_CLASS} text-dim hover:bg-surface-hover hover:text-foreground`}
+                    >
+                      {showAllLabels ? "Show less" : `+${hiddenLabelsCount} more`}
+                    </button>
+                  )}
                 </div>
               )}
             </>

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
 import type { Issue, Repo } from "../../lib/types/github";
-import { Issues } from "./Issues";
+import { Issues, LABEL_VISIBLE_LIMIT } from "./Issues";
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (opts: { count: number; estimateSize: (i: number) => number }) => ({
@@ -59,6 +59,10 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     updatedAt: "2026-03-26T12:00:00Z",
     ...overrides,
   };
+}
+
+function makeLabels(count: number): string[] {
+  return Array.from({ length: count }, (_, i) => `label-${String(i + 1).padStart(2, "0")}`);
 }
 
 const openIssue1 = makeIssue({ number: 1, title: "Open issue one", state: "open" });
@@ -428,6 +432,128 @@ describe("Issues", () => {
     await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by repo/i }), "repo-1");
     expect(within(labelGroup).getByRole("button", { name: "bug" })).toBeInTheDocument();
     expect(within(labelGroup).queryByRole("button", { name: "feature" })).not.toBeInTheDocument();
+  });
+
+  it("should only show LABEL_VISIBLE_LIMIT labels when more exist", () => {
+    const labels = makeLabels(12);
+    const issue = makeIssue({ number: 10, title: "Many labels issue", state: "open", labels });
+
+    render(<Issues issues={[issue]} onOpen={onOpen} />);
+
+    const group = screen.getByRole("group", { name: /filter by label/i });
+
+    for (let i = 1; i <= 8; i++) {
+      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+    }
+    for (let i = 9; i <= 12; i++) {
+      expect(within(group).queryByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).not.toBeInTheDocument();
+    }
+    expect(screen.getByTestId("label-filter-toggle")).toHaveTextContent("+4 more");
+  });
+
+  it("should show all labels when toggle is clicked", async () => {
+    const user = userEvent.setup();
+    const labels = makeLabels(12);
+    const issue = makeIssue({ number: 10, title: "Many labels issue", state: "open", labels });
+
+    render(<Issues issues={[issue]} onOpen={onOpen} />);
+
+    const toggle = screen.getByTestId("label-filter-toggle");
+    await user.click(toggle);
+
+    const group = screen.getByRole("group", { name: /filter by label/i });
+    for (let i = 1; i <= 12; i++) {
+      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+    }
+    expect(toggle).toHaveTextContent("Show less");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("should collapse labels when Show less is clicked", async () => {
+    const user = userEvent.setup();
+    const labels = makeLabels(12);
+    const issue = makeIssue({ number: 10, title: "Many labels issue", state: "open", labels });
+
+    render(<Issues issues={[issue]} onOpen={onOpen} />);
+
+    const toggle = screen.getByTestId("label-filter-toggle");
+    await user.click(toggle);
+    await user.click(toggle);
+
+    const group = screen.getByRole("group", { name: /filter by label/i });
+    for (let i = 1; i <= 8; i++) {
+      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+    }
+    for (let i = 9; i <= 12; i++) {
+      expect(within(group).queryByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).not.toBeInTheDocument();
+    }
+    expect(toggle).toHaveTextContent("+4 more");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("should not show toggle when labels are within limit", () => {
+    const labels = makeLabels(LABEL_VISIBLE_LIMIT);
+    const issue = makeIssue({ number: 10, title: "Exact limit issue", state: "open", labels });
+
+    render(<Issues issues={[issue]} onOpen={onOpen} />);
+
+    const group = screen.getByRole("group", { name: /filter by label/i });
+    for (let i = 1; i <= LABEL_VISIBLE_LIMIT; i++) {
+      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+    }
+    expect(screen.queryByTestId("label-filter-toggle")).toBeNull();
+  });
+
+  it("should reset label expansion when repo filter changes", async () => {
+    const user = userEvent.setup();
+    const labels1 = makeLabels(12);
+    const labels2 = makeLabels(10).map((l) => `repo2-${l}`);
+    const issue1 = makeIssue({ number: 1, title: "Repo1 issue", state: "open", repoId: "repo-1", labels: labels1 });
+    const issue2 = makeIssue({ number: 2, title: "Repo2 issue", state: "open", repoId: "repo-2", labels: labels2 });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
+    });
+
+    render(<Issues issues={[issue1, issue2]} onOpen={onOpen} />);
+
+    const toggle = screen.getByTestId("label-filter-toggle");
+    await user.click(toggle);
+    expect(toggle).toHaveTextContent("Show less");
+
+    const select = screen.getByRole("combobox", { name: /filter by repo/i });
+    await userEvent.selectOptions(select, "repo-2");
+
+    const newToggle = screen.getByTestId("label-filter-toggle");
+    expect(newToggle).not.toHaveTextContent("Show less");
+    expect(newToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("should keep selected label visible when collapsed beyond limit", async () => {
+    const user = userEvent.setup();
+    const labels = makeLabels(12);
+    const issue = makeIssue({ number: 1, title: "Many labels", state: "open", labels });
+
+    render(<Issues issues={[issue]} onOpen={onOpen} />);
+
+    // Expand, select label-10 (beyond LABEL_VISIBLE_LIMIT), then collapse
+    await user.click(screen.getByTestId("label-filter-toggle"));
+    await user.click(screen.getByRole("button", { name: "label-10" }));
+    await user.click(screen.getByTestId("label-filter-toggle"));
+
+    // label-10 should still be visible even though list is collapsed
+    const group = screen.getByRole("group", { name: /filter by label/i });
+    const visibleLabelButtons = within(group)
+      .getAllByRole("button")
+      .filter((button) => /^label-/.test(button.textContent ?? ""));
+
+    expect(visibleLabelButtons).toHaveLength(LABEL_VISIBLE_LIMIT);
+    expect(within(group).getByRole("button", { name: "label-10" })).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: "label-08" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("label-filter-toggle")).toHaveTextContent("+4 more");
+    expect(screen.getByRole("button", { name: "label-10" })).toHaveAttribute("aria-pressed", "true");
   });
 
 });
