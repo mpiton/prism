@@ -21,6 +21,8 @@ describe("icons barrel", () => {
 
   it("should expose exactly the whitelisted icons (no accidental wildcard)", () => {
     const exportedKeys = Object.keys(icons).sort();
-    expect(exportedKeys).toEqual(["CircleCheck", "CircleX", "Eye"].sort());
+    expect(exportedKeys).toEqual(
+      ["BookOpen", "CircleCheck", "CircleX", "Download", "Eye", "Focus", "FolderOpen", "LayoutDashboard", "RefreshCw", "Settings"].sort(),
+    );
   });
 });

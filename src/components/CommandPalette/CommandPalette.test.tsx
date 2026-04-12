@@ -17,8 +17,11 @@ vi.mock("../../lib/tauri", () => ({
 }));
 
 const mockSetView = vi.fn();
+const mockToggleFocusMode = vi.fn();
 vi.mock("../../stores/dashboard", () => ({
-  useDashboardStore: { getState: () => ({ setView: mockSetView }) },
+  useDashboardStore: {
+    getState: () => ({ setView: mockSetView, toggleFocusMode: mockToggleFocusMode }),
+  },
   DashboardView: {},
 }));
 
@@ -117,6 +120,7 @@ describe("CommandPalette", () => {
     vi.clearAllMocks();
     queryClient.clear();
     mockSetView.mockReset();
+    mockToggleFocusMode.mockReset();
 
     (listRepos as Mock).mockResolvedValue([mockRepo]);
 
@@ -516,5 +520,81 @@ describe("CommandPalette", () => {
     await user.type(input, "settings");
 
     expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("should navigate to dashboard when selecting Navigate to Dashboard action", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText("Navigate to Dashboard");
+    await user.click(item);
+
+    expect(mockSetView).toHaveBeenCalledWith("overview");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should toggle focus mode when selecting Toggle Focus Mode action", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText("Toggle Focus Mode");
+    await user.click(item);
+
+    expect(mockToggleFocusMode).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should call forceSync when selecting Refresh Data action", async () => {
+    const mockForceSync = vi.fn();
+    (useGitHubData as Mock).mockReturnValue({
+      dashboard: makeDashboard(),
+      stats: null,
+      isLoading: false,
+      error: null,
+      forceSync: mockForceSync,
+      isSyncing: false,
+    });
+
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText("Refresh Data");
+    await user.click(item);
+
+    expect(mockForceSync).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should navigate to workspaces when selecting Open Workspaces action", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderPalette({ open: true, onOpenChange });
+
+    const item = screen.getByText("Open Workspaces");
+    await user.click(item);
+
+    expect(mockSetView).toHaveBeenCalledWith("workspaces");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("should find new actions via keyword search", async () => {
+    const user = userEvent.setup();
+    renderPalette({ open: true, onOpenChange: () => {} });
+
+    const input = screen.getByPlaceholderText(/search/i);
+
+    await user.type(input, "refresh");
+    expect(screen.getByText("Refresh Data")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "focus");
+    expect(screen.getByText("Toggle Focus Mode")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "dashboard");
+    expect(screen.getByText("Navigate to Dashboard")).toBeInTheDocument();
   });
 });
