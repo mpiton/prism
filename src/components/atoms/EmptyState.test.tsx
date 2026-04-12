@@ -61,6 +61,20 @@ describe("EmptyState", () => {
     expect(handleClick).toHaveBeenCalledOnce();
   });
 
+  it("should call cta.onClick when activated with Space", async () => {
+    const handleClick = vi.fn();
+    render(
+      <EmptyState
+        message="No repos"
+        cta={{ text: "Sync now", onClick: handleClick }}
+      />,
+    );
+
+    screen.getByRole("button", { name: "Sync now" }).focus();
+    await userEvent.keyboard(" ");
+    expect(handleClick).toHaveBeenCalledOnce();
+  });
+
   it("should render a button with type='button'", () => {
     render(
       <EmptyState
