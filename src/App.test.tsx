@@ -75,6 +75,17 @@ describe("App layout", () => {
     expect(await screen.findByTestId("overview")).toBeInTheDocument();
   });
 
+  it("should expose a single level-one heading on the overview screen", async () => {
+    renderApp();
+
+    expect(await screen.findByTestId("overview")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: "PRism" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Review requests come first" }),
+    ).toBeInTheDocument();
+  });
+
   it("should render my-prs view", async () => {
     useDashboardStore.setState({ currentView: "mine" });
     renderApp();

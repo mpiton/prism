@@ -122,7 +122,7 @@ export function Overview(): ReactElement {
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
                 Priority lane
               </p>
-              <h1 className="text-lg font-semibold text-white">Review requests come first</h1>
+              <h2 className="text-lg font-semibold text-white">Review requests come first</h2>
               <p className="max-w-2xl text-sm text-dim">
                 Surface the PRs that need your attention now so approvals and requested changes do
                 not get buried under passive updates.

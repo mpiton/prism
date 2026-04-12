@@ -158,6 +158,20 @@ describe("Overview", () => {
     expect(screen.getByText("PR #2")).toBeInTheDocument();
   });
 
+  it("should use a level-two heading for the priority lane title", () => {
+    setupMock(
+      makeDashboard({
+        reviewRequests: [makePr(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    expect(
+      screen.getByRole("heading", { name: "Review requests come first", level: 2 }),
+    ).toBeInTheDocument();
+  });
+
   it("should render my PRs section", () => {
     setupMock(
       makeDashboard({
