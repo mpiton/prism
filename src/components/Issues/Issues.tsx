@@ -38,6 +38,7 @@ function IssuesImpl({
   hideHeader = false,
 }: IssuesProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
+  const activeNavigableSection = useDashboardStore((s) => s.activeNavigableSection);
   const selectedIndex = useDashboardStore((s) => s.selectedIndex);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
   const [repoFilter, setRepoFilter] = useState("");
@@ -163,7 +164,7 @@ function IssuesImpl({
   });
 
   const navItems = useMemo(() => visible.map((issue) => ({ url: issue.url })), [visible]);
-  useRegisterNavigableItems(navItems);
+  useRegisterNavigableItems(navItems, "issues");
 
   return (
     <section
@@ -306,7 +307,9 @@ function IssuesImpl({
                     >
                       <IssueCard
                         issue={issue}
-                        isSelected={selectedIndex === virtualItem.index}
+                        isSelected={
+                          activeNavigableSection === "issues" && selectedIndex === virtualItem.index
+                        }
                         repoName={repoMap.get(issue.repoId) ?? issue.repoId}
                         onOpen={onOpen}
                       />

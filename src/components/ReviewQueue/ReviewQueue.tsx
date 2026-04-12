@@ -61,6 +61,7 @@ function ReviewQueueImpl({
 }: ReviewQueueProps): ReactElement {
   const storePriority = useDashboardStore((s) => s.activeFilters.priority);
   const storeRepo = useDashboardStore((s) => s.activeFilters.repo);
+  const activeNavigableSection = useDashboardStore((s) => s.activeNavigableSection);
   const selectedIndex = useDashboardStore((s) => s.selectedIndex);
   const setFilter = useDashboardStore((s) => s.setFilter);
   const focusMode = useDashboardStore((s) => s.focusMode);
@@ -96,7 +97,7 @@ function ReviewQueueImpl({
     () => (isLoading ? [] : sorted.map((r) => ({ url: r.pullRequest.url }))),
     [isLoading, sorted],
   );
-  useRegisterNavigableItems(navItems);
+  useRegisterNavigableItems(navItems, "reviews");
 
   return (
     <section
@@ -184,7 +185,7 @@ function ReviewQueueImpl({
                 <ReviewCard
                   key={review.pullRequest.id}
                   data={review}
-                  isSelected={selectedIndex === index}
+                  isSelected={activeNavigableSection === "reviews" && selectedIndex === index}
                   onOpen={onOpen}
                   onWorkspaceAction={onWorkspaceAction}
                 />

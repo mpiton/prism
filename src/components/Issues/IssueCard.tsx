@@ -33,6 +33,7 @@ export function IssueCard({
     <a
       data-testid="issue-card"
       data-selected={isSelected ? "true" : undefined}
+      aria-current={isSelected ? "true" : undefined}
       href={issue.url}
       onClick={handleClick}
       aria-label={`Issue #${issue.number}: ${issue.title} (${issue.state})`}

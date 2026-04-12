@@ -33,7 +33,13 @@ describe("IssueCard", () => {
     render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} isSelected />);
     const card = screen.getByTestId("issue-card");
     expect(card).toHaveAttribute("data-selected", "true");
+    expect(card).toHaveAttribute("aria-current", "true");
     expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
+  });
+
+  it("should not set aria-current when not selected", () => {
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
+    expect(screen.getByTestId("issue-card")).not.toHaveAttribute("aria-current");
   });
 
   it("should render issue with labels", () => {

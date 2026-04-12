@@ -25,6 +25,7 @@ const NOTIFICATION_TABS: Readonly<Record<Tab, (n: GithubNotification) => boolean
 
 function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
+  const activeNavigableSection = useDashboardStore((s) => s.activeNavigableSection);
   const selectedIndex = useDashboardStore((s) => s.selectedIndex);
 
   const notificationsQuery = useQuery<GithubNotification[]>({
@@ -61,8 +62,14 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
     listRef.current?.scrollTo({ top: 0, behavior: "instant" });
   }, [tab, normalizedQuery]);
 
+  useEffect(() => {
+    if (selectedIndex < 0 || activeNavigableSection !== "notifications") return;
+    const selectedCard = listRef.current?.querySelector<HTMLElement>('[data-selected="true"]');
+    selectedCard?.scrollIntoView({ block: "nearest" });
+  }, [activeNavigableSection, selectedIndex, visible]);
+
   const navItems = useMemo(() => visible.map((n) => ({ url: n.url })), [visible]);
-  useRegisterNavigableItems(navItems);
+  useRegisterNavigableItems(navItems, "notifications");
 
   const isLoading = notificationsQuery.isLoading;
   const isFetching = notificationsQuery.isFetching;
@@ -164,7 +171,9 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
                   <NotificationCard
                     key={n.id}
                     data={n}
-                    isSelected={selectedIndex === index}
+                    isSelected={
+                      activeNavigableSection === "notifications" && selectedIndex === index
+                    }
                     onOpen={onOpen}
                   />
                 ))}

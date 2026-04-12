@@ -46,6 +46,7 @@ function MyPRsImpl({
   hideHeader = false,
 }: MyPRsProps): ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
+  const activeNavigableSection = useDashboardStore((s) => s.activeNavigableSection);
   const selectedIndex = useDashboardStore((s) => s.selectedIndex);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
@@ -142,8 +143,14 @@ function MyPRsImpl({
     listRef.current?.scrollTo({ top: 0, behavior: "instant" });
   }, [tab, normalizedQuery, repoFilter, labelFilter]);
 
+  useEffect(() => {
+    if (selectedIndex < 0 || activeNavigableSection !== "mine") return;
+    const selectedCard = listRef.current?.querySelector<HTMLElement>('[data-selected="true"]');
+    selectedCard?.scrollIntoView({ block: "nearest" });
+  }, [activeNavigableSection, selectedIndex, visible]);
+
   const navItems = useMemo(() => visible.map((pr) => ({ url: pr.pullRequest.url })), [visible]);
-  useRegisterNavigableItems(navItems);
+  useRegisterNavigableItems(navItems, "mine");
 
   return (
     <section
@@ -263,7 +270,7 @@ function MyPRsImpl({
                   <MyPrCard
                     key={pr.pullRequest.id}
                     data={pr}
-                    isSelected={selectedIndex === index}
+                    isSelected={activeNavigableSection === "mine" && selectedIndex === index}
                     onOpen={onOpen}
                     onWorkspaceAction={onWorkspaceAction}
                   />

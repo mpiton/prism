@@ -1,8 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
 import type { GithubNotification } from "../../lib/types/github";
+import { useDashboardStore } from "../../stores/dashboard";
 import { Notifications } from "./Notifications";
 
 const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
@@ -72,6 +73,12 @@ function mockQueryError(message: string) {
 beforeEach(() => {
   onOpen.mockClear();
   mockUseQuery.mockReset();
+  useDashboardStore.setState({
+    activeNavigableSection: null,
+    navigableSectionRegistrations: [],
+    selectedIndex: -1,
+    navigableItems: [],
+  });
 });
 
 describe("Notifications", () => {
@@ -103,6 +110,26 @@ describe("Notifications", () => {
     expect(screen.getByText("Unread PR")).toBeInTheDocument();
     expect(screen.getByText("Read PR")).toBeInTheDocument();
     expect(screen.getByText("Crash")).toBeInTheDocument();
+  });
+
+  it("scrolls the selected item into view during keyboard navigation", async () => {
+    const scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(scrollIntoView);
+
+    mockQuerySuccess([unreadNotif, readNotif, issueNotif]);
+    render(<Notifications onOpen={onOpen} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /^all/i }));
+    act(() => {
+      useDashboardStore.setState({
+        activeNavigableSection: "notifications",
+        selectedIndex: 1,
+      });
+    });
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    });
   });
 
   it("shows correct counts on each tab", () => {
