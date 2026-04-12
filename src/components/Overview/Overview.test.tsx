@@ -230,14 +230,51 @@ describe("Overview", () => {
     expect(screen.queryByText("PR #15")).not.toBeInTheDocument();
   });
 
-  it("should pass all issues without limit", () => {
-    const issues = Array.from({ length: 6 }, (_, i) => makeIssue(i + 1));
+  it("should limit issues to 5 open items", () => {
+    const issues = Array.from({ length: 8 }, (_, i) => makeIssue(i + 1));
     setupMock(makeDashboard({ assignedIssues: issues }));
 
     renderWithProviders(<Overview />);
 
+    expect(screen.getByText("Issue #5")).toBeInTheDocument();
+    expect(screen.queryByText("Issue #6")).not.toBeInTheDocument();
+  });
+
+  it("should show 'View all' button when issues exceed limit", () => {
+    const issues = Array.from({ length: 8 }, (_, i) => makeIssue(i + 1));
+    setupMock(makeDashboard({ assignedIssues: issues }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("overview-issues-view-all")).toBeInTheDocument();
+    expect(screen.getByTestId("overview-issues-view-all")).toHaveTextContent("View all 8 issues");
+  });
+
+  it("should not show 'View all' button when issues fit within limit", () => {
+    const issues = Array.from({ length: 3 }, (_, i) => makeIssue(i + 1));
+    setupMock(makeDashboard({ assignedIssues: issues }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.queryByTestId("overview-issues-view-all")).not.toBeInTheDocument();
+  });
+
+  it("should hide 'View all' when many closed but few open issues", () => {
+    const openIssues = Array.from({ length: 3 }, (_, i) => makeIssue(i + 1));
+    const closedIssues = Array.from({ length: 6 }, (_, i) => ({
+      ...makeIssue(i + 10),
+      state: "closed" as const,
+    }));
+    setupMock(makeDashboard({ assignedIssues: [...openIssues, ...closedIssues] }));
+
+    renderWithProviders(<Overview />);
+
+    // Only 3 open issues shown, no closed issues visible
+    expect(screen.getByText("Issue #1")).toBeInTheDocument();
     expect(screen.getByText("Issue #3")).toBeInTheDocument();
-    expect(screen.getByText("Issue #6")).toBeInTheDocument();
+    expect(screen.queryByText("Issue #10")).not.toBeInTheDocument();
+    // "View all" hidden because openIssueCount (3) <= MAX_ISSUES (5)
+    expect(screen.queryByTestId("overview-issues-view-all")).not.toBeInTheDocument();
   });
 
   it("should limit activity to 5 items", () => {

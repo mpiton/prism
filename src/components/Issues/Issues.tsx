@@ -16,6 +16,7 @@ interface IssuesProps {
   readonly issues: readonly Issue[];
   readonly isLoading?: boolean;
   readonly onOpen: (url: string) => void;
+  readonly hideTabs?: boolean;
 }
 
 type Tab = "open" | "closed";
@@ -25,7 +26,7 @@ const ISSUE_TABS: Readonly<Record<Tab, (issue: Issue) => boolean>> = {
   closed: (issue) => issue.state === "closed",
 };
 
-function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactElement {
+function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false }: IssuesProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
   const [repoFilter, setRepoFilter] = useState("");
@@ -163,74 +164,78 @@ function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactEl
         </>
       ) : (
         <>
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter issues..."
-            aria-label="Filter issues"
-            className={`${FOCUS_RING} w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted`}
-          />
+          {!hideTabs && (
+            <>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filter issues..."
+                aria-label="Filter issues"
+                className={`${FOCUS_RING} w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted`}
+              />
 
-          <div className="flex gap-1" role="group" aria-label="Filter by state">
-            <button
-              type="button"
-              aria-pressed={tab === "open"}
-              onClick={() => setTab("open")}
-              className={`${FILTER_BUTTON_CLASS} ${
-                tab === "open"
-                  ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-                  : "text-dim hover:bg-surface-hover hover:text-foreground"
-              }`}
-            >
-              Open {tabCounts.open}
-            </button>
-            <button
-              type="button"
-              aria-pressed={tab === "closed"}
-              onClick={() => setTab("closed")}
-              className={`${FILTER_BUTTON_CLASS} ${
-                tab === "closed"
-                  ? "bg-accent text-bg font-semibold hover:bg-accent/80"
-                  : "text-dim hover:bg-surface-hover hover:text-foreground"
-              }`}
-            >
-              Closed {tabCounts.closed}
-            </button>
-          </div>
-
-          {uniqueRepos.length > 1 && (
-            <select
-              aria-label="Filter by repo"
-              value={repoFilter}
-              onChange={(e) => setRepoFilter(e.target.value)}
-              className={`cursor-pointer border border-border bg-surface text-foreground hover:border-foreground ${INLINE_CONTROL_CLASS}`}
-            >
-              <option value="">All repos</option>
-              {uniqueRepos.map((r) => (
-                <option key={r.id} value={r.id}>{r.fullName}</option>
-              ))}
-            </select>
-          )}
-
-          {uniqueLabels.length > 0 && (
-            <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by label">
-              {uniqueLabels.map((label) => (
+              <div className="flex gap-1" role="group" aria-label="Filter by state">
                 <button
-                  key={label}
                   type="button"
-                  aria-pressed={labelFilter === label}
-                  onClick={() => setLabelFilter(labelFilter === label ? null : label)}
+                  aria-pressed={tab === "open"}
+                  onClick={() => setTab("open")}
                   className={`${FILTER_BUTTON_CLASS} ${
-                    labelFilter === label
+                    tab === "open"
                       ? "bg-accent text-bg font-semibold hover:bg-accent/80"
                       : "text-dim hover:bg-surface-hover hover:text-foreground"
                   }`}
                 >
-                  {label}
+                  Open {tabCounts.open}
                 </button>
-              ))}
-            </div>
+                <button
+                  type="button"
+                  aria-pressed={tab === "closed"}
+                  onClick={() => setTab("closed")}
+                  className={`${FILTER_BUTTON_CLASS} ${
+                    tab === "closed"
+                      ? "bg-accent text-bg font-semibold hover:bg-accent/80"
+                      : "text-dim hover:bg-surface-hover hover:text-foreground"
+                  }`}
+                >
+                  Closed {tabCounts.closed}
+                </button>
+              </div>
+
+              {uniqueRepos.length > 1 && (
+                <select
+                  aria-label="Filter by repo"
+                  value={repoFilter}
+                  onChange={(e) => setRepoFilter(e.target.value)}
+                  className={`cursor-pointer border border-border bg-surface text-foreground hover:border-foreground ${INLINE_CONTROL_CLASS}`}
+                >
+                  <option value="">All repos</option>
+                  {uniqueRepos.map((r) => (
+                    <option key={r.id} value={r.id}>{r.fullName}</option>
+                  ))}
+                </select>
+              )}
+
+              {uniqueLabels.length > 0 && (
+                <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by label">
+                  {uniqueLabels.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-pressed={labelFilter === label}
+                      onClick={() => setLabelFilter(labelFilter === label ? null : label)}
+                      className={`${FILTER_BUTTON_CLASS} ${
+                        labelFilter === label
+                          ? "bg-accent text-bg font-semibold hover:bg-accent/80"
+                          : "text-dim hover:bg-surface-hover hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {visible.length === 0 ? (
