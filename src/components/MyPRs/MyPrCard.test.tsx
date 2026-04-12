@@ -47,6 +47,7 @@ describe("MyPrCard", () => {
     render(<MyPrCard data={basePr} onOpen={vi.fn()} isSelected />);
     const card = screen.getByTestId("my-pr-card");
     expect(card).toHaveAttribute("data-selected", "true");
+    expect(card).toHaveAttribute("aria-current", "true");
     expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
   });
 

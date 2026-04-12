@@ -94,6 +94,7 @@ function NotificationCardImpl({
     <div
       data-testid="notification-card"
       data-selected={isSelected ? "true" : undefined}
+      aria-current={isSelected ? "true" : undefined}
       className={`flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover${
         unread ? "" : " opacity-60"
       }${isSelected ? ` ${SELECTED_ITEM_CLASS}` : ""}`}

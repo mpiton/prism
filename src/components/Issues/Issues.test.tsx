@@ -1,9 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
 import type { Issue, Repo } from "../../lib/types/github";
+import { useDashboardStore } from "../../stores/dashboard";
 import { Issues, LABEL_VISIBLE_LIMIT } from "./Issues";
+
+const { mockScrollToIndex } = vi.hoisted(() => ({ mockScrollToIndex: vi.fn() }));
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (opts: { count: number; estimateSize: (i: number) => number }) => ({
@@ -15,6 +18,7 @@ vi.mock("@tanstack/react-virtual", () => ({
         size: opts.estimateSize(i),
       })),
     getTotalSize: () => opts.count * opts.estimateSize(0),
+    scrollToIndex: mockScrollToIndex,
   }),
 }));
 
@@ -77,6 +81,13 @@ const onOpen = vi.fn();
 beforeEach(() => {
   onOpen.mockClear();
   mockUseQuery.mockReturnValue({ data: [makeRepo()] });
+  mockScrollToIndex.mockReset();
+  useDashboardStore.setState({
+    activeNavigableSection: null,
+    navigableSectionRegistrations: [],
+    selectedIndex: -1,
+    navigableItems: [],
+  });
 });
 
 describe("Issues", () => {
@@ -107,6 +118,21 @@ describe("Issues", () => {
     expect(screen.getByText("Closed issue two")).toBeInTheDocument();
     expect(screen.queryByText("Open issue one")).not.toBeInTheDocument();
     expect(screen.queryByText("Open issue two")).not.toBeInTheDocument();
+  });
+
+  it("should scroll the virtualizer to the selected issue during keyboard navigation", () => {
+    render(<Issues issues={allIssues} onOpen={onOpen} />);
+
+    act(() => {
+      useDashboardStore.setState({
+        activeNavigableSection: "issues",
+        selectedIndex: 1,
+      });
+    });
+
+    return waitFor(() => {
+      expect(mockScrollToIndex).toHaveBeenCalledWith(1, { align: "auto" });
+    });
   });
 
   it("should show correct counts in tabs", () => {
@@ -262,8 +288,18 @@ describe("Issues", () => {
   });
 
   it("should show repo dropdown when multiple repos exist", () => {
-    const issue1 = makeIssue({ number: 1, title: "Issue in repo 1", state: "open", repoId: "repo-1" });
-    const issue2 = makeIssue({ number: 2, title: "Issue in repo 2", state: "open", repoId: "repo-2" });
+    const issue1 = makeIssue({
+      number: 1,
+      title: "Issue in repo 1",
+      state: "open",
+      repoId: "repo-1",
+    });
+    const issue2 = makeIssue({
+      number: 2,
+      title: "Issue in repo 2",
+      state: "open",
+      repoId: "repo-2",
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -306,7 +342,12 @@ describe("Issues", () => {
   });
 
   it("should show label filter buttons when labels exist", () => {
-    const labeledIssue = makeIssue({ number: 5, title: "Bug issue", state: "open", labels: ["bug", "help wanted"] });
+    const labeledIssue = makeIssue({
+      number: 5,
+      title: "Bug issue",
+      state: "open",
+      labels: ["bug", "help wanted"],
+    });
 
     render(<Issues issues={[labeledIssue]} onOpen={onOpen} />);
 
@@ -325,7 +366,12 @@ describe("Issues", () => {
   it("should filter issues by selected label", async () => {
     const user = userEvent.setup();
     const bugIssue = makeIssue({ number: 1, title: "Bug issue", state: "open", labels: ["bug"] });
-    const featureIssue = makeIssue({ number: 2, title: "Feature issue", state: "open", labels: ["feature"] });
+    const featureIssue = makeIssue({
+      number: 2,
+      title: "Feature issue",
+      state: "open",
+      labels: ["feature"],
+    });
 
     render(<Issues issues={[bugIssue, featureIssue]} onOpen={onOpen} />);
 
@@ -338,7 +384,12 @@ describe("Issues", () => {
   it("should deselect label filter on second click", async () => {
     const user = userEvent.setup();
     const bugIssue = makeIssue({ number: 1, title: "Bug issue", state: "open", labels: ["bug"] });
-    const featureIssue = makeIssue({ number: 2, title: "Feature issue", state: "open", labels: ["feature"] });
+    const featureIssue = makeIssue({
+      number: 2,
+      title: "Feature issue",
+      state: "open",
+      labels: ["feature"],
+    });
 
     render(<Issues issues={[bugIssue, featureIssue]} onOpen={onOpen} />);
 
@@ -352,10 +403,34 @@ describe("Issues", () => {
 
   it("should combine repo + label + search + tab filters", async () => {
     const user = userEvent.setup();
-    const issue1 = makeIssue({ number: 1, title: "Repo1 bug open", state: "open", repoId: "repo-1", labels: ["bug"] });
-    const issue2 = makeIssue({ number: 2, title: "Repo2 bug open", state: "open", repoId: "repo-2", labels: ["bug"] });
-    const issue3 = makeIssue({ number: 3, title: "Repo1 feature open", state: "open", repoId: "repo-1", labels: ["feature"] });
-    const issue4 = makeIssue({ number: 4, title: "Repo1 bug closed", state: "closed", repoId: "repo-1", labels: ["bug"] });
+    const issue1 = makeIssue({
+      number: 1,
+      title: "Repo1 bug open",
+      state: "open",
+      repoId: "repo-1",
+      labels: ["bug"],
+    });
+    const issue2 = makeIssue({
+      number: 2,
+      title: "Repo2 bug open",
+      state: "open",
+      repoId: "repo-2",
+      labels: ["bug"],
+    });
+    const issue3 = makeIssue({
+      number: 3,
+      title: "Repo1 feature open",
+      state: "open",
+      repoId: "repo-1",
+      labels: ["feature"],
+    });
+    const issue4 = makeIssue({
+      number: 4,
+      title: "Repo1 bug closed",
+      state: "closed",
+      repoId: "repo-1",
+      labels: ["bug"],
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -383,8 +458,20 @@ describe("Issues", () => {
   });
 
   it("should reset stale repo/label filters after data changes", async () => {
-    const issue1 = makeIssue({ number: 1, title: "Issue repo1", repoId: "repo-1", labels: ["bug"], state: "open" });
-    const issue2 = makeIssue({ number: 2, title: "Issue repo2", repoId: "repo-2", labels: ["feature"], state: "open" });
+    const issue1 = makeIssue({
+      number: 1,
+      title: "Issue repo1",
+      repoId: "repo-1",
+      labels: ["bug"],
+      state: "open",
+    });
+    const issue2 = makeIssue({
+      number: 2,
+      title: "Issue repo2",
+      repoId: "repo-2",
+      labels: ["feature"],
+      state: "open",
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -395,14 +482,23 @@ describe("Issues", () => {
     const { rerender } = render(<Issues issues={[issue1, issue2]} onOpen={onOpen} />);
 
     // Select repo-2 and label "feature"
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by repo/i }), "repo-2");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-2",
+    );
     await userEvent.click(screen.getByRole("button", { name: "feature" }));
 
     expect(screen.getByText("Issue repo2")).toBeInTheDocument();
     expect(screen.queryByText("Issue repo1")).not.toBeInTheDocument();
 
     // Rerender with data that no longer includes repo-2 or "feature" label
-    const issue3 = makeIssue({ number: 3, title: "Issue repo1 new", repoId: "repo-1", labels: ["docs"], state: "open" });
+    const issue3 = makeIssue({
+      number: 3,
+      title: "Issue repo1 new",
+      repoId: "repo-1",
+      labels: ["docs"],
+      state: "open",
+    });
     mockUseQuery.mockReturnValue({ data: [makeRepo()] });
     rerender(<Issues issues={[issue1, issue3]} onOpen={onOpen} />);
 
@@ -413,8 +509,20 @@ describe("Issues", () => {
   });
 
   it("should show only labels from the selected repo", async () => {
-    const issue1 = makeIssue({ number: 1, title: "Issue1", repoId: "repo-1", labels: ["bug"], state: "open" });
-    const issue2 = makeIssue({ number: 2, title: "Issue2", repoId: "repo-2", labels: ["feature"], state: "open" });
+    const issue1 = makeIssue({
+      number: 1,
+      title: "Issue1",
+      repoId: "repo-1",
+      labels: ["bug"],
+      state: "open",
+    });
+    const issue2 = makeIssue({
+      number: 2,
+      title: "Issue2",
+      repoId: "repo-2",
+      labels: ["feature"],
+      state: "open",
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -429,7 +537,10 @@ describe("Issues", () => {
     expect(within(labelGroup).getByRole("button", { name: "feature" })).toBeInTheDocument();
 
     // Select repo-1: only "bug" label should remain
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by repo/i }), "repo-1");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-1",
+    );
     expect(within(labelGroup).getByRole("button", { name: "bug" })).toBeInTheDocument();
     expect(within(labelGroup).queryByRole("button", { name: "feature" })).not.toBeInTheDocument();
   });
@@ -443,10 +554,14 @@ describe("Issues", () => {
     const group = screen.getByRole("group", { name: /filter by label/i });
 
     for (let i = 1; i <= 8; i++) {
-      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+      expect(
+        within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` }),
+      ).toBeInTheDocument();
     }
     for (let i = 9; i <= 12; i++) {
-      expect(within(group).queryByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).not.toBeInTheDocument();
+      expect(
+        within(group).queryByRole("button", { name: `label-${String(i).padStart(2, "0")}` }),
+      ).not.toBeInTheDocument();
     }
     expect(screen.getByTestId("label-filter-toggle")).toHaveTextContent("+4 more");
   });
@@ -463,7 +578,9 @@ describe("Issues", () => {
 
     const group = screen.getByRole("group", { name: /filter by label/i });
     for (let i = 1; i <= 12; i++) {
-      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+      expect(
+        within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` }),
+      ).toBeInTheDocument();
     }
     expect(toggle).toHaveTextContent("Show less");
     expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -482,10 +599,14 @@ describe("Issues", () => {
 
     const group = screen.getByRole("group", { name: /filter by label/i });
     for (let i = 1; i <= 8; i++) {
-      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+      expect(
+        within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` }),
+      ).toBeInTheDocument();
     }
     for (let i = 9; i <= 12; i++) {
-      expect(within(group).queryByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).not.toBeInTheDocument();
+      expect(
+        within(group).queryByRole("button", { name: `label-${String(i).padStart(2, "0")}` }),
+      ).not.toBeInTheDocument();
     }
     expect(toggle).toHaveTextContent("+4 more");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -499,7 +620,9 @@ describe("Issues", () => {
 
     const group = screen.getByRole("group", { name: /filter by label/i });
     for (let i = 1; i <= LABEL_VISIBLE_LIMIT; i++) {
-      expect(within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` })).toBeInTheDocument();
+      expect(
+        within(group).getByRole("button", { name: `label-${String(i).padStart(2, "0")}` }),
+      ).toBeInTheDocument();
     }
     expect(screen.queryByTestId("label-filter-toggle")).toBeNull();
   });
@@ -508,8 +631,20 @@ describe("Issues", () => {
     const user = userEvent.setup();
     const labels1 = makeLabels(12);
     const labels2 = makeLabels(10).map((l) => `repo2-${l}`);
-    const issue1 = makeIssue({ number: 1, title: "Repo1 issue", state: "open", repoId: "repo-1", labels: labels1 });
-    const issue2 = makeIssue({ number: 2, title: "Repo2 issue", state: "open", repoId: "repo-2", labels: labels2 });
+    const issue1 = makeIssue({
+      number: 1,
+      title: "Repo1 issue",
+      state: "open",
+      repoId: "repo-1",
+      labels: labels1,
+    });
+    const issue2 = makeIssue({
+      number: 2,
+      title: "Repo2 issue",
+      state: "open",
+      repoId: "repo-2",
+      labels: labels2,
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -553,7 +688,9 @@ describe("Issues", () => {
     expect(within(group).getByRole("button", { name: "label-10" })).toBeInTheDocument();
     expect(within(group).queryByRole("button", { name: "label-08" })).not.toBeInTheDocument();
     expect(screen.getByTestId("label-filter-toggle")).toHaveTextContent("+4 more");
-    expect(screen.getByRole("button", { name: "label-10" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "label-10" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
-
 });

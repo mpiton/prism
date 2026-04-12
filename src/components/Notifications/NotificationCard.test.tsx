@@ -31,6 +31,7 @@ describe("NotificationCard", () => {
     render(<NotificationCard data={makeNotification()} onOpen={vi.fn()} isSelected />);
     const card = screen.getByTestId("notification-card");
     expect(card).toHaveAttribute("data-selected", "true");
+    expect(card).toHaveAttribute("aria-current", "true");
     expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
   });
 

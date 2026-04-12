@@ -46,6 +46,7 @@ describe("ReviewCard", () => {
   it("should show selected styling when keyboard-selected", () => {
     render(<ReviewCard data={mockData} onOpen={vi.fn()} isSelected />);
     const card = screen.getByText("Fix login bug").closest("div[data-selected='true']");
+    expect(card).toHaveAttribute("aria-current", "true");
     expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
   });
 

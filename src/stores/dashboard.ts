@@ -62,6 +62,14 @@ function pickActiveRegistration(
   return null;
 }
 
+function findRegistrationBySection(
+  registrations: readonly NavigableSectionRegistration[],
+  sectionId: NavigableSectionId | null,
+): NavigableSectionRegistration | null {
+  if (!sectionId) return null;
+  return registrations.find((registration) => registration.sectionId === sectionId) ?? null;
+}
+
 export const useDashboardStore = create<DashboardState>((set) => ({
   currentView: "overview",
   activeFilters: {},
@@ -105,7 +113,14 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     }),
   setNavigableItems: (items) =>
     set((state) => {
-      if (items.length === 0) return { navigableItems: items, selectedIndex: -1 };
+      if (items.length === 0) {
+        return {
+          navigableItems: items,
+          selectedIndex: -1,
+          activeNavigableSection: null,
+          navigableSectionRegistrations: [],
+        };
+      }
       const clamped = state.selectedIndex >= items.length ? items.length - 1 : state.selectedIndex;
       return {
         navigableItems: items,
@@ -116,14 +131,22 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     }),
   registerNavigableItems: (sectionId, items) =>
     set((state) => {
-      const registrations = [
-        ...state.navigableSectionRegistrations.filter(
-          (registration) => registration.sectionId !== sectionId,
-        ),
-      ];
-      if (items.length > 0) registrations.push({ sectionId, items });
+      const registrations = [...state.navigableSectionRegistrations];
+      const existingIndex = registrations.findIndex(
+        (registration) => registration.sectionId === sectionId,
+      );
 
-      const activeRegistration = pickActiveRegistration(registrations);
+      if (items.length === 0) {
+        if (existingIndex >= 0) registrations.splice(existingIndex, 1);
+      } else if (existingIndex >= 0) {
+        registrations[existingIndex] = { sectionId, items };
+      } else {
+        registrations.push({ sectionId, items });
+      }
+
+      const activeRegistration =
+        findRegistrationBySection(registrations, state.activeNavigableSection) ??
+        pickActiveRegistration(registrations);
       if (!activeRegistration) {
         return {
           navigableSectionRegistrations: registrations,

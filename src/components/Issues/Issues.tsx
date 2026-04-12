@@ -163,6 +163,11 @@ function IssuesImpl({
     useFlushSync: false,
   });
 
+  useEffect(() => {
+    if (selectedIndex < 0 || activeNavigableSection !== "issues") return;
+    virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
+  }, [activeNavigableSection, selectedIndex, virtualizer]);
+
   const navItems = useMemo(() => visible.map((issue) => ({ url: issue.url })), [visible]);
   useRegisterNavigableItems(navItems, "issues");
 

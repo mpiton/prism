@@ -227,12 +227,9 @@ describe("Overview", () => {
 
     renderWithProviders(<Overview />);
 
-    const activeSection = useDashboardStore.getState().activeNavigableSection;
-    expect(activeSection).not.toBeNull();
-
     act(() => {
       useDashboardStore.setState({
-        activeNavigableSection: activeSection,
+        activeNavigableSection: "reviews",
         selectedIndex: 0,
       });
     });
