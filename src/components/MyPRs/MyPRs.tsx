@@ -66,23 +66,44 @@ function MyPRsImpl({
     return result.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [prs, repoMap]);
 
+  const repoFiltered = useMemo(
+    () =>
+      repoFilter === ""
+        ? prs
+        : prs.filter((pr) => pr.pullRequest.repoId === repoFilter),
+    [prs, repoFilter],
+  );
+
   const uniqueLabels = useMemo(() => {
     const seen = new Set<string>();
-    for (const pr of prs) {
+    for (const pr of repoFiltered) {
       for (const label of pr.pullRequest.labels) {
         seen.add(label);
       }
     }
     return [...seen].sort();
-  }, [prs]);
+  }, [repoFiltered]);
 
-  const preFiltered = useMemo(() => {
-    return prs.filter((pr) => {
-      if (repoFilter !== "" && pr.pullRequest.repoId !== repoFilter) return false;
-      if (labelFilter !== null && !pr.pullRequest.labels.includes(labelFilter)) return false;
-      return true;
-    });
-  }, [prs, repoFilter, labelFilter]);
+  // Reset stale filters when available options shrink
+  useEffect(() => {
+    if (repoFilter !== "" && !uniqueRepos.some((r) => r.id === repoFilter)) {
+      setRepoFilter("");
+    }
+  }, [uniqueRepos, repoFilter]);
+
+  useEffect(() => {
+    if (labelFilter !== null && !uniqueLabels.includes(labelFilter)) {
+      setLabelFilter(null);
+    }
+  }, [uniqueLabels, labelFilter]);
+
+  const preFiltered = useMemo(
+    () =>
+      labelFilter === null
+        ? repoFiltered
+        : repoFiltered.filter((pr) => pr.pullRequest.labels.includes(labelFilter)),
+    [repoFiltered, labelFilter],
+  );
 
   const searchPredicate = useCallback(
     (pr: PullRequestWithReview, query: string): boolean => {

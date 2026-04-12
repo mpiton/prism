@@ -48,23 +48,44 @@ function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactEl
     return result.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [issues, repoMap]);
 
+  const repoFiltered = useMemo<readonly Issue[]>(
+    () =>
+      repoFilter === ""
+        ? issues
+        : issues.filter((issue) => issue.repoId === repoFilter),
+    [issues, repoFilter],
+  );
+
   const uniqueLabels = useMemo<string[]>(() => {
     const seen = new Set<string>();
-    for (const issue of issues) {
+    for (const issue of repoFiltered) {
       for (const label of issue.labels) {
         seen.add(label);
       }
     }
     return [...seen].sort();
-  }, [issues]);
+  }, [repoFiltered]);
 
-  const preFiltered = useMemo<readonly Issue[]>(() => {
-    return issues.filter((issue) => {
-      if (repoFilter !== "" && issue.repoId !== repoFilter) return false;
-      if (labelFilter !== null && !issue.labels.includes(labelFilter)) return false;
-      return true;
-    });
-  }, [issues, repoFilter, labelFilter]);
+  // Reset stale filters when available options shrink
+  useEffect(() => {
+    if (repoFilter !== "" && !uniqueRepos.some((r) => r.id === repoFilter)) {
+      setRepoFilter("");
+    }
+  }, [uniqueRepos, repoFilter]);
+
+  useEffect(() => {
+    if (labelFilter !== null && !uniqueLabels.includes(labelFilter)) {
+      setLabelFilter(null);
+    }
+  }, [uniqueLabels, labelFilter]);
+
+  const preFiltered = useMemo<readonly Issue[]>(
+    () =>
+      labelFilter === null
+        ? repoFiltered
+        : repoFiltered.filter((issue) => issue.labels.includes(labelFilter)),
+    [repoFiltered, labelFilter],
+  );
 
   const searchPredicate = useCallback(
     (issue: Issue, query: string): boolean => {

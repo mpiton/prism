@@ -339,4 +339,58 @@ describe("MyPRs", () => {
     expect(screen.queryByText("Acme merged bug")).not.toBeInTheDocument();
   });
 
+  it("should reset stale repo/label filters after data changes", async () => {
+    const pr1 = makePr({ number: 1, title: "PR repo1", repoId: "repo-1", labels: ["bug"], state: "open" });
+    const pr2 = makePr({ number: 2, title: "PR repo2", repoId: "repo-2", labels: ["feature"], state: "open" });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
+    });
+
+    const { rerender } = render(<MyPRs prs={[pr1, pr2]} onOpen={onOpen} />);
+
+    // Select repo-2 and label "feature"
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by repo/i }), "repo-2");
+    await userEvent.click(screen.getByRole("button", { name: "feature" }));
+
+    expect(screen.getByText("PR repo2")).toBeInTheDocument();
+    expect(screen.queryByText("PR repo1")).not.toBeInTheDocument();
+
+    // Rerender with data that no longer includes repo-2 or "feature" label
+    const pr3 = makePr({ number: 3, title: "PR repo1 new", repoId: "repo-1", labels: ["docs"], state: "open" });
+    mockUseQuery.mockReturnValue({ data: [makeRepo()] });
+    rerender(<MyPRs prs={[pr1, pr3]} onOpen={onOpen} />);
+
+    // Filters should reset — all items visible again
+    expect(screen.getByText("PR repo1")).toBeInTheDocument();
+    expect(screen.getByText("PR repo1 new")).toBeInTheDocument();
+    // Repo dropdown hidden (single repo), label group shows new labels
+    expect(screen.queryByRole("combobox", { name: /filter by repo/i })).not.toBeInTheDocument();
+  });
+
+  it("should show only labels from the selected repo", async () => {
+    const pr1 = makePr({ number: 1, title: "PR1", repoId: "repo-1", labels: ["bug"], state: "open" });
+    const pr2 = makePr({ number: 2, title: "PR2", repoId: "repo-2", labels: ["feature"], state: "open" });
+    mockUseQuery.mockReturnValue({
+      data: [
+        makeRepo(),
+        makeRepo({ id: "repo-2", org: "acme", name: "console", fullName: "acme/console" }),
+      ],
+    });
+
+    render(<MyPRs prs={[pr1, pr2]} onOpen={onOpen} />);
+
+    // Before repo filter: both labels visible
+    const labelGroup = screen.getByRole("group", { name: /filter by label/i });
+    expect(within(labelGroup).getByRole("button", { name: "bug" })).toBeInTheDocument();
+    expect(within(labelGroup).getByRole("button", { name: "feature" })).toBeInTheDocument();
+
+    // Select repo-1: only "bug" label should remain
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by repo/i }), "repo-1");
+    expect(within(labelGroup).getByRole("button", { name: "bug" })).toBeInTheDocument();
+    expect(within(labelGroup).queryByRole("button", { name: "feature" })).not.toBeInTheDocument();
+  });
+
 });
