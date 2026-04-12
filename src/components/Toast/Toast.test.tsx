@@ -260,6 +260,7 @@ describe("Toast", () => {
       vi.advanceTimersByTime(200);
     });
     expect(mockClearNotification).toHaveBeenCalledWith("notif-1");
+    expect(mockClearNotification).toHaveBeenCalledTimes(1);
   });
 
   it("should dismiss manually while hovered", async () => {

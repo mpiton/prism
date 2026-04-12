@@ -68,9 +68,13 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
       timerRef.current = null;
     }
     remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startRef.current));
+    startRef.current = Date.now();
   }, []);
 
   const handleMouseLeave = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+    }
     startRef.current = Date.now();
     timerRef.current = setTimeout(() => {
       onDismiss(notification.id);
