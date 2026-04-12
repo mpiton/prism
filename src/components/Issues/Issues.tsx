@@ -48,12 +48,15 @@ function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactEl
     return result.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [issues, repoMap]);
 
+  const isRepoFilterValid =
+    repoFilter === "" || uniqueRepos.some((r) => r.id === repoFilter);
+
   const repoFiltered = useMemo<readonly Issue[]>(
     () =>
-      repoFilter === ""
+      repoFilter === "" || !isRepoFilterValid
         ? issues
         : issues.filter((issue) => issue.repoId === repoFilter),
-    [issues, repoFilter],
+    [issues, repoFilter, isRepoFilterValid],
   );
 
   const uniqueLabels = useMemo<string[]>(() => {

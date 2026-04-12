@@ -66,12 +66,15 @@ function MyPRsImpl({
     return result.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [prs, repoMap]);
 
+  const isRepoFilterValid =
+    repoFilter === "" || uniqueRepos.some((r) => r.id === repoFilter);
+
   const repoFiltered = useMemo(
     () =>
-      repoFilter === ""
+      repoFilter === "" || !isRepoFilterValid
         ? prs
         : prs.filter((pr) => pr.pullRequest.repoId === repoFilter),
-    [prs, repoFilter],
+    [prs, repoFilter, isRepoFilterValid],
   );
 
   const uniqueLabels = useMemo(() => {
