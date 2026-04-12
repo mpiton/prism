@@ -100,12 +100,15 @@ function MyPRsImpl({
     }
   }, [uniqueLabels, labelFilter]);
 
+  const isLabelFilterValid =
+    labelFilter === null || uniqueLabels.includes(labelFilter);
+
   const preFiltered = useMemo(
     () =>
-      labelFilter === null
+      labelFilter === null || !isLabelFilterValid
         ? repoFiltered
         : repoFiltered.filter((pr) => pr.pullRequest.labels.includes(labelFilter)),
-    [repoFiltered, labelFilter],
+    [repoFiltered, labelFilter, isLabelFilterValid],
   );
 
   const searchPredicate = useCallback(

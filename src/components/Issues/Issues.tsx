@@ -82,12 +82,15 @@ function IssuesImpl({ issues, isLoading = false, onOpen }: IssuesProps): ReactEl
     }
   }, [uniqueLabels, labelFilter]);
 
+  const isLabelFilterValid =
+    labelFilter === null || uniqueLabels.includes(labelFilter);
+
   const preFiltered = useMemo<readonly Issue[]>(
     () =>
-      labelFilter === null
+      labelFilter === null || !isLabelFilterValid
         ? repoFiltered
         : repoFiltered.filter((issue) => issue.labels.includes(labelFilter)),
-    [repoFiltered, labelFilter],
+    [repoFiltered, labelFilter, isLabelFilterValid],
   );
 
   const searchPredicate = useCallback(
