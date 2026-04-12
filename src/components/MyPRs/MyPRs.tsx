@@ -24,6 +24,7 @@ interface MyPRsProps {
   readonly isLoading?: boolean;
   readonly onOpen: (url: string) => void;
   readonly onWorkspaceAction?: (params: WorkspaceActionParams) => void;
+  readonly hideHeader?: boolean;
 }
 
 type Tab = "open" | "merged";
@@ -41,6 +42,7 @@ function MyPRsImpl({
   isLoading = false,
   onOpen,
   onWorkspaceAction,
+  hideHeader = false,
 }: MyPRsProps): ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
@@ -154,10 +156,12 @@ function MyPRsImpl({
         because `PrState` includes "closed" — a state that is intentionally not
         surfaced in any tab and should not appear in the header total.
       */}
-      <SectionHead
-        title="My PRs"
-        count={isLoading ? undefined : tabCounts.open + tabCounts.merged}
-      />
+      {!hideHeader && (
+        <SectionHead
+          title="My PRs"
+          count={isLoading ? undefined : tabCounts.open + tabCounts.merged}
+        />
+      )}
 
       {isLoading ? (
         <>

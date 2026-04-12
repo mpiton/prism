@@ -17,6 +17,7 @@ interface IssuesProps {
   readonly isLoading?: boolean;
   readonly onOpen: (url: string) => void;
   readonly hideTabs?: boolean;
+  readonly hideHeader?: boolean;
 }
 
 type Tab = "open" | "closed";
@@ -26,7 +27,7 @@ const ISSUE_TABS: Readonly<Record<Tab, (issue: Issue) => boolean>> = {
   closed: (issue) => issue.state === "closed",
 };
 
-function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false }: IssuesProps): ReactElement {
+function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideHeader = false }: IssuesProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
   const [repoFilter, setRepoFilter] = useState("");
@@ -143,7 +144,7 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false }: Iss
       aria-busy={isLoading ? "true" : undefined}
       className="flex flex-col gap-2"
     >
-      <SectionHead title="Issues" count={isLoading ? undefined : matchingIssues.length} />
+      {!hideHeader && <SectionHead title="Issues" count={isLoading ? undefined : matchingIssues.length} />}
 
       {isLoading ? (
         <>

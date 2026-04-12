@@ -203,6 +203,12 @@ describe("MyPRs", () => {
     expect(screen.getByText("5")).toBeInTheDocument();
   });
 
+  it("should hide section header when hideHeader is true", () => {
+    render(<MyPRs prs={allPrs} onOpen={onOpen} hideHeader />);
+
+    expect(screen.queryByText("My PRs")).not.toBeInTheDocument();
+  });
+
   it("should exclude closed PRs from total count", () => {
     const closedPr = makePr({ number: 6, title: "Closed PR", state: "closed" });
     render(<MyPRs prs={[openPr1, closedPr, mergedPr1]} onOpen={onOpen} />);

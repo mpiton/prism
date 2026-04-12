@@ -200,6 +200,12 @@ describe("ActivityFeed", () => {
     expect(screen.getByText("6")).toBeInTheDocument();
   });
 
+  it("should hide section header when hideHeader is true", () => {
+    render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} hideHeader />);
+
+    expect(screen.queryByText("Activity")).not.toBeInTheDocument();
+  });
+
   it("should keep filter buttons at the minimum touch target size", () => {
     render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} />);
 

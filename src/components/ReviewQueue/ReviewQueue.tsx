@@ -22,6 +22,7 @@ interface ReviewQueueProps {
   readonly isLoading?: boolean;
   readonly onOpen: (url: string) => void;
   readonly onWorkspaceAction?: (params: WorkspaceActionParams) => void;
+  readonly hideHeader?: boolean;
 }
 
 const PRIORITY_ORDER: Record<Priority, number> = {
@@ -57,6 +58,7 @@ function ReviewQueueImpl({
   isLoading = false,
   onOpen,
   onWorkspaceAction,
+  hideHeader = false,
 }: ReviewQueueProps): ReactElement {
   const storePriority = useDashboardStore((s) => s.activeFilters.priority);
   const storeRepo = useDashboardStore((s) => s.activeFilters.repo);
@@ -102,7 +104,7 @@ function ReviewQueueImpl({
       aria-busy={isLoading ? "true" : undefined}
       className="flex flex-col gap-2"
     >
-      <SectionHead title="Reviews" count={isLoading ? undefined : sorted.length} />
+      {!hideHeader && <SectionHead title="Reviews" count={isLoading ? undefined : sorted.length} />}
 
       {isLoading ? (
         <>

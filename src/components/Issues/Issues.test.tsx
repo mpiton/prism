@@ -197,6 +197,12 @@ describe("Issues", () => {
     expect(screen.getByText("4")).toBeInTheDocument();
   });
 
+  it("should hide section header when hideHeader is true", () => {
+    render(<Issues issues={allIssues} onOpen={onOpen} hideHeader />);
+
+    expect(screen.queryByText("Issues")).not.toBeInTheDocument();
+  });
+
   it("should pass onOpen to IssueCard", async () => {
     const user = userEvent.setup();
     render(<Issues issues={[openIssue1]} onOpen={onOpen} />);

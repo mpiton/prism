@@ -14,6 +14,7 @@ interface ActivityFeedProps {
   readonly activities: readonly Activity[];
   readonly isLoading?: boolean;
   readonly onMarkAllRead: () => void;
+  readonly hideHeader?: boolean;
 }
 
 type FilterType = "all" | "comment" | "review" | "ci" | "mention" | "other";
@@ -57,6 +58,7 @@ export function ActivityFeed({
   activities,
   isLoading = false,
   onMarkAllRead,
+  hideHeader = false,
 }: ActivityFeedProps): ReactElement {
   const [filter, setFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,7 +86,7 @@ export function ActivityFeed({
       aria-busy={isLoading ? "true" : undefined}
       className="flex flex-col gap-2"
     >
-      <SectionHead title="Activity" count={isLoading ? undefined : visible.length} />
+      {!hideHeader && <SectionHead title="Activity" count={isLoading ? undefined : visible.length} />}
 
       {isLoading ? (
         <>
