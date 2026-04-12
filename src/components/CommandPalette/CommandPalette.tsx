@@ -139,6 +139,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     onOpenChange(false);
   }
 
+  function runAction(action: () => void): void {
+    action();
+    onOpenChange(false);
+  }
+
   function handleKeyDown(e: React.KeyboardEvent): void {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
@@ -207,10 +212,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Item
               value="action-dashboard"
               keywords={["dashboard", "home", "overview"]}
-              onSelect={() => {
-                useDashboardStore.getState().setView("overview");
-                onOpenChange(false);
-              }}
+              onSelect={() => runAction(() => useDashboardStore.getState().setView("overview"))}
               className={ITEM_CLASS}
             >
               <LayoutDashboard className="size-4 shrink-0 text-fg/50" />
@@ -219,10 +221,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Item
               value="action-settings"
               keywords={["settings", "preferences", "config"]}
-              onSelect={() => {
-                useDashboardStore.getState().setView("settings");
-                onOpenChange(false);
-              }}
+              onSelect={() => runAction(() => useDashboardStore.getState().setView("settings"))}
               className={ITEM_CLASS}
             >
               <SettingsIcon className="size-4 shrink-0 text-fg/50" />
@@ -231,10 +230,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Item
               value="action-focus"
               keywords={["focus", "mode", "concentrate", "priority"]}
-              onSelect={() => {
-                useDashboardStore.getState().toggleFocusMode();
-                onOpenChange(false);
-              }}
+              onSelect={() => runAction(() => useDashboardStore.getState().toggleFocusMode())}
               className={ITEM_CLASS}
             >
               <Focus className="size-4 shrink-0 text-fg/50" />
@@ -243,10 +239,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Item
               value="action-refresh"
               keywords={["refresh", "sync", "reload", "data"]}
-              onSelect={() => {
-                forceSync();
-                onOpenChange(false);
-              }}
+              onSelect={() => runAction(() => forceSync())}
               className={ITEM_CLASS}
             >
               <RefreshCw className="size-4 shrink-0 text-fg/50" />
@@ -255,10 +248,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Item
               value="action-workspaces"
               keywords={["workspace", "workspaces", "open", "terminal"]}
-              onSelect={() => {
-                useDashboardStore.getState().setView("workspaces");
-                onOpenChange(false);
-              }}
+              onSelect={() => runAction(() => useDashboardStore.getState().setView("workspaces"))}
               className={ITEM_CLASS}
             >
               <FolderOpen className="size-4 shrink-0 text-fg/50" />
@@ -267,10 +257,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Item
               value="action-docs"
               keywords={["documentation", "docs", "help", "guide"]}
-              onSelect={() => {
-                openUrl("https://github.com/mpiton/prism");
-                onOpenChange(false);
-              }}
+              onSelect={() => runAction(() => openUrl("https://github.com/mpiton/prism"))}
               className={ITEM_CLASS}
             >
               <BookOpen className="size-4 shrink-0 text-fg/50" />
@@ -279,10 +266,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Item
               value="action-updates"
               keywords={["update", "updates", "version", "release"]}
-              onSelect={() => {
-                openUrl("https://github.com/mpiton/prism/releases");
-                onOpenChange(false);
-              }}
+              onSelect={() => runAction(() => openUrl("https://github.com/mpiton/prism/releases"))}
               className={ITEM_CLASS}
             >
               <Download className="size-4 shrink-0 text-fg/50" />
