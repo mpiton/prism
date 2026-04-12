@@ -6,6 +6,7 @@ import { FILTER_BUTTON_CLASS, INLINE_CONTROL_CLASS } from "../../lib/uiClasses";
 import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { useFilterableList } from "../../hooks/useFilterableList";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
+import { useDashboardStore } from "../../stores/dashboard";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { CardSkeleton, Skeleton } from "../atoms/Skeleton";
@@ -45,6 +46,8 @@ function MyPRsImpl({
   hideHeader = false,
 }: MyPRsProps): ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
+  const activeNavigableSection = useDashboardStore((s) => s.activeNavigableSection);
+  const selectedIndex = useDashboardStore((s) => s.selectedIndex);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
   const [repoFilter, setRepoFilter] = useState("");
@@ -68,8 +71,7 @@ function MyPRsImpl({
     return result.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [prs, repoMap]);
 
-  const isRepoFilterValid =
-    repoFilter === "" || uniqueRepos.some((r) => r.id === repoFilter);
+  const isRepoFilterValid = repoFilter === "" || uniqueRepos.some((r) => r.id === repoFilter);
 
   const repoFiltered = useMemo(
     () =>
@@ -102,8 +104,7 @@ function MyPRsImpl({
     }
   }, [uniqueLabels, labelFilter]);
 
-  const isLabelFilterValid =
-    labelFilter === null || uniqueLabels.includes(labelFilter);
+  const isLabelFilterValid = labelFilter === null || uniqueLabels.includes(labelFilter);
 
   const preFiltered = useMemo(
     () =>
@@ -142,8 +143,14 @@ function MyPRsImpl({
     listRef.current?.scrollTo({ top: 0, behavior: "instant" });
   }, [tab, normalizedQuery, repoFilter, labelFilter]);
 
+  useEffect(() => {
+    if (selectedIndex < 0 || activeNavigableSection !== "mine") return;
+    const selectedCard = listRef.current?.querySelector<HTMLElement>('[data-selected="true"]');
+    selectedCard?.scrollIntoView({ block: "nearest" });
+  }, [activeNavigableSection, selectedIndex, visible]);
+
   const navItems = useMemo(() => visible.map((pr) => ({ url: pr.pullRequest.url })), [visible]);
-  useRegisterNavigableItems(navItems);
+  useRegisterNavigableItems(navItems, "mine");
 
   return (
     <section
@@ -227,7 +234,9 @@ function MyPRsImpl({
             >
               <option value="">All repos</option>
               {uniqueRepos.map((r) => (
-                <option key={r.id} value={r.id}>{r.fullName}</option>
+                <option key={r.id} value={r.id}>
+                  {r.fullName}
+                </option>
               ))}
             </select>
           )}
@@ -257,10 +266,11 @@ function MyPRsImpl({
           ) : (
             <div ref={listRef} className="max-h-[600px] overflow-y-auto">
               <div className="flex flex-col gap-1">
-                {visible.map((pr) => (
+                {visible.map((pr, index) => (
                   <MyPrCard
                     key={pr.pullRequest.id}
                     data={pr}
+                    isSelected={activeNavigableSection === "mine" && selectedIndex === index}
                     onOpen={onOpen}
                     onWorkspaceAction={onWorkspaceAction}
                   />

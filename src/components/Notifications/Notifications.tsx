@@ -6,6 +6,7 @@ import { FOCUS_RING } from "../../lib/a11y";
 import { listNotifications } from "../../lib/tauri";
 import type { GithubNotification } from "../../lib/types/github";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
+import { useDashboardStore } from "../../stores/dashboard";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { CardSkeleton, Skeleton } from "../atoms/Skeleton";
@@ -24,6 +25,8 @@ const NOTIFICATION_TABS: Readonly<Record<Tab, (n: GithubNotification) => boolean
 
 function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
+  const activeNavigableSection = useDashboardStore((s) => s.activeNavigableSection);
+  const selectedIndex = useDashboardStore((s) => s.selectedIndex);
 
   const notificationsQuery = useQuery<GithubNotification[]>({
     queryKey: ["github", "notifications"],
@@ -59,8 +62,14 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
     listRef.current?.scrollTo({ top: 0, behavior: "instant" });
   }, [tab, normalizedQuery]);
 
+  useEffect(() => {
+    if (selectedIndex < 0 || activeNavigableSection !== "notifications") return;
+    const selectedCard = listRef.current?.querySelector<HTMLElement>('[data-selected="true"]');
+    selectedCard?.scrollIntoView({ block: "nearest" });
+  }, [activeNavigableSection, selectedIndex, visible]);
+
   const navItems = useMemo(() => visible.map((n) => ({ url: n.url })), [visible]);
-  useRegisterNavigableItems(navItems);
+  useRegisterNavigableItems(navItems, "notifications");
 
   const isLoading = notificationsQuery.isLoading;
   const isFetching = notificationsQuery.isFetching;
@@ -81,10 +90,7 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
     >
       {/* Header count shows the full, unfiltered notification total so the
           header number doesn't jitter as the user types in the search box. */}
-      <SectionHead
-        title="Notifications"
-        count={isLoading ? undefined : notifications.length}
-      />
+      <SectionHead title="Notifications" count={isLoading ? undefined : notifications.length} />
 
       {isLoading ? (
         <>
@@ -161,8 +167,15 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
           ) : (
             <div ref={listRef} className="max-h-[600px] overflow-y-auto">
               <div className="flex flex-col gap-1">
-                {visible.map((n) => (
-                  <NotificationCard key={n.id} data={n} onOpen={onOpen} />
+                {visible.map((n, index) => (
+                  <NotificationCard
+                    key={n.id}
+                    data={n}
+                    isSelected={
+                      activeNavigableSection === "notifications" && selectedIndex === index
+                    }
+                    onOpen={onOpen}
+                  />
                 ))}
               </div>
             </div>

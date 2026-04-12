@@ -1,6 +1,7 @@
 import { type ReactElement, useState } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
+import { SELECTED_ITEM_CLASS } from "../../lib/uiClasses";
 import type { CiStatus } from "../../lib/types/enums";
 import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { CI } from "../atoms/CI";
@@ -10,6 +11,7 @@ import { WsBadge } from "../atoms/WsBadge";
 interface MyPrCardProps {
   readonly data: PullRequestWithReview;
   readonly onOpen: (url: string) => void;
+  readonly isSelected?: boolean;
   readonly onWorkspaceAction?: (params: {
     readonly repoId: string;
     readonly pullRequestNumber: number;
@@ -55,7 +57,12 @@ function buildReviewDots(
   return dots;
 }
 
-export function MyPrCard({ data, onOpen, onWorkspaceAction }: MyPrCardProps): ReactElement {
+export function MyPrCard({
+  data,
+  onOpen,
+  isSelected = false,
+  onWorkspaceAction,
+}: MyPrCardProps): ReactElement {
   const { pullRequest: pr, workspace } = data;
   const merged = pr.state === "merged";
   const [loading, setLoading] = useState(false);
@@ -83,7 +90,11 @@ export function MyPrCard({ data, onOpen, onWorkspaceAction }: MyPrCardProps): Re
   return (
     <div
       data-testid="my-pr-card"
-      className={`flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover${merged ? " opacity-50" : ""}`}
+      data-selected={isSelected ? "true" : undefined}
+      aria-current={isSelected ? "true" : undefined}
+      className={`flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover${
+        merged ? " opacity-50" : ""
+      }${isSelected ? ` ${SELECTED_ITEM_CLASS}` : ""}`}
     >
       <a
         href={pr.url}

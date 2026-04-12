@@ -1,11 +1,13 @@
 import { memo, type ReactElement, useCallback } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
+import { SELECTED_ITEM_CLASS } from "../../lib/uiClasses";
 import type { GithubNotification, NotificationSubjectType } from "../../lib/types/github";
 
 interface NotificationCardProps {
   readonly data: GithubNotification;
   readonly onOpen: (url: string) => void;
+  readonly isSelected?: boolean;
 }
 
 const TYPE_ICON: Record<NotificationSubjectType, string> = {
@@ -67,7 +69,11 @@ function isSafeUrl(url: string): boolean {
   }
 }
 
-function NotificationCardImpl({ data, onOpen }: NotificationCardProps): ReactElement {
+function NotificationCardImpl({
+  data,
+  onOpen,
+  isSelected = false,
+}: NotificationCardProps): ReactElement {
   const { url, title, notificationType, unread, reason, repo, updatedAt } = data;
 
   const handleClick = useCallback(
@@ -87,9 +93,11 @@ function NotificationCardImpl({ data, onOpen }: NotificationCardProps): ReactEle
   return (
     <div
       data-testid="notification-card"
+      data-selected={isSelected ? "true" : undefined}
+      aria-current={isSelected ? "true" : undefined}
       className={`flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover${
         unread ? "" : " opacity-60"
-      }`}
+      }${isSelected ? ` ${SELECTED_ITEM_CLASS}` : ""}`}
     >
       <a
         href={url}
@@ -117,10 +125,7 @@ function NotificationCardImpl({ data, onOpen }: NotificationCardProps): ReactEle
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2">
-            <span
-              className="min-w-0 truncate text-sm font-medium text-foreground"
-              title={title}
-            >
+            <span className="min-w-0 truncate text-sm font-medium text-foreground" title={title}>
               {title}
             </span>
           </div>

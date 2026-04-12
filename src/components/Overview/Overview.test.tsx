@@ -1,5 +1,5 @@
 import { type ReactElement } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -35,6 +35,7 @@ vi.mock("../../lib/tauri", () => ({
 
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { markAllActivityRead } from "../../lib/tauri";
+import { useDashboardStore } from "../../stores/dashboard";
 
 const mockedUseGitHubData = vi.mocked(useGitHubData);
 const mockedMarkAllActivityRead = vi.mocked(markAllActivityRead);
@@ -134,6 +135,12 @@ function setupMock(dashboard: DashboardData | null = makeDashboard()) {
 beforeEach(() => {
   vi.restoreAllMocks();
   mockedMarkAllActivityRead.mockResolvedValue(0);
+  useDashboardStore.setState({
+    activeNavigableSection: null,
+    navigableSectionRegistrations: [],
+    selectedIndex: -1,
+    navigableItems: [],
+  });
 });
 
 describe("Overview", () => {
@@ -207,6 +214,27 @@ describe("Overview", () => {
 
     expect(within(secondaryGrid).getByTestId("my-prs")).toBeInTheDocument();
     expect(within(secondaryGrid).getByTestId("issues")).toBeInTheDocument();
+  });
+
+  it("should highlight only the active overview section during keyboard navigation", () => {
+    setupMock(
+      makeDashboard({
+        reviewRequests: [makePr(1)],
+        myPullRequests: [makePr(10)],
+        assignedIssues: [makeIssue(1)],
+      }),
+    );
+
+    renderWithProviders(<Overview />);
+
+    act(() => {
+      useDashboardStore.setState({
+        activeNavigableSection: "reviews",
+        selectedIndex: 0,
+      });
+    });
+
+    expect(document.querySelectorAll('[data-selected="true"]')).toHaveLength(1);
   });
 
   it("should limit review queue to 5 items", () => {

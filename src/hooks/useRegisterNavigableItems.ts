@@ -1,17 +1,19 @@
 import { useEffect } from "react";
 import { useDashboardStore } from "../stores/dashboard";
-import type { NavigableItem } from "../stores/dashboard";
+import type { NavigableItem, NavigableSectionId } from "../stores/dashboard";
 
 export function useRegisterNavigableItems(
   items: readonly NavigableItem[],
+  sectionId: NavigableSectionId,
 ): void {
-  const setNavigableItems = useDashboardStore((s) => s.setNavigableItems);
+  const registerNavigableItems = useDashboardStore((s) => s.registerNavigableItems);
+  const unregisterNavigableSection = useDashboardStore((s) => s.unregisterNavigableSection);
 
   useEffect(() => {
-    setNavigableItems(items);
-  }, [items, setNavigableItems]);
+    registerNavigableItems(sectionId, items);
+  }, [items, registerNavigableItems, sectionId]);
 
   useEffect(() => {
-    return () => setNavigableItems([]);
-  }, [setNavigableItems]);
+    return () => unregisterNavigableSection(sectionId);
+  }, [sectionId, unregisterNavigableSection]);
 }

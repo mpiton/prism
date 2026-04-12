@@ -29,6 +29,19 @@ describe("IssueCard", () => {
     expect(screen.getByText("#42")).toBeInTheDocument();
   });
 
+  it("should show selected styling when keyboard-selected", () => {
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} isSelected />);
+    const card = screen.getByTestId("issue-card");
+    expect(card).toHaveAttribute("data-selected", "true");
+    expect(card).toHaveAttribute("aria-current", "true");
+    expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
+  });
+
+  it("should not set aria-current when not selected", () => {
+    render(<IssueCard issue={makeIssue()} repoName="repo-name" onOpen={vi.fn()} />);
+    expect(screen.getByTestId("issue-card")).not.toHaveAttribute("aria-current");
+  });
+
   it("should render issue with labels", () => {
     render(
       <IssueCard
@@ -43,7 +56,9 @@ describe("IssueCard", () => {
   });
 
   it("should show green dot for open issues", () => {
-    render(<IssueCard issue={makeIssue({ state: "open" })} repoName="repo-name" onOpen={vi.fn()} />);
+    render(
+      <IssueCard issue={makeIssue({ state: "open" })} repoName="repo-name" onOpen={vi.fn()} />,
+    );
 
     const dot = screen.getByTestId("issue-state-dot");
     expect(dot.className).toContain("bg-green");
@@ -80,9 +95,7 @@ describe("IssueCard", () => {
 
     await user.click(screen.getByText("Fix login bug"));
 
-    expect(onOpen).toHaveBeenCalledWith(
-      "https://github.com/org/repo/issues/42",
-    );
+    expect(onOpen).toHaveBeenCalledWith("https://github.com/org/repo/issues/42");
   });
 
   it("should have aria-label on link describing the issue", () => {

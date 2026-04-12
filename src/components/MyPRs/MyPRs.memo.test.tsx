@@ -19,6 +19,11 @@ vi.mock("@tanstack/react-query", async () => {
   };
 });
 
+// Memoization tests should isolate child renders from dashboard registration side effects.
+vi.mock("../../hooks/useRegisterNavigableItems", () => ({
+  useRegisterNavigableItems: vi.fn(),
+}));
+
 // Replace MyPrCard with a light stub that counts render calls.
 vi.mock("./MyPrCard", () => ({
   MyPrCard: (props: Record<string, unknown>) => {

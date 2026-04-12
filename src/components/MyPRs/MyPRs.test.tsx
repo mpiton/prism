@@ -1,9 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FOCUS_RING } from "../../lib/a11y";
 import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import type { Repo } from "../../lib/types/github";
+import { useDashboardStore } from "../../stores/dashboard";
 import { MyPRs } from "./MyPRs";
 
 const { mockUseQuery } = vi.hoisted(() => ({ mockUseQuery: vi.fn() }));
@@ -78,6 +79,12 @@ const onOpen = vi.fn();
 beforeEach(() => {
   onOpen.mockClear();
   mockUseQuery.mockReturnValue({ data: [makeRepo()] });
+  useDashboardStore.setState({
+    activeNavigableSection: null,
+    navigableSectionRegistrations: [],
+    selectedIndex: -1,
+    navigableItems: [],
+  });
 });
 
 describe("MyPRs", () => {
@@ -109,6 +116,24 @@ describe("MyPRs", () => {
     expect(screen.getByText("Merged PR two")).toBeInTheDocument();
     expect(screen.queryByText("Open PR one")).not.toBeInTheDocument();
     expect(screen.queryByText("Draft PR")).not.toBeInTheDocument();
+  });
+
+  it("should scroll the selected item into view during keyboard navigation", () => {
+    const scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(scrollIntoView);
+
+    render(<MyPRs prs={allPrs} onOpen={onOpen} />);
+
+    act(() => {
+      useDashboardStore.setState({
+        activeNavigableSection: "mine",
+        selectedIndex: 1,
+      });
+    });
+
+    return waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    });
   });
 
   it("should show correct counts", () => {
@@ -271,7 +296,12 @@ describe("MyPRs", () => {
 
   it("should show label filter buttons when labels exist", () => {
     const bugPr = makePr({ number: 6, title: "Bug fix", labels: ["bug"], state: "open" });
-    const featurePr = makePr({ number: 7, title: "New feature", labels: ["feature"], state: "open" });
+    const featurePr = makePr({
+      number: 7,
+      title: "New feature",
+      labels: ["feature"],
+      state: "open",
+    });
 
     render(<MyPRs prs={[bugPr, featurePr]} onOpen={onOpen} />);
 
@@ -289,7 +319,12 @@ describe("MyPRs", () => {
   it("should filter PRs by selected label", async () => {
     const user = userEvent.setup();
     const bugPr = makePr({ number: 6, title: "Bug fix", labels: ["bug"], state: "open" });
-    const featurePr = makePr({ number: 7, title: "New feature", labels: ["feature"], state: "open" });
+    const featurePr = makePr({
+      number: 7,
+      title: "New feature",
+      labels: ["feature"],
+      state: "open",
+    });
 
     render(<MyPRs prs={[bugPr, featurePr]} onOpen={onOpen} />);
 
@@ -302,7 +337,12 @@ describe("MyPRs", () => {
   it("should deselect label filter on second click", async () => {
     const user = userEvent.setup();
     const bugPr = makePr({ number: 6, title: "Bug fix", labels: ["bug"], state: "open" });
-    const featurePr = makePr({ number: 7, title: "New feature", labels: ["feature"], state: "open" });
+    const featurePr = makePr({
+      number: 7,
+      title: "New feature",
+      labels: ["feature"],
+      state: "open",
+    });
 
     render(<MyPRs prs={[bugPr, featurePr]} onOpen={onOpen} />);
 
@@ -316,9 +356,27 @@ describe("MyPRs", () => {
 
   it("should combine repo + label + search + tab filters", async () => {
     const user = userEvent.setup();
-    const pr2 = makePr({ number: 6, title: "Acme bug fix", repoId: "repo-2", labels: ["bug"], state: "open" });
-    const pr3 = makePr({ number: 7, title: "Acme feature", repoId: "repo-2", labels: ["feature"], state: "open" });
-    const pr4 = makePr({ number: 8, title: "Acme merged bug", repoId: "repo-2", labels: ["bug"], state: "merged" });
+    const pr2 = makePr({
+      number: 6,
+      title: "Acme bug fix",
+      repoId: "repo-2",
+      labels: ["bug"],
+      state: "open",
+    });
+    const pr3 = makePr({
+      number: 7,
+      title: "Acme feature",
+      repoId: "repo-2",
+      labels: ["feature"],
+      state: "open",
+    });
+    const pr4 = makePr({
+      number: 8,
+      title: "Acme merged bug",
+      repoId: "repo-2",
+      labels: ["bug"],
+      state: "merged",
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -346,8 +404,20 @@ describe("MyPRs", () => {
   });
 
   it("should reset stale repo/label filters after data changes", async () => {
-    const pr1 = makePr({ number: 1, title: "PR repo1", repoId: "repo-1", labels: ["bug"], state: "open" });
-    const pr2 = makePr({ number: 2, title: "PR repo2", repoId: "repo-2", labels: ["feature"], state: "open" });
+    const pr1 = makePr({
+      number: 1,
+      title: "PR repo1",
+      repoId: "repo-1",
+      labels: ["bug"],
+      state: "open",
+    });
+    const pr2 = makePr({
+      number: 2,
+      title: "PR repo2",
+      repoId: "repo-2",
+      labels: ["feature"],
+      state: "open",
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -358,14 +428,23 @@ describe("MyPRs", () => {
     const { rerender } = render(<MyPRs prs={[pr1, pr2]} onOpen={onOpen} />);
 
     // Select repo-2 and label "feature"
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by repo/i }), "repo-2");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-2",
+    );
     await userEvent.click(screen.getByRole("button", { name: "feature" }));
 
     expect(screen.getByText("PR repo2")).toBeInTheDocument();
     expect(screen.queryByText("PR repo1")).not.toBeInTheDocument();
 
     // Rerender with data that no longer includes repo-2 or "feature" label
-    const pr3 = makePr({ number: 3, title: "PR repo1 new", repoId: "repo-1", labels: ["docs"], state: "open" });
+    const pr3 = makePr({
+      number: 3,
+      title: "PR repo1 new",
+      repoId: "repo-1",
+      labels: ["docs"],
+      state: "open",
+    });
     mockUseQuery.mockReturnValue({ data: [makeRepo()] });
     rerender(<MyPRs prs={[pr1, pr3]} onOpen={onOpen} />);
 
@@ -377,8 +456,20 @@ describe("MyPRs", () => {
   });
 
   it("should show only labels from the selected repo", async () => {
-    const pr1 = makePr({ number: 1, title: "PR1", repoId: "repo-1", labels: ["bug"], state: "open" });
-    const pr2 = makePr({ number: 2, title: "PR2", repoId: "repo-2", labels: ["feature"], state: "open" });
+    const pr1 = makePr({
+      number: 1,
+      title: "PR1",
+      repoId: "repo-1",
+      labels: ["bug"],
+      state: "open",
+    });
+    const pr2 = makePr({
+      number: 2,
+      title: "PR2",
+      repoId: "repo-2",
+      labels: ["feature"],
+      state: "open",
+    });
     mockUseQuery.mockReturnValue({
       data: [
         makeRepo(),
@@ -394,9 +485,11 @@ describe("MyPRs", () => {
     expect(within(labelGroup).getByRole("button", { name: "feature" })).toBeInTheDocument();
 
     // Select repo-1: only "bug" label should remain
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by repo/i }), "repo-1");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /filter by repo/i }),
+      "repo-1",
+    );
     expect(within(labelGroup).getByRole("button", { name: "bug" })).toBeInTheDocument();
     expect(within(labelGroup).queryByRole("button", { name: "feature" })).not.toBeInTheDocument();
   });
-
 });

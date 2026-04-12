@@ -27,6 +27,14 @@ describe("NotificationCard", () => {
     expect(screen.getByText(/review requested/i)).toBeInTheDocument();
   });
 
+  it("shows selected styling when keyboard-selected", () => {
+    render(<NotificationCard data={makeNotification()} onOpen={vi.fn()} isSelected />);
+    const card = screen.getByTestId("notification-card");
+    expect(card).toHaveAttribute("data-selected", "true");
+    expect(card).toHaveAttribute("aria-current", "true");
+    expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
+  });
+
   it("shows an unread indicator when unread is true", () => {
     render(<NotificationCard data={makeNotification({ unread: true })} onOpen={vi.fn()} />);
     expect(screen.getByTestId("unread-indicator")).toBeInTheDocument();

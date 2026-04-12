@@ -3,7 +3,14 @@ import { useDashboardStore } from "./dashboard";
 
 describe("useDashboardStore", () => {
   beforeEach(() => {
-    useDashboardStore.setState({ currentView: "overview", activeFilters: {} });
+    useDashboardStore.setState({
+      currentView: "overview",
+      activeFilters: {},
+      activeNavigableSection: null,
+      navigableSectionRegistrations: [],
+      selectedIndex: -1,
+      navigableItems: [],
+    });
   });
 
   it("should have default view as overview", () => {
@@ -179,17 +186,102 @@ describe("useDashboardStore", () => {
 
     it("should keep selectedIndex when navigable items change but index is in bounds", () => {
       useDashboardStore.setState({ selectedIndex: 1 });
-      useDashboardStore.getState().setNavigableItems([
-        { url: "https://a.com" },
-        { url: "https://b.com" },
-        { url: "https://c.com" },
-      ]);
+      useDashboardStore
+        .getState()
+        .setNavigableItems([
+          { url: "https://a.com" },
+          { url: "https://b.com" },
+          { url: "https://c.com" },
+        ]);
       expect(useDashboardStore.getState().selectedIndex).toBe(1);
     });
 
     it("should reset selectedIndex to -1 when items become empty", () => {
-      useDashboardStore.setState({ selectedIndex: 2 });
+      useDashboardStore.setState({
+        selectedIndex: 2,
+        activeNavigableSection: "reviews",
+        navigableSectionRegistrations: [{ sectionId: "reviews", items }],
+      });
       useDashboardStore.getState().setNavigableItems([]);
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+      expect(useDashboardStore.getState().activeNavigableSection).toBeNull();
+      expect(useDashboardStore.getState().navigableSectionRegistrations).toEqual([]);
+    });
+
+    it("should keep the first active section until ownership changes explicitly", () => {
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("reviews", [{ url: "https://example.com/reviews/1" }]);
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("issues", [{ url: "https://example.com/issues/1" }]);
+
+      expect(useDashboardStore.getState().activeNavigableSection).toBe("reviews");
+      expect(useDashboardStore.getState().navigableItems).toEqual([
+        { url: "https://example.com/reviews/1" },
+      ]);
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+    });
+
+    it("should switch to a later section when ownership changes explicitly", () => {
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("reviews", [{ url: "https://example.com/reviews/1" }]);
+      useDashboardStore.setState({ activeNavigableSection: "issues" });
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("issues", [{ url: "https://example.com/issues/1" }]);
+
+      expect(useDashboardStore.getState().activeNavigableSection).toBe("issues");
+      expect(useDashboardStore.getState().navigableItems).toEqual([
+        { url: "https://example.com/issues/1" },
+      ]);
+      expect(useDashboardStore.getState().selectedIndex).toBe(-1);
+    });
+
+    it("should keep the active section when another section updates in the background", () => {
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("reviews", [{ url: "https://example.com/reviews/1" }]);
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("issues", [{ url: "https://example.com/issues/1" }]);
+      useDashboardStore.setState({
+        activeNavigableSection: "reviews",
+        navigableItems: [{ url: "https://example.com/reviews/1" }],
+        selectedIndex: 0,
+      });
+
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("issues", [{ url: "https://example.com/issues/2" }]);
+
+      expect(useDashboardStore.getState().activeNavigableSection).toBe("reviews");
+      expect(useDashboardStore.getState().navigableItems).toEqual([
+        { url: "https://example.com/reviews/1" },
+      ]);
+      expect(useDashboardStore.getState().selectedIndex).toBe(0);
+    });
+
+    it("should fall back to the previous registered section when the active one unregisters", () => {
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("reviews", [{ url: "https://example.com/reviews/1" }]);
+      useDashboardStore.setState({
+        activeNavigableSection: "issues",
+        navigableItems: [{ url: "https://example.com/issues/1" }],
+        selectedIndex: 0,
+      });
+      useDashboardStore
+        .getState()
+        .registerNavigableItems("issues", [{ url: "https://example.com/issues/1" }]);
+
+      useDashboardStore.getState().unregisterNavigableSection("issues");
+
+      expect(useDashboardStore.getState().activeNavigableSection).toBe("reviews");
+      expect(useDashboardStore.getState().navigableItems).toEqual([
+        { url: "https://example.com/reviews/1" },
+      ]);
       expect(useDashboardStore.getState().selectedIndex).toBe(-1);
     });
   });
