@@ -13,6 +13,7 @@ vi.mock("./lib/tauri", async (importOriginal) => {
   return {
     ...actual,
     authGetStatus: vi.fn().mockResolvedValue({ connected: true, username: "test-user", error: null }),
+    listNotifications: vi.fn().mockResolvedValue([]),
   };
 });
 
