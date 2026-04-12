@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Command } from "cmdk";
+import { DialogTitle } from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { FOCUS_RING } from "../../lib/a11y";
@@ -166,6 +167,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       value={selectedValue}
       onValueChange={setSelectedValue}
     >
+      <DialogTitle className="sr-only">Command palette</DialogTitle>
       <div className="w-full max-w-lg rounded-lg border border-border bg-bg shadow-xl">
         <Command.Input
           placeholder="Search PRs, issues, and actions…"

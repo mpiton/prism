@@ -155,6 +155,12 @@ describe("CommandPalette", () => {
     expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
   });
 
+  it("should render a visually hidden dialog title for accessibility", () => {
+    renderPalette({ open: true, onOpenChange: () => {} });
+
+    expect(screen.getByRole("heading", { name: "Command palette" })).toHaveClass("sr-only");
+  });
+
   it("should close on Esc", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
