@@ -42,11 +42,15 @@ function extractPayloadSummary(payload: unknown): string | undefined {
 
 function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): ReactElement {
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const remainingRef = useRef(AUTO_DISMISS_MS);
+  const startRef = useRef(0);
   const meta = NOTIFICATION_META[notification.type];
   const Icon = meta.Icon;
   const summary = extractPayloadSummary(notification.payload);
 
   useEffect(() => {
+    remainingRef.current = AUTO_DISMISS_MS;
+    startRef.current = Date.now();
     timerRef.current = setTimeout(() => {
       onDismiss(notification.id);
     }, AUTO_DISMISS_MS);
@@ -56,6 +60,25 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
         clearTimeout(timerRef.current);
       }
     };
+  }, [notification.id, onDismiss]);
+
+  const handleMouseEnter = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startRef.current));
+    startRef.current = Date.now();
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+    }
+    startRef.current = Date.now();
+    timerRef.current = setTimeout(() => {
+      onDismiss(notification.id);
+    }, remainingRef.current);
   }, [notification.id, onDismiss]);
 
   const handleClick = useCallback(() => {
@@ -71,6 +94,8 @@ function ToastItem({ notification, onDismiss, onNavigate }: ToastItemProps): Rea
       type="button"
       aria-label={`${meta.label}${summary ? ` ${summary}` : ""} — click to navigate`}
       onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={`${FOCUS_RING} flex w-72 items-center gap-3 rounded-lg border border-border bg-bg-secondary p-3 shadow-lg transition-opacity hover:opacity-80`}
     >
       <span className="flex h-5 w-5 items-center justify-center text-fg" aria-hidden="true">
