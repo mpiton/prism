@@ -26,26 +26,34 @@ function colorForLabel(name: string): LabelColor {
   return LABEL_COLORS[name.toLowerCase()] ?? PURPLE;
 }
 
-interface TagProps {
-  readonly children?: ReactNode;
-  readonly className?: string;
-  readonly variant?: "default" | "label";
-  readonly label?: string;
-}
+type TagProps =
+  | {
+      readonly variant?: "default";
+      readonly children: ReactNode;
+      readonly className?: string;
+      readonly label?: never;
+    }
+  | {
+      readonly variant: "label";
+      readonly label: string;
+      readonly className?: string;
+      readonly children?: never;
+    };
 
-export function Tag({ children, className = "", variant = "default", label }: TagProps): ReactElement {
-  if (variant === "label" && label !== undefined) {
-    const { bg, text } = colorForLabel(label);
+export function Tag(props: TagProps): ReactElement {
+  if (props.variant === "label") {
+    const { bg, text } = colorForLabel(props.label);
     return (
-      <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${bg} ${text}`}>
-        {label}
+      <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${bg} ${text}${props.className ? ` ${props.className}` : ""}`}>
+        {props.label}
       </span>
     );
   }
 
+  const className = props.className ?? "";
   return (
     <span className={`text-xs font-medium uppercase tracking-wide ${className || "text-dim"}`}>
-      {children}
+      {props.children}
     </span>
   );
 }
