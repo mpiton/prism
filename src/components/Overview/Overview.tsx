@@ -95,14 +95,15 @@ export function Overview(): ReactElement {
   const recentActivity = dashboard?.recentActivity ?? [];
 
   const reviews = reviewRequests.slice(0, MAX_REVIEWS);
-  const prs = myPullRequests.slice(0, MAX_PRS);
+  const openPrs = myPullRequests.filter(
+    (pr) => pr.pullRequest.state === "open" || pr.pullRequest.state === "draft",
+  );
+  const prs = openPrs.slice(0, MAX_PRS);
+  const openPrCount = openPrs.length;
   const openIssues = assignedIssues.filter((i) => i.state === "open");
   const issues = openIssues.slice(0, MAX_ISSUES);
   const openIssueCount = openIssues.length;
   const activities = recentActivity.slice(0, MAX_ACTIVITIES);
-  const openPrCount = myPullRequests.filter(
-    (pr) => pr.pullRequest.state === "open" || pr.pullRequest.state === "draft",
-  ).length;
   const unreadActivityCount = recentActivity.filter((activity) => !activity.isRead).length;
 
   return (
@@ -145,7 +146,19 @@ export function Overview(): ReactElement {
             isLoading={showLoadingState}
             onOpen={openUrl}
             onWorkspaceAction={handleWorkspaceAction}
+            hideHeader
           />
+
+          {!showLoadingState && reviewRequests.length > MAX_REVIEWS ? (
+            <button
+              type="button"
+              data-testid="overview-reviews-view-all"
+              onClick={() => useDashboardStore.getState().setView("reviews")}
+              className={`${FOCUS_RING} mt-3 w-full rounded-lg border border-border px-3 py-2 text-center text-xs text-dim transition-colors hover:border-foreground hover:text-foreground`}
+            >
+              View all {reviewRequests.length} reviews
+            </button>
+          ) : null}
         </div>
 
         <div data-testid="overview-secondary-grid" className="grid min-w-0 gap-6 lg:grid-cols-2">
@@ -169,7 +182,19 @@ export function Overview(): ReactElement {
               isLoading={showLoadingState}
               onOpen={openUrl}
               onWorkspaceAction={handleWorkspaceAction}
+              hideHeader
             />
+
+            {!showLoadingState && openPrCount > MAX_PRS ? (
+              <button
+                type="button"
+                data-testid="overview-prs-view-all"
+                onClick={() => useDashboardStore.getState().setView("mine")}
+                className={`${FOCUS_RING} mt-3 w-full rounded-lg border border-border px-3 py-2 text-center text-xs text-dim transition-colors hover:border-foreground hover:text-foreground`}
+              >
+                View all {openPrCount} PRs
+              </button>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border border-border bg-surface/70 px-4 py-4">
@@ -187,7 +212,7 @@ export function Overview(): ReactElement {
               </span>
             </div>
 
-            <Issues issues={issues} isLoading={showLoadingState} onOpen={openUrl} hideTabs />
+            <Issues issues={issues} isLoading={showLoadingState} onOpen={openUrl} hideTabs hideHeader />
 
             {!showLoadingState && openIssueCount > MAX_ISSUES ? (
               <button
@@ -241,6 +266,7 @@ export function Overview(): ReactElement {
               activities={activities}
               isLoading={showLoadingState}
               onMarkAllRead={() => markAllRead.mutate()}
+              hideHeader
             />
           </div>
         ) : null}

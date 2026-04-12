@@ -277,6 +277,64 @@ describe("Overview", () => {
     expect(screen.queryByTestId("overview-issues-view-all")).not.toBeInTheDocument();
   });
 
+  it("should show 'View all' button when reviews exceed limit", () => {
+    const reviews = Array.from({ length: 8 }, (_, i) => makePr(i + 1));
+    setupMock(makeDashboard({ reviewRequests: reviews }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("overview-reviews-view-all")).toBeInTheDocument();
+    expect(screen.getByTestId("overview-reviews-view-all")).toHaveTextContent("View all 8 reviews");
+  });
+
+  it("should not show reviews 'View all' button when reviews fit within limit", () => {
+    const reviews = Array.from({ length: 3 }, (_, i) => makePr(i + 1));
+    setupMock(makeDashboard({ reviewRequests: reviews }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.queryByTestId("overview-reviews-view-all")).not.toBeInTheDocument();
+  });
+
+  it("should show 'View all' button when PRs exceed limit", () => {
+    const prs = Array.from({ length: 8 }, (_, i) => makePr(i + 10));
+    setupMock(makeDashboard({ myPullRequests: prs }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.getByTestId("overview-prs-view-all")).toBeInTheDocument();
+    expect(screen.getByTestId("overview-prs-view-all")).toHaveTextContent("View all 8 PRs");
+  });
+
+  it("should not show PRs 'View all' button when PRs fit within limit", () => {
+    const prs = Array.from({ length: 3 }, (_, i) => makePr(i + 10));
+    setupMock(makeDashboard({ myPullRequests: prs }));
+
+    renderWithProviders(<Overview />);
+
+    expect(screen.queryByTestId("overview-prs-view-all")).not.toBeInTheDocument();
+  });
+
+  it("should only show open PRs in overview and exclude merged from count", () => {
+    const openPrs = Array.from({ length: 3 }, (_, i) => makePr(i + 10));
+    const mergedPrs = Array.from({ length: 4 }, (_, i) => ({
+      ...makePr(i + 20),
+      pullRequest: { ...makePr(i + 20).pullRequest, state: "merged" as const },
+    }));
+    setupMock(makeDashboard({ myPullRequests: [...openPrs, ...mergedPrs] }));
+
+    renderWithProviders(<Overview />);
+
+    // Only 3 open PRs shown, merged excluded from preview
+    expect(screen.getByText("PR #10")).toBeInTheDocument();
+    expect(screen.getByText("PR #12")).toBeInTheDocument();
+    expect(screen.queryByText("PR #20")).not.toBeInTheDocument();
+    // "View all" hidden because openPrCount (3) <= MAX_PRS (5)
+    expect(screen.queryByTestId("overview-prs-view-all")).not.toBeInTheDocument();
+    // Badge shows correct open count
+    expect(screen.getByText("3 open")).toBeInTheDocument();
+  });
+
   it("should limit activity to 5 items", () => {
     const activities = Array.from({ length: 8 }, (_, i) => makeActivity(i + 1));
     setupMock(makeDashboard({ recentActivity: activities }));

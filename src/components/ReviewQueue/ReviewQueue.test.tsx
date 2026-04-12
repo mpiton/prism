@@ -148,6 +148,13 @@ describe("ReviewQueue", () => {
     expect(screen.getByText("4")).toBeInTheDocument();
   });
 
+  it("should hide section header when hideHeader is true", () => {
+    render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} hideHeader />);
+
+    expect(screen.queryByText("Reviews")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link")).toHaveLength(4);
+  });
+
   it("should show all PRs when 'all' filter is selected", async () => {
     const user = userEvent.setup();
     render(<ReviewQueue reviews={allReviews} onOpen={vi.fn()} />);
