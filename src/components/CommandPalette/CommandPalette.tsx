@@ -3,6 +3,15 @@ import { Command } from "cmdk";
 import { useQuery } from "@tanstack/react-query";
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { FOCUS_RING } from "../../lib/a11y";
+import {
+  BookOpen,
+  Download,
+  Focus,
+  FolderOpen,
+  LayoutDashboard,
+  RefreshCw,
+  Settings as SettingsIcon,
+} from "../../lib/icons";
 import { listRepos } from "../../lib/tauri";
 import { useDashboardStore } from "../../stores/dashboard";
 import { openUrl } from "../../lib/open";
@@ -83,7 +92,7 @@ function PaletteItemRow({ item }: { readonly item: PaletteItem }): ReactElement 
 }
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
-  const { dashboard } = useGitHubData();
+  const { dashboard, forceSync } = useGitHubData();
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
   const [selectedValue, setSelectedValue] = useState("");
 
@@ -154,7 +163,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     >
       <div className="w-full max-w-lg rounded-lg border border-border bg-bg shadow-xl">
         <Command.Input
-          placeholder="Search PRs and issues…"
+          placeholder="Search PRs, issues, and actions…"
           className={`${FOCUS_RING} w-full border-b border-border bg-transparent px-4 py-3 text-sm text-fg placeholder:text-fg/50`}
         />
         <Command.List className="max-h-80 overflow-y-auto p-2">
@@ -196,6 +205,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
           <Command.Group heading="Actions">
             <Command.Item
+              value="action-dashboard"
+              keywords={["dashboard", "home", "overview"]}
+              onSelect={() => {
+                useDashboardStore.getState().setView("overview");
+                onOpenChange(false);
+              }}
+              className={ITEM_CLASS}
+            >
+              <LayoutDashboard className="size-4 shrink-0 text-fg/50" />
+              Navigate to Dashboard
+            </Command.Item>
+            <Command.Item
               value="action-settings"
               keywords={["settings", "preferences", "config"]}
               onSelect={() => {
@@ -204,7 +225,44 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               }}
               className={ITEM_CLASS}
             >
+              <SettingsIcon className="size-4 shrink-0 text-fg/50" />
               Settings
+            </Command.Item>
+            <Command.Item
+              value="action-focus"
+              keywords={["focus", "mode", "concentrate", "priority"]}
+              onSelect={() => {
+                useDashboardStore.getState().toggleFocusMode();
+                onOpenChange(false);
+              }}
+              className={ITEM_CLASS}
+            >
+              <Focus className="size-4 shrink-0 text-fg/50" />
+              Toggle Focus Mode
+            </Command.Item>
+            <Command.Item
+              value="action-refresh"
+              keywords={["refresh", "sync", "reload", "data"]}
+              onSelect={() => {
+                forceSync();
+                onOpenChange(false);
+              }}
+              className={ITEM_CLASS}
+            >
+              <RefreshCw className="size-4 shrink-0 text-fg/50" />
+              Refresh Data
+            </Command.Item>
+            <Command.Item
+              value="action-workspaces"
+              keywords={["workspace", "workspaces", "open", "terminal"]}
+              onSelect={() => {
+                useDashboardStore.getState().setView("workspaces");
+                onOpenChange(false);
+              }}
+              className={ITEM_CLASS}
+            >
+              <FolderOpen className="size-4 shrink-0 text-fg/50" />
+              Open Workspaces
             </Command.Item>
             <Command.Item
               value="action-docs"
@@ -215,6 +273,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               }}
               className={ITEM_CLASS}
             >
+              <BookOpen className="size-4 shrink-0 text-fg/50" />
               Open Documentation
             </Command.Item>
             <Command.Item
@@ -226,6 +285,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               }}
               className={ITEM_CLASS}
             >
+              <Download className="size-4 shrink-0 text-fg/50" />
               Check for Updates
             </Command.Item>
           </Command.Group>
