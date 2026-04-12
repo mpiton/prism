@@ -66,6 +66,38 @@ vi.mock("../../lib/tauri", () => ({
       lastSyncAt: "2026-03-28T10:00:00Z",
     },
   ]),
+  listNotifications: vi.fn().mockResolvedValue([
+    {
+      id: "notif-1",
+      title: "Unread review request",
+      url: "https://github.com/acme/frontend/pull/1",
+      unread: true,
+      updatedAt: "2026-03-28T10:00:00Z",
+      repo: "acme/frontend",
+      reason: "review_requested",
+      notificationType: "pull_request",
+    },
+    {
+      id: "notif-2",
+      title: "Unread issue mention",
+      url: "https://github.com/acme/frontend/issues/2",
+      unread: true,
+      updatedAt: "2026-03-28T11:00:00Z",
+      repo: "acme/frontend",
+      reason: "mention",
+      notificationType: "issue",
+    },
+    {
+      id: "notif-3",
+      title: "Read merge comment",
+      url: "https://github.com/acme/frontend/pull/3",
+      unread: false,
+      updatedAt: "2026-03-28T12:00:00Z",
+      repo: "acme/frontend",
+      reason: "comment",
+      notificationType: "pull_request",
+    },
+  ]),
   setRepoEnabled: vi.fn().mockResolvedValue({}),
   authGetStatus: vi.fn().mockResolvedValue({
     connected: true,
@@ -107,6 +139,11 @@ describe("Sidebar", () => {
   it("should show review count", () => {
     renderSidebar();
     expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("should show unread notification count", async () => {
+    renderSidebar();
+    expect(await screen.findByRole("button", { name: /notifications \(2\)/i })).toBeInTheDocument();
   });
 
   it("should show workspace dots with state colors", () => {

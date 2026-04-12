@@ -6,7 +6,7 @@ import type { DashboardView } from "../../stores/dashboard";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useGitHubData } from "../../hooks/useGitHubData";
 import { FOCUS_RING } from "../../lib/a11y";
-import { listRepos, setRepoEnabled, authGetStatus } from "../../lib/tauri";
+import { listNotifications, listRepos, setRepoEnabled, authGetStatus } from "../../lib/tauri";
 import { NavItem } from "./NavItem";
 import { WorkspaceList } from "./WorkspaceList";
 import { RepoList } from "./RepoList";
@@ -54,6 +54,12 @@ export function Sidebar(): ReactElement {
     refetchOnWindowFocus: false,
   });
 
+  const notificationsQuery = useQuery({
+    queryKey: ["github", "notifications"],
+    queryFn: listNotifications,
+    staleTime: 60_000,
+  });
+
   const toggleRepoMutation = useMutation({
     mutationFn: ({ repoId, enabled }: { repoId: string; enabled: boolean }) =>
       setRepoEnabled(repoId, enabled),
@@ -87,6 +93,7 @@ export function Sidebar(): ReactElement {
   const repos = reposQuery.data ?? [];
   const enabledRepos = repos.filter((r) => r.enabled);
   const username = authQuery.data?.username ?? null;
+  const unreadNotificationsCount = notificationsQuery.data?.filter((item) => item.unread).length;
 
   useEffect(() => {
     if (typeof document !== "undefined" && navGroupRef.current?.contains(document.activeElement)) {
@@ -173,7 +180,13 @@ export function Sidebar(): ReactElement {
             }}
             label={item.label}
             view={item.view}
-            count={item.countKey && stats ? stats[item.countKey] : undefined}
+            count={
+              item.view === "notifications"
+                ? unreadNotificationsCount
+                : item.countKey && stats
+                  ? stats[item.countKey]
+                  : undefined
+            }
             isActive={currentView === item.view}
             tabIndex={focusedView === item.view ? 0 : -1}
             onClick={handleNavClick}
