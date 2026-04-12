@@ -1,6 +1,7 @@
 import { type ReactElement, useState } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
+import { SELECTED_ITEM_CLASS } from "../../lib/uiClasses";
 import type { PullRequestWithReview } from "../../lib/types/dashboard";
 import { CI } from "../atoms/CI";
 import { Diff } from "../atoms/Diff";
@@ -10,6 +11,7 @@ import { WsBadge } from "../atoms/WsBadge";
 interface ReviewCardProps {
   readonly data: PullRequestWithReview;
   readonly onOpen: (url: string) => void;
+  readonly isSelected?: boolean;
   readonly onWorkspaceAction?: (params: {
     readonly repoId: string;
     readonly pullRequestNumber: number;
@@ -19,7 +21,12 @@ interface ReviewCardProps {
   }) => void;
 }
 
-export function ReviewCard({ data, onOpen, onWorkspaceAction }: ReviewCardProps): ReactElement {
+export function ReviewCard({
+  data,
+  onOpen,
+  isSelected = false,
+  onWorkspaceAction,
+}: ReviewCardProps): ReactElement {
   const { pullRequest: pr, workspace } = data;
   const [loading, setLoading] = useState(false);
 
@@ -43,7 +50,12 @@ export function ReviewCard({ data, onOpen, onWorkspaceAction }: ReviewCardProps)
   }
 
   return (
-    <div className="flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover">
+    <div
+      data-selected={isSelected ? "true" : undefined}
+      className={`flex items-center gap-3 rounded border border-border px-3 py-2 hover:bg-surface-hover${
+        isSelected ? ` ${SELECTED_ITEM_CLASS}` : ""
+      }`}
+    >
       <a
         href={pr.url}
         onClick={handleClick}

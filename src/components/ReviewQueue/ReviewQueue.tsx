@@ -38,7 +38,6 @@ const FOCUS_PRIORITIES: readonly Priority[] = ["critical", "high"];
 
 const PRIORITY_FILTERS: readonly PriorityFilter[] = ["all", "critical", "high", "medium", "low"];
 
-
 function sortByPriority(
   reviews: readonly PullRequestWithReview[],
 ): readonly PullRequestWithReview[] {
@@ -62,6 +61,7 @@ function ReviewQueueImpl({
 }: ReviewQueueProps): ReactElement {
   const storePriority = useDashboardStore((s) => s.activeFilters.priority);
   const storeRepo = useDashboardStore((s) => s.activeFilters.repo);
+  const selectedIndex = useDashboardStore((s) => s.selectedIndex);
   const setFilter = useDashboardStore((s) => s.setFilter);
   const focusMode = useDashboardStore((s) => s.focusMode);
 
@@ -180,10 +180,11 @@ function ReviewQueueImpl({
             <EmptyState icon="✓" message="No pending reviews — you're all caught up!" />
           ) : (
             <div className="flex flex-col gap-1">
-              {sorted.map((review) => (
+              {sorted.map((review, index) => (
                 <ReviewCard
                   key={review.pullRequest.id}
                   data={review}
+                  isSelected={selectedIndex === index}
                   onOpen={onOpen}
                   onWorkspaceAction={onWorkspaceAction}
                 />

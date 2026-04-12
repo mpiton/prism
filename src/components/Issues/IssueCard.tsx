@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactElement } from "react";
 import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
+import { SELECTED_ITEM_CLASS } from "../../lib/uiClasses";
 import type { Issue } from "../../lib/types/github";
 import type { IssueState } from "../../lib/types/enums";
 import { Tag } from "../atoms";
@@ -9,6 +10,7 @@ interface IssueCardProps {
   readonly issue: Issue;
   readonly repoName: string;
   readonly onOpen: (url: string) => void;
+  readonly isSelected?: boolean;
 }
 
 const STATE_DOT_COLOR: Record<IssueState, string> = {
@@ -16,7 +18,12 @@ const STATE_DOT_COLOR: Record<IssueState, string> = {
   closed: "bg-purple",
 };
 
-export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactElement {
+export function IssueCard({
+  issue,
+  repoName,
+  onOpen,
+  isSelected = false,
+}: IssueCardProps): ReactElement {
   function handleClick(e: MouseEvent) {
     e.preventDefault();
     onOpen(issue.url);
@@ -25,10 +32,13 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
   return (
     <a
       data-testid="issue-card"
+      data-selected={isSelected ? "true" : undefined}
       href={issue.url}
       onClick={handleClick}
       aria-label={`Issue #${issue.number}: ${issue.title} (${issue.state})`}
-      className={`${FOCUS_RING} group/card flex min-w-0 cursor-pointer flex-col gap-1 rounded border border-border px-3 py-2 no-underline hover:bg-surface-hover`}
+      className={`${FOCUS_RING} group/card flex min-w-0 cursor-pointer flex-col gap-1 rounded border border-border px-3 py-2 no-underline hover:bg-surface-hover${
+        isSelected ? ` ${SELECTED_ITEM_CLASS}` : ""
+      }`}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span

@@ -6,6 +6,7 @@ import { FOCUS_RING } from "../../lib/a11y";
 import { listNotifications } from "../../lib/tauri";
 import type { GithubNotification } from "../../lib/types/github";
 import { FILTER_BUTTON_CLASS } from "../../lib/uiClasses";
+import { useDashboardStore } from "../../stores/dashboard";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { CardSkeleton, Skeleton } from "../atoms/Skeleton";
@@ -24,6 +25,7 @@ const NOTIFICATION_TABS: Readonly<Record<Tab, (n: GithubNotification) => boolean
 
 function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
+  const selectedIndex = useDashboardStore((s) => s.selectedIndex);
 
   const notificationsQuery = useQuery<GithubNotification[]>({
     queryKey: ["github", "notifications"],
@@ -81,10 +83,7 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
     >
       {/* Header count shows the full, unfiltered notification total so the
           header number doesn't jitter as the user types in the search box. */}
-      <SectionHead
-        title="Notifications"
-        count={isLoading ? undefined : notifications.length}
-      />
+      <SectionHead title="Notifications" count={isLoading ? undefined : notifications.length} />
 
       {isLoading ? (
         <>
@@ -161,8 +160,13 @@ function NotificationsImpl({ onOpen }: NotificationsProps): ReactElement {
           ) : (
             <div ref={listRef} className="max-h-[600px] overflow-y-auto">
               <div className="flex flex-col gap-1">
-                {visible.map((n) => (
-                  <NotificationCard key={n.id} data={n} onOpen={onOpen} />
+                {visible.map((n, index) => (
+                  <NotificationCard
+                    key={n.id}
+                    data={n}
+                    isSelected={selectedIndex === index}
+                    onOpen={onOpen}
+                  />
                 ))}
               </div>
             </div>

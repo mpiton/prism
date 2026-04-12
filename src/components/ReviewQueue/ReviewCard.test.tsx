@@ -43,6 +43,12 @@ describe("ReviewCard", () => {
     expect(screen.getByText("#42")).toBeInTheDocument();
   });
 
+  it("should show selected styling when keyboard-selected", () => {
+    render(<ReviewCard data={mockData} onOpen={vi.fn()} isSelected />);
+    const card = screen.getByText("Fix login bug").closest("div[data-selected='true']");
+    expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
+  });
+
   it("should render author name", () => {
     render(<ReviewCard data={mockData} onOpen={vi.fn()} />);
     expect(screen.getByText("alice")).toBeInTheDocument();
@@ -60,26 +66,16 @@ describe("ReviewCard", () => {
   });
 
   it("should show workspace badge", () => {
-    render(
-      <ReviewCard
-        data={mockData}
-        onOpen={vi.fn()}
-        onWorkspaceAction={vi.fn()}
-      />,
-    );
+    render(<ReviewCard data={mockData} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />);
     expect(screen.getByText("resume")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Resume workspace for PR #42" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume workspace for PR #42" })).toBeInTheDocument();
   });
 
   it("should call onOpen on click", async () => {
     const handleOpen = vi.fn();
     render(<ReviewCard data={mockData} onOpen={handleOpen} />);
     await userEvent.click(screen.getByRole("link"));
-    expect(handleOpen).toHaveBeenCalledWith(
-      "https://github.com/org/repo/pull/42",
-    );
+    expect(handleOpen).toHaveBeenCalledWith("https://github.com/org/repo/pull/42");
   });
 
   it("should render without optional diff fields", () => {
@@ -99,13 +95,7 @@ describe("ReviewCard", () => {
 
   it("should call onWorkspaceAction when badge is clicked", async () => {
     const handleWs = vi.fn();
-    render(
-      <ReviewCard
-        data={mockData}
-        onOpen={vi.fn()}
-        onWorkspaceAction={handleWs}
-      />,
-    );
+    render(<ReviewCard data={mockData} onOpen={vi.fn()} onWorkspaceAction={handleWs} />);
     await userEvent.click(screen.getByRole("button"));
     expect(handleWs).toHaveBeenCalledWith({
       repoId: "repo-1",
@@ -128,9 +118,7 @@ describe("ReviewCard", () => {
       pullRequest: { ...mockData.pullRequest, state: "closed" },
       workspace: { id: "ws-1", state: "suspended", lastNoteContent: null },
     };
-    render(
-      <ReviewCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
-    );
+    render(<ReviewCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 

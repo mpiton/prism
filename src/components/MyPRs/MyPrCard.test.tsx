@@ -43,6 +43,13 @@ describe("MyPrCard", () => {
     expect(screen.getByText("#99")).toBeInTheDocument();
   });
 
+  it("should show selected styling when keyboard-selected", () => {
+    render(<MyPrCard data={basePr} onOpen={vi.fn()} isSelected />);
+    const card = screen.getByTestId("my-pr-card");
+    expect(card).toHaveAttribute("data-selected", "true");
+    expect(card).toHaveClass("border-accent", "ring-2", "ring-accent");
+  });
+
   it("should show CI dot", () => {
     render(<MyPrCard data={basePr} onOpen={vi.fn()} />);
     const ciDot = screen.getByTestId("ci-dot");
@@ -149,9 +156,7 @@ describe("MyPrCard", () => {
   });
 
   it("should show workspace badge", () => {
-    render(
-      <MyPrCard data={basePr} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
-    );
+    render(<MyPrCard data={basePr} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />);
     expect(screen.getByText("resume")).toBeInTheDocument();
   });
 
@@ -172,9 +177,7 @@ describe("MyPrCard", () => {
       ...basePr,
       workspace: null,
     };
-    render(
-      <MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
-    );
+    render(<MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />);
     expect(screen.getByText("open")).toBeInTheDocument();
   });
 
@@ -182,16 +185,12 @@ describe("MyPrCard", () => {
     const handleOpen = vi.fn();
     render(<MyPrCard data={basePr} onOpen={handleOpen} />);
     await userEvent.click(screen.getByRole("link"));
-    expect(handleOpen).toHaveBeenCalledWith(
-      "https://github.com/org/repo/pull/99",
-    );
+    expect(handleOpen).toHaveBeenCalledWith("https://github.com/org/repo/pull/99");
   });
 
   it("should call onWorkspaceAction when badge clicked", async () => {
     const handleWs = vi.fn();
-    render(
-      <MyPrCard data={basePr} onOpen={vi.fn()} onWorkspaceAction={handleWs} />,
-    );
+    render(<MyPrCard data={basePr} onOpen={vi.fn()} onWorkspaceAction={handleWs} />);
     await userEvent.click(screen.getByRole("button"));
     expect(handleWs).toHaveBeenCalledWith({
       repoId: "repo-1",
@@ -246,9 +245,7 @@ describe("MyPrCard", () => {
       pullRequest: { ...basePr.pullRequest, state: "merged" },
       workspace: { id: "ws-1", state: "suspended", lastNoteContent: null },
     };
-    render(
-      <MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
-    );
+    render(<MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -257,9 +254,7 @@ describe("MyPrCard", () => {
       ...basePr,
       workspace: { id: "ws-1", state: "suspended", lastNoteContent: null },
     };
-    render(
-      <MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />,
-    );
+    render(<MyPrCard data={data} onOpen={vi.fn()} onWorkspaceAction={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Wake workspace for PR #99" })).toBeInTheDocument();
     expect(screen.getByText("wake")).toBeInTheDocument();
   });

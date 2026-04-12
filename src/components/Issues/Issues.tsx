@@ -7,6 +7,7 @@ import { FILTER_BUTTON_CLASS, INLINE_CONTROL_CLASS } from "../../lib/uiClasses";
 import type { Issue } from "../../lib/types/github";
 import { useFilterableList } from "../../hooks/useFilterableList";
 import { useRegisterNavigableItems } from "../../hooks/useRegisterNavigableItems";
+import { useDashboardStore } from "../../stores/dashboard";
 import { EmptyState } from "../atoms/EmptyState";
 import { SectionHead } from "../atoms/SectionHead";
 import { ListItemSkeleton, Skeleton } from "../atoms/Skeleton";
@@ -29,8 +30,15 @@ const ISSUE_TABS: Readonly<Record<Tab, (issue: Issue) => boolean>> = {
 
 export const LABEL_VISIBLE_LIMIT = 8;
 
-function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideHeader = false }: IssuesProps): ReactElement {
+function IssuesImpl({
+  issues,
+  isLoading = false,
+  onOpen,
+  hideTabs = false,
+  hideHeader = false,
+}: IssuesProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
+  const selectedIndex = useDashboardStore((s) => s.selectedIndex);
   const { data: repos } = useQuery({ queryKey: ["repos"], queryFn: listRepos });
   const [repoFilter, setRepoFilter] = useState("");
   const [labelFilter, setLabelFilter] = useState<string | null>(null);
@@ -53,8 +61,7 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
     return result.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [issues, repoMap]);
 
-  const isRepoFilterValid =
-    repoFilter === "" || uniqueRepos.some((r) => r.id === repoFilter);
+  const isRepoFilterValid = repoFilter === "" || uniqueRepos.some((r) => r.id === repoFilter);
 
   const repoFiltered = useMemo<readonly Issue[]>(
     () =>
@@ -77,7 +84,11 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
   const visibleLabels = useMemo(() => {
     if (showAllLabels) return uniqueLabels;
     const sliced = uniqueLabels.slice(0, LABEL_VISIBLE_LIMIT);
-    if (labelFilter !== null && !sliced.includes(labelFilter) && uniqueLabels.includes(labelFilter)) {
+    if (
+      labelFilter !== null &&
+      !sliced.includes(labelFilter) &&
+      uniqueLabels.includes(labelFilter)
+    ) {
       return [...sliced.slice(0, -1), labelFilter];
     }
     return sliced;
@@ -101,8 +112,7 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
     setShowAllLabels(false);
   }, [repoFilter]);
 
-  const isLabelFilterValid =
-    labelFilter === null || uniqueLabels.includes(labelFilter);
+  const isLabelFilterValid = labelFilter === null || uniqueLabels.includes(labelFilter);
 
   const preFiltered = useMemo<readonly Issue[]>(
     () =>
@@ -161,7 +171,9 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
       aria-busy={isLoading ? "true" : undefined}
       className="flex flex-col gap-2"
     >
-      {!hideHeader && <SectionHead title="Issues" count={isLoading ? undefined : matchingIssues.length} />}
+      {!hideHeader && (
+        <SectionHead title="Issues" count={isLoading ? undefined : matchingIssues.length} />
+      )}
 
       {isLoading ? (
         <>
@@ -229,7 +241,9 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
                 >
                   <option value="">All repos</option>
                   {uniqueRepos.map((r) => (
-                    <option key={r.id} value={r.id}>{r.fullName}</option>
+                    <option key={r.id} value={r.id}>
+                      {r.fullName}
+                    </option>
                   ))}
                 </select>
               )}
@@ -292,6 +306,7 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
                     >
                       <IssueCard
                         issue={issue}
+                        isSelected={selectedIndex === virtualItem.index}
                         repoName={repoMap.get(issue.repoId) ?? issue.repoId}
                         onOpen={onOpen}
                       />
