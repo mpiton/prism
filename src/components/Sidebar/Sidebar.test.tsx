@@ -75,7 +75,7 @@ vi.mock("../../lib/tauri", () => ({
       updatedAt: "2026-03-28T10:00:00Z",
       repo: "acme/frontend",
       reason: "review_requested",
-      notificationType: "pull_request",
+      notificationType: "pullRequest",
     },
     {
       id: "notif-2",
@@ -95,7 +95,7 @@ vi.mock("../../lib/tauri", () => ({
       updatedAt: "2026-03-28T12:00:00Z",
       repo: "acme/frontend",
       reason: "comment",
-      notificationType: "pull_request",
+      notificationType: "pullRequest",
     },
   ]),
   setRepoEnabled: vi.fn().mockResolvedValue({}),

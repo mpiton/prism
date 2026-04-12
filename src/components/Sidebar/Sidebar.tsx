@@ -54,10 +54,13 @@ export function Sidebar(): ReactElement {
     refetchOnWindowFocus: false,
   });
 
+  const isGitHubConnected = authQuery.data?.connected === true;
+
   const notificationsQuery = useQuery({
     queryKey: ["github", "notifications"],
     queryFn: listNotifications,
     staleTime: 60_000,
+    enabled: isGitHubConnected,
   });
 
   const toggleRepoMutation = useMutation({
@@ -93,7 +96,8 @@ export function Sidebar(): ReactElement {
   const repos = reposQuery.data ?? [];
   const enabledRepos = repos.filter((r) => r.enabled);
   const username = authQuery.data?.username ?? null;
-  const unreadNotificationsCount = notificationsQuery.data?.filter((item) => item.unread).length;
+  const unreadNotificationsCount =
+    notificationsQuery.data?.filter((item) => item.unread).length ?? 0;
 
   useEffect(() => {
     if (typeof document !== "undefined" && navGroupRef.current?.contains(document.activeElement)) {
