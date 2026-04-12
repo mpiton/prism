@@ -545,7 +545,14 @@ describe("Issues", () => {
 
     // label-10 should still be visible even though list is collapsed
     const group = screen.getByRole("group", { name: /filter by label/i });
+    const visibleLabelButtons = within(group)
+      .getAllByRole("button")
+      .filter((button) => /^label-/.test(button.textContent ?? ""));
+
+    expect(visibleLabelButtons).toHaveLength(LABEL_VISIBLE_LIMIT);
     expect(within(group).getByRole("button", { name: "label-10" })).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: "label-08" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("label-filter-toggle")).toHaveTextContent("+4 more");
     expect(screen.getByRole("button", { name: "label-10" })).toHaveAttribute("aria-pressed", "true");
   });
 

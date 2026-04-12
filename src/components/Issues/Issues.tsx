@@ -74,15 +74,15 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
     return [...seen].sort();
   }, [repoFiltered]);
 
-  const hasOverflowLabels = uniqueLabels.length > LABEL_VISIBLE_LIMIT;
   const visibleLabels = useMemo(() => {
     if (showAllLabels) return uniqueLabels;
     const sliced = uniqueLabels.slice(0, LABEL_VISIBLE_LIMIT);
     if (labelFilter !== null && !sliced.includes(labelFilter) && uniqueLabels.includes(labelFilter)) {
-      return [...sliced, labelFilter];
+      return [...sliced.slice(0, -1), labelFilter];
     }
     return sliced;
   }, [uniqueLabels, showAllLabels, labelFilter]);
+  const hiddenLabelsCount = uniqueLabels.length - visibleLabels.length;
 
   // Reset stale filters when available options shrink
   useEffect(() => {
@@ -251,7 +251,7 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
                       {label}
                     </button>
                   ))}
-                  {hasOverflowLabels && (
+                  {(showAllLabels || hiddenLabelsCount > 0) && (
                     <button
                       type="button"
                       aria-expanded={showAllLabels}
@@ -259,7 +259,7 @@ function IssuesImpl({ issues, isLoading = false, onOpen, hideTabs = false, hideH
                       onClick={() => setShowAllLabels(!showAllLabels)}
                       className={`${FILTER_BUTTON_CLASS} text-dim hover:bg-surface-hover hover:text-foreground`}
                     >
-                      {showAllLabels ? "Show less" : `+${uniqueLabels.length - LABEL_VISIBLE_LIMIT} more`}
+                      {showAllLabels ? "Show less" : `+${hiddenLabelsCount} more`}
                     </button>
                   )}
                 </div>
