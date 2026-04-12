@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { Toast } from "./Toast";
 
@@ -196,5 +196,89 @@ describe("Toast", () => {
     const { container } = render(<Toast />);
 
     expect(container.querySelector("[data-testid='toast-container']")?.children).toHaveLength(0);
+  });
+
+  it("should pause timer on mouse enter", () => {
+    (useNotifications as Mock).mockReturnValue({
+      notifications: [makeNotification()],
+      clearNotification: mockClearNotification,
+    });
+
+    render(<Toast />);
+
+    const toast = screen.getByRole("button");
+
+    // Advance 2s, then hover
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.mouseEnter(toast);
+
+    // Advance well past the original 5s — should NOT dismiss while hovered
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    expect(mockClearNotification).not.toHaveBeenCalled();
+  });
+
+  it("should resume timer with remaining time on mouse leave", () => {
+    (useNotifications as Mock).mockReturnValue({
+      notifications: [makeNotification()],
+      clearNotification: mockClearNotification,
+    });
+
+    render(<Toast />);
+
+    const toast = screen.getByRole("button");
+
+    // Advance 3s (2s remaining), then hover
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    fireEvent.mouseEnter(toast);
+
+    // Wait a long time while hovered — no dismiss
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(mockClearNotification).not.toHaveBeenCalled();
+
+    // Leave hover — timer resumes with ~2s remaining
+    fireEvent.mouseLeave(toast);
+
+    // At 1.9s after leave — still not dismissed
+    act(() => {
+      vi.advanceTimersByTime(1900);
+    });
+    expect(mockClearNotification).not.toHaveBeenCalled();
+
+    // At 2.1s after leave — should be dismissed
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(mockClearNotification).toHaveBeenCalledWith("notif-1");
+  });
+
+  it("should dismiss manually while hovered", async () => {
+    vi.useRealTimers();
+
+    (useNotifications as Mock).mockReturnValue({
+      notifications: [makeNotification()],
+      clearNotification: mockClearNotification,
+    });
+
+    render(<Toast />);
+
+    const toast = screen.getByRole("button");
+    fireEvent.mouseEnter(toast);
+
+    const user = userEvent.setup();
+    await user.click(toast);
+
+    expect(mockSetView).toHaveBeenCalledWith("reviews");
+    expect(mockClearNotification).toHaveBeenCalledWith("notif-1");
   });
 });
