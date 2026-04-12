@@ -8,19 +8,16 @@ import type { WorkspaceListEntry, WorkspaceStatusInfo } from "../lib/types/works
 // Tauri event, so time-based polling can be relaxed.
 const STALE_TIME = 300_000;
 
-export function useWorkspaceEnriched(enabled = true) {
+export function useWorkspaceEnriched() {
   const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ["workspaces", "enriched"],
     queryFn: listWorkspacesEnriched,
     staleTime: STALE_TIME,
-    enabled,
   });
 
   useEffect(() => {
-    if (!enabled) return;
-
     let cancelled = false;
     const unlisteners: (() => void)[] = [];
 
@@ -44,7 +41,7 @@ export function useWorkspaceEnriched(enabled = true) {
         unlisten();
       }
     };
-  }, [queryClient, enabled]);
+  }, [queryClient]);
 
   const statusInfo: Record<string, WorkspaceStatusInfo> = useMemo(() => {
     const data = query.data ?? [];

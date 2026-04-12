@@ -159,12 +159,23 @@ const STATUS_INFO = {
 function mockEnriched(
   statusInfo: Readonly<Record<string, WorkspaceStatusInfo>> = {},
   entries: readonly WorkspaceListEntry[] = [],
+  isLoading = false,
 ): void {
   vi.mocked(useWorkspaceEnriched).mockReturnValue({
     statusInfo,
     entries,
-    isLoading: false,
+    isLoading,
   });
+}
+
+function renderWithEnriched(
+  statusInfo: Readonly<Record<string, WorkspaceStatusInfo>> = {},
+  entries: readonly WorkspaceListEntry[] = [],
+): ReturnType<typeof render> {
+  mockEnriched(statusInfo, entries);
+  return renderWithQuery(
+    <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
+  );
 }
 
 describe("WorkspaceView", () => {
@@ -175,10 +186,7 @@ describe("WorkspaceView", () => {
   });
 
   it("should render switcher, terminal, and status bar", () => {
-    mockEnriched(STATUS_INFO, []);
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched(STATUS_INFO);
 
     expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-statusbar")).toBeInTheDocument();
@@ -186,19 +194,13 @@ describe("WorkspaceView", () => {
   });
 
   it("should render the terminal after the chunk loads", async () => {
-    mockEnriched(STATUS_INFO, []);
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched(STATUS_INFO);
 
     expect(await screen.findByTestId("terminal-ws-1")).toBeInTheDocument();
   });
 
   it("should switch terminal on workspace change", async () => {
-    mockEnriched(STATUS_INFO, []);
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched(STATUS_INFO);
 
     expect(await screen.findByTestId("terminal-ws-1")).toBeInTheDocument();
 
@@ -211,10 +213,7 @@ describe("WorkspaceView", () => {
   });
 
   it("should render terminal without status bar when status info is missing", async () => {
-    mockEnriched({}, []);
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched();
 
     expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
     expect(await screen.findByTestId("terminal-ws-1")).toBeInTheDocument();
@@ -223,11 +222,7 @@ describe("WorkspaceView", () => {
 
   it("should show empty state when active workspace not in list", () => {
     useWorkspacesStore.setState({ activeWorkspaceId: "ws-unknown" });
-    mockEnriched(STATUS_INFO, []);
-
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched(STATUS_INFO);
 
     expect(screen.getByTestId("workspace-switcher")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace-statusbar")).not.toBeInTheDocument();
@@ -239,11 +234,7 @@ describe("WorkspaceView", () => {
 
     const activeEntry = makeEntry({ workspaceOverrides: { id: "ws-a", state: "active", pullRequestNumber: 10 } });
     const suspendedEntry = makeEntry({ workspaceOverrides: { id: "ws-b", state: "suspended", pullRequestNumber: 20 } });
-    mockEnriched({}, [activeEntry, suspendedEntry]);
-
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched({}, [activeEntry, suspendedEntry]);
 
     expect(screen.getByTestId("workspace-list")).toBeInTheDocument();
     expect(screen.queryByTestId("terminal-ws-1")).not.toBeInTheDocument();
@@ -254,11 +245,7 @@ describe("WorkspaceView", () => {
 
     const activeEntry = makeEntry({ workspaceOverrides: { id: "ws-active", state: "active", pullRequestNumber: 1 } });
     const archivedEntry = makeEntry({ workspaceOverrides: { id: "ws-archived", state: "archived", pullRequestNumber: 2 } });
-    mockEnriched({}, [activeEntry, archivedEntry]);
-
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched({}, [activeEntry, archivedEntry]);
 
     expect(screen.getByTestId("workspace-item-ws-active")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-item-ws-archived")).toBeInTheDocument();
@@ -268,11 +255,7 @@ describe("WorkspaceView", () => {
     useWorkspacesStore.setState({ activeWorkspaceId: null });
 
     const archivedEntry = makeEntry({ workspaceOverrides: { id: "ws-archived", state: "archived", pullRequestNumber: 2 } });
-    mockEnriched({}, [archivedEntry]);
-
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched({}, [archivedEntry]);
 
     fireEvent.click(screen.getByTestId("workspace-item-ws-archived"));
 
@@ -286,11 +269,7 @@ describe("WorkspaceView", () => {
     useWorkspacesStore.setState({ setActiveWorkspace } as Partial<ReturnType<typeof useWorkspacesStore.getState>>);
 
     const activeEntry = makeEntry({ workspaceOverrides: { id: "ws-click", state: "active", pullRequestNumber: 5 } });
-    mockEnriched({}, [activeEntry]);
-
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched({}, [activeEntry]);
 
     fireEvent.click(screen.getByTestId("workspace-item-ws-click"));
 
@@ -304,11 +283,7 @@ describe("WorkspaceView", () => {
     act(() => {
       useWorkspacesStore.setState({ activeWorkspaceId: "ws-2" });
     });
-    mockEnriched(STATUS_INFO, []);
-
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched(STATUS_INFO);
 
     expect(screen.getByTestId("workspace-suspended-placeholder")).toBeInTheDocument();
     expect(screen.queryByTestId("terminal-ws-2")).not.toBeInTheDocument();
@@ -319,13 +294,10 @@ describe("WorkspaceView", () => {
     act(() => {
       useWorkspacesStore.setState({ activeWorkspaceId: "ws-2" });
     });
-    mockEnriched(STATUS_INFO, []);
 
     vi.mocked(resumeWorkspace).mockResolvedValue(undefined);
 
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched(STATUS_INFO);
 
     fireEvent.click(screen.getByTestId("btn-wake-workspace"));
 
@@ -347,11 +319,7 @@ describe("WorkspaceView", () => {
     });
 
     const suspendedEntry = makeEntry({ workspaceOverrides: { id: "ws-suspended", state: "suspended", pullRequestNumber: 7 } });
-    mockEnriched({}, [suspendedEntry]);
-
-    renderWithQuery(
-      <WorkspaceView workspaces={WORKSPACES} onBackToDashboard={vi.fn()} />,
-    );
+    renderWithEnriched({}, [suspendedEntry]);
 
     fireEvent.click(screen.getByTestId("workspace-item-ws-suspended"));
 
