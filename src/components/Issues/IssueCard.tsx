@@ -3,7 +3,7 @@ import { FOCUS_RING } from "../../lib/a11y";
 import { timeAgo } from "../../lib/timeAgo";
 import type { Issue } from "../../lib/types/github";
 import type { IssueState } from "../../lib/types/enums";
-import { LabelTag } from "../atoms/LabelTag";
+import { Tag } from "../atoms";
 
 interface IssueCardProps {
   readonly issue: Issue;
@@ -61,7 +61,7 @@ export function IssueCard({ issue, repoName, onOpen }: IssueCardProps): ReactEle
         {issue.labels.length > 0 && (
           <span className="flex min-w-0 items-center gap-1 overflow-hidden">
             {issue.labels.map((label) => (
-              <LabelTag key={`${issue.id}:${label}`} name={label} />
+              <Tag key={`${issue.id}:${label}`} variant="label" label={label} />
             ))}
           </span>
         )}
