@@ -13,6 +13,7 @@ import { openUrl } from "../../lib/open";
 
 const MAX_REVIEWS = 5;
 const MAX_PRS = 5;
+const MAX_ISSUES = 5;
 const MAX_ACTIVITIES = 5;
 
 export function Overview(): ReactElement {
@@ -95,7 +96,7 @@ export function Overview(): ReactElement {
 
   const reviews = reviewRequests.slice(0, MAX_REVIEWS);
   const prs = myPullRequests.slice(0, MAX_PRS);
-  const issues = assignedIssues;
+  const issues = assignedIssues.filter((i) => i.state === "open").slice(0, MAX_ISSUES);
   const activities = recentActivity.slice(0, MAX_ACTIVITIES);
   const openPrCount = myPullRequests.filter(
     (pr) => pr.pullRequest.state === "open" || pr.pullRequest.state === "draft",
@@ -186,6 +187,17 @@ export function Overview(): ReactElement {
             </div>
 
             <Issues issues={issues} isLoading={showLoadingState} onOpen={openUrl} />
+
+            {!showLoadingState && openIssueCount > MAX_ISSUES ? (
+              <button
+                type="button"
+                data-testid="overview-issues-view-all"
+                onClick={() => useDashboardStore.getState().setView("issues")}
+                className={`${FOCUS_RING} mt-3 w-full rounded-lg border border-border px-3 py-2 text-center text-xs text-dim transition-colors hover:border-foreground hover:text-foreground`}
+              >
+                View all {openIssueCount} issues
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
