@@ -12,6 +12,7 @@ import { ActivityItem } from "./ActivityItem";
 
 interface ActivityFeedProps {
   readonly activities: readonly Activity[];
+  readonly headerCount?: number;
   readonly isLoading?: boolean;
   readonly onMarkAllRead: () => void;
   readonly hideHeader?: boolean;
@@ -56,6 +57,7 @@ function matchesFilter(activity: Activity, filter: FilterType): boolean {
 
 export function ActivityFeed({
   activities,
+  headerCount,
   isLoading = false,
   onMarkAllRead,
   hideHeader = false,
@@ -79,6 +81,7 @@ export function ActivityFeed({
       value.toLowerCase().includes(normalizedQuery),
     );
   });
+  const sectionCount = isLoading ? undefined : headerCount ?? visible.length;
 
   return (
     <section
@@ -86,7 +89,7 @@ export function ActivityFeed({
       aria-busy={isLoading ? "true" : undefined}
       className="flex flex-col gap-2"
     >
-      {!hideHeader && <SectionHead title="Activity" count={isLoading ? undefined : visible.length} />}
+      {!hideHeader && <SectionHead title="Activity" count={sectionCount} />}
 
       {isLoading ? (
         <>

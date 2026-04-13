@@ -107,7 +107,7 @@ interface MainContentProps {
 }
 
 function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElement {
-  const { dashboard } = useGitHubData();
+  const { dashboard, stats } = useGitHubData();
   const queryClient = useQueryClient();
 
   const markAllRead = useMutation({
@@ -184,6 +184,7 @@ function MainContent({ view, onBackToDashboard }: MainContentProps): ReactElemen
       return (
         <ActivityFeed
           activities={dashboard?.recentActivity ?? []}
+          headerCount={stats?.unreadActivity}
           onMarkAllRead={() => markAllRead.mutate()}
         />
       );

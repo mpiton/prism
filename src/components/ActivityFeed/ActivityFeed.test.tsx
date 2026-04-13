@@ -200,6 +200,19 @@ describe("ActivityFeed", () => {
     expect(screen.getByText("6")).toBeInTheDocument();
   });
 
+  it("should prefer an explicit header count over the visible activity count", () => {
+    render(
+      <ActivityFeed
+        activities={[commentActivity]}
+        headerCount={149}
+        onMarkAllRead={onMarkAllRead}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Activity 149" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Activity 1" })).not.toBeInTheDocument();
+  });
+
   it("should hide section header when hideHeader is true", () => {
     render(<ActivityFeed activities={allActivities} onMarkAllRead={onMarkAllRead} hideHeader />);
 
