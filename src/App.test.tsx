@@ -2,7 +2,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
+import { useGitHubData } from "./hooks/useGitHubData";
 import { useDashboardStore } from "./stores/dashboard";
+import type { Activity } from "./lib/types/github";
+import type { DashboardData, DashboardStats } from "./lib/types/dashboard";
 
 vi.mock("./lib/open", () => ({
   openUrl: vi.fn(),
@@ -18,16 +21,55 @@ vi.mock("./lib/tauri", async (importOriginal) => {
 });
 
 vi.mock("./hooks/useGitHubData", () => ({
-  useGitHubData: vi.fn().mockReturnValue({
-    dashboard: { syncedAt: "2026-03-28T10:00:00Z", reviewRequests: [], myPullRequests: [], assignedIssues: [], recentActivity: [], workspaces: [] },
-    stats: { pendingReviews: 3, openPrs: 5, openIssues: 2, totalWorkspaces: 1, unreadActivity: 0 },
+  useGitHubData: vi.fn(),
+}));
+
+function makeActivity(id: string): Activity {
+  return {
+    id,
+    activityType: "comment_added",
+    actor: "alice",
+    repoId: "repo-1",
+    pullRequestId: "pr-1",
+    issueId: null,
+    message: "Some comment",
+    isRead: false,
+    createdAt: "2026-03-28T10:00:00Z",
+  };
+}
+
+function makeGitHubDataMock(overrides?: {
+  readonly dashboard?: Partial<DashboardData>;
+  readonly stats?: Partial<DashboardStats>;
+}): ReturnType<typeof useGitHubData> {
+  return {
+    dashboard: {
+      syncedAt: "2026-03-28T10:00:00Z",
+      reviewRequests: [],
+      myPullRequests: [],
+      assignedIssues: [],
+      recentActivity: [],
+      workspaces: [],
+      ...overrides?.dashboard,
+    },
+    stats: {
+      pendingReviews: 3,
+      openPrs: 5,
+      openIssues: 2,
+      totalWorkspaces: 1,
+      unreadActivity: 0,
+      ...overrides?.stats,
+    },
     isLoading: false,
     error: null,
     authExpired: false,
+    syncError: null,
     forceSync: vi.fn(),
     isSyncing: false,
-  }),
-}));
+  };
+}
+
+const mockedUseGitHubData = vi.mocked(useGitHubData);
 
 function renderApp() {
   const queryClient = new QueryClient({
@@ -42,6 +84,7 @@ function renderApp() {
 
 describe("App layout", () => {
   beforeEach(() => {
+    mockedUseGitHubData.mockReturnValue(makeGitHubDataMock());
     useDashboardStore.setState({
       currentView: "overview",
       activeFilters: {},
@@ -104,6 +147,21 @@ describe("App layout", () => {
     expect(await screen.findByTestId("activity-feed")).toBeInTheDocument();
   });
 
+  it("should use unread activity stats for the activity heading", async () => {
+    mockedUseGitHubData.mockReturnValue(
+      makeGitHubDataMock({
+        dashboard: { recentActivity: [makeActivity("act-1")] },
+        stats: { unreadActivity: 149 },
+      }),
+    );
+    useDashboardStore.setState({ currentView: "feed" });
+
+    renderApp();
+
+    expect(await screen.findByTestId("activity-feed")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Activity 149" })).toBeInTheDocument();
+  });
+
   it("should render settings view", async () => {
     useDashboardStore.setState({ currentView: "settings" });
     renderApp();
@@ -153,6 +211,7 @@ describe("App keyboard shortcuts", () => {
   let mockedOpenUrl: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    mockedUseGitHubData.mockReturnValue(makeGitHubDataMock());
     // Use "feed" view — it has no useRegisterNavigableItems hook,
     // so pre-seeded navigableItems are preserved for keyboard tests.
     useDashboardStore.setState({
