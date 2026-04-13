@@ -57,6 +57,29 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Extract release notes from changelog
+        id: release_notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes="$(
+            awk -v version="$version" '
+              $0 ~ "^## \\[" version "\\]" { in_section = 1; next }
+              in_section && /^## / { exit }
+              in_section { print }
+            ' CHANGELOG.md
+          )"
+
+          if [ -z "$notes" ]; then
+            echo "Missing CHANGELOG.md entry for version $version" >&2
+            exit 1
+          fi
+
+          {
+            echo "body<<EOF"
+            printf '%s\n' "$notes"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -64,7 +87,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "PRism ${{ github.ref_name }}"
-          releaseBody: "See the assets to download and install this version."
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           args: --bundles appimage,deb

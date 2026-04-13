@@ -22,21 +22,27 @@ A Tauri desktop app that aggregates your GitHub review requests, pull requests, 
 
 ## Features
 
-- [ ] Real-time dashboard: review queue, your PRs, issues, activity feed
-- [ ] Priority scoring for PRs (size, age, CI status, review urgency)
-- [ ] Multi-repo support with per-repo configuration
-- [ ] Native system notifications for review requests, CI failures, approvals
-- [ ] Command palette and keyboard-driven workflow
-- [ ] PR Workspaces with embedded terminal and Claude Code sessions
-- [ ] Offline-first with SQLite cache
+- Unified dashboard for review requests, pull requests, issues, activity, notifications, and overview metrics
+- Priority scoring, repo and label filters, focus mode, inline search, and keyboard-first navigation
+- Multi-repo support with per-repo enablement and local repository path management
+- Native system notifications, tray integration, and command palette shortcuts
+- PR Workspaces with git worktrees, embedded terminal, suspend/resume lifecycle, and Claude Code session persistence
+- Offline-first SQLite cache with background GitHub sync
+
+## Install
+
+Prebuilt Linux packages are published on the [GitHub Releases](https://github.com/mpiton/prism/releases) page.
+
+- `.AppImage` for a portable install
+- `.deb` for Debian/Ubuntu-based systems
 
 ## Tech stack
 
-| Layer | Technologies |
-|-------|-------------|
-| **Backend** | Rust, Tauri 2.10, tokio, sqlx (SQLite), octocrab, graphql_client |
+| Layer        | Technologies                                                     |
+| ------------ | ---------------------------------------------------------------- |
+| **Backend**  | Rust, Tauri 2.10, tokio, sqlx (SQLite), reqwest, graphql_client  |
 | **Frontend** | React 19, TypeScript, Zustand, TanStack Query v5, Tailwind CSS 4 |
-| **Tooling** | oxlint, oxfmt, Vitest, cargo test |
+| **Tooling**  | oxlint, oxfmt, Vitest, cargo test                                |
 
 ## Prerequisites
 
@@ -48,25 +54,19 @@ A Tauri desktop app that aggregates your GitHub review requests, pull requests, 
 
 ```bash
 npm install
-cargo tauri dev
+npm run tauri dev
 ```
 
 ## Build
 
 ```bash
-cargo tauri build
+npm run tauri build
 ```
 
 ## Testing
 
 ```bash
-# Rust
-cargo test
-cargo clippy -- -D warnings
-
-# TypeScript
-npx vitest run
-npx vitest run --coverage
+npm run check
 ```
 
 ## Contributing
